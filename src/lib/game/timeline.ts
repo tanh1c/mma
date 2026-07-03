@@ -107,6 +107,34 @@ export function deriveFighterTimeline(state: GameState, fighterId: string): Care
             title: `Grand Prix Champion`,
             description: `Won the ${t.name}! Earned prestigious trophy${t.titleShotPromised ? ' and a promised Undisputed title shot' : ''}.`
           });
+          
+          if (t.titleShotPromised) {
+             if (t.titleShotUsed) {
+                const titleFight = Object.values(state.fightArchive)
+                   .filter(a => (a.redFighterId === fighterId || a.blueFighterId === fighterId) && a.isTitleFight && a.date >= t.completedDate!)
+                   .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())[0];
+                
+                let oppName = "Champion";
+                if (titleFight) {
+                   const oppId = titleFight.redFighterId === fighterId ? titleFight.blueFighterId : titleFight.redFighterId;
+                   oppName = state.fighters[oppId] ? `${state.fighters[oppId].firstName} ${state.fighters[oppId].lastName}` : "Champion";
+                }
+                
+                timeline.push({
+                   date: titleFight ? titleFight.date : t.completedDate,
+                   type: 'award',
+                   title: 'Grand Prix Title Shot Used',
+                   description: titleFight ? `Used Grand Prix title shot vs ${oppName} at ${titleFight.eventName}` : `Used Grand Prix title shot`
+                });
+             } else {
+                timeline.push({
+                   date: state.currentDate,
+                   type: 'award',
+                   title: 'Grand Prix Title Shot Pending',
+                   description: `Undisputed title shot still pending`
+                });
+             }
+          }
         }
      }
   });

@@ -14,11 +14,13 @@ export default function Tournaments() {
     scheduleSemifinals, 
     scheduleFinal, 
     cancelTournament, 
-    setView 
+    setView,
+    fightArchive = {}
   } = useGameStore();
 
   const [isCreating, setIsCreating] = useState(false);
   const [selectedTourneyId, setSelectedTourneyId] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState<'All' | 'Active' | 'Completed' | 'Cancelled'>('All');
 
   // Form State
   const [name, setName] = useState('');
@@ -31,7 +33,13 @@ export default function Tournaments() {
   const [schedulingSlot, setSchedulingSlot] = useState<{ tourneyId: string, round: 'semifinal' | 'final' } | null>(null);
   const [selectedEventId, setSelectedEventId] = useState<string>('');
 
-  const activeTourneyList = Object.values(tournaments);
+  const activeTourneyList = Object.values(tournaments).filter(t => {
+    if (statusFilter === 'All') return true;
+    if (statusFilter === 'Active') return t.status === 'planned' || t.status === 'active';
+    if (statusFilter === 'Completed') return t.status === 'completed';
+    if (statusFilter === 'Cancelled') return t.status === 'cancelled';
+    return true;
+  });
   const selectedTourney = selectedTourneyId ? tournaments[selectedTourneyId] : null;
 
   // Filter signed, healthy, same-class, unbooked fighters for the GP creation form
@@ -265,9 +273,24 @@ export default function Tournaments() {
           {/* Tournament List */}
           <div className="lg:col-span-1 space-y-4">
             <h2 className="text-sm font-bold text-neutral-400 uppercase tracking-wider">Tournament List</h2>
+            
+            <div className="flex gap-1 bg-neutral-950 p-1 rounded-lg border border-neutral-800">
+              {(['All', 'Active', 'Completed', 'Cancelled'] as const).map(f => (
+                <button
+                  key={f}
+                  onClick={() => setStatusFilter(f)}
+                  className={`flex-1 text-[10px] uppercase font-bold py-1 px-1 rounded transition-all ${
+                    statusFilter === f ? 'bg-purple-600 text-white' : 'text-neutral-400 hover:text-white'
+                  }`}
+                >
+                  {f}
+                </button>
+              ))}
+            </div>
+
             {activeTourneyList.length === 0 ? (
               <div className="bg-neutral-900 border border-neutral-800 p-6 rounded-lg text-center">
-                <p className="text-sm text-neutral-400 italic">No Grand Prix tournaments created yet.</p>
+                <p className="text-sm text-neutral-400 italic">No tournaments found matching filter.</p>
               </div>
             ) : (
               <div className="space-y-3">
@@ -279,13 +302,16 @@ export default function Tournaments() {
                       key={t.id} 
                       onClick={() => setSelectedTourneyId(t.id)}
                       className={`p-4 rounded-lg border cursor-pointer transition-colors text-left ${
-                        isSel ? 'bg-neutral-800 border-purple-500' : 'bg-neutral-900 border-neutral-800 hover:border-neutral-700'
+                        isSel ? 'bg-neutral-800 border-purple-500' :
+                        t.status === 'cancelled' ? 'bg-neutral-900/40 border-neutral-900/60 opacity-60 hover:opacity-85' :
+                        'bg-neutral-900 border-neutral-800 hover:border-neutral-700'
                       }`}
                     >
                       <div className="flex justify-between items-start">
                         <span className={`text-[10px] uppercase font-bold tracking-widest px-2 py-0.5 rounded ${
                           t.status === 'completed' ? 'bg-green-900/30 text-green-400' :
-                          t.status === 'active' ? 'bg-purple-900/30 text-purple-400' : 'bg-blue-900/30 text-blue-400'
+                          t.status === 'active' ? 'bg-purple-900/30 text-purple-400' :
+                          t.status === 'cancelled' ? 'bg-red-900/30 text-red-400' : 'bg-blue-900/30 text-blue-400'
                         }`}>
                           {t.status}
                         </span>
@@ -336,7 +362,7 @@ export default function Tournaments() {
                         Schedule Final
                       </button>
                     )}
-                    {!selectedTourney.fights.some(f => f.isCompleted) && (
+                    {!selectedTourney.fights.some(f => f.isCompleted) && selectedTourney.status !== 'cancelled' && (
                       <button 
                         onClick={() => {
                           if (window.confirm("Cancel this tournament? Scheduled fights will be removed.")) {
@@ -380,14 +406,28 @@ export default function Tournaments() {
                               {slot.winnerId === slot.blueFighterId && <Check size={14} />}
                             </div>
                           </div>
-                          {slot.isCompleted && slot.fightId && (
-                            <button 
-                              onClick={() => setView('fight-detail', { fightArchiveId: `archive_${slot.eventId}_${slot.redFighterId}_${slot.blueFighterId}` })}
-                              className="text-[10px] text-neutral-400 underline hover:text-white block mt-1"
-                            >
-                              View Fight Stats
-                            </button>
-                          )}
+                          {(() => {
+                            if (!slot.isCompleted) return null;
+                            const manualId = `archive_${slot.eventId}_${slot.redFighterId}_${slot.blueFighterId}`;
+                            const archiveId = slot.fightArchiveId || manualId;
+                            const isAvailable = fightArchive[archiveId] !== undefined || fightArchive[manualId] !== undefined;
+                            if (isAvailable) {
+                              const finalId = fightArchive[archiveId] ? archiveId : manualId;
+                              return (
+                                <button 
+                                  onClick={() => setView('fight-detail', { fightArchiveId: finalId })}
+                                  className="text-[10px] text-purple-400 underline hover:text-purple-300 block mt-1 font-bold text-left"
+                                >
+                                  View Fight Stats →
+                                </button>
+                              );
+                            }
+                            return (
+                              <p className="text-[10px] text-neutral-500 italic mt-1">
+                                Fight stats available after event finalization.
+                              </p>
+                            );
+                          })()}
                         </div>
                       );
                     })}
@@ -430,14 +470,28 @@ export default function Tournaments() {
                               {slot.winnerId === slot.blueFighterId && <Check size={14} />}
                             </div>
                           </div>
-                          {slot.isCompleted && slot.fightId && (
-                            <button 
-                              onClick={() => setView('fight-detail', { fightArchiveId: `archive_${slot.eventId}_${slot.redFighterId}_${slot.blueFighterId}` })}
-                              className="text-[10px] text-neutral-400 underline hover:text-white block mt-1"
-                            >
-                              View Final Stats
-                            </button>
-                          )}
+                          {(() => {
+                            if (!slot.isCompleted) return null;
+                            const manualId = `archive_${slot.eventId}_${slot.redFighterId}_${slot.blueFighterId}`;
+                            const archiveId = slot.fightArchiveId || manualId;
+                            const isAvailable = fightArchive[archiveId] !== undefined || fightArchive[manualId] !== undefined;
+                            if (isAvailable) {
+                              const finalId = fightArchive[archiveId] ? archiveId : manualId;
+                              return (
+                                <button 
+                                  onClick={() => setView('fight-detail', { fightArchiveId: finalId })}
+                                  className="text-[10px] text-purple-400 underline hover:text-purple-300 block mt-1 font-bold text-left"
+                                >
+                                  View Final Stats →
+                                </button>
+                              );
+                            }
+                            return (
+                              <p className="text-[10px] text-neutral-500 italic mt-1">
+                                Fight stats available after event finalization.
+                              </p>
+                            );
+                          })()}
                         </div>
                       );
                     })()}

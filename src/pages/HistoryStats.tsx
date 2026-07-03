@@ -7,6 +7,7 @@ export default function HistoryStats() {
   const { eventArchive, fightArchive, titleHistory, fighters, setView, belts, yearlyAwards = {}, financeLedger, tournaments = {} } = useGameStore();
 
   const [expandedEventId, setExpandedEventId] = React.useState<string | null>(null);
+  const [gpFilter, setGpFilter] = React.useState<'All' | 'Active' | 'Completed' | 'Cancelled'>('All');
 
   const events = Object.values(eventArchive).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   const fights = Object.values(fightArchive).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
@@ -84,6 +85,9 @@ export default function HistoryStats() {
           const heldTitle = titleHistory.some(th => th.fighterId === f.id && th.beltType === 'undisputed');
           if (heldTitle || f.isChampion) {
             score += 30; 
+          }
+          if (t.titleShotPromised && t.titleShotUsed) {
+            score += 15;
           }
         } else if (isFinalist) {
           score += 20; 
@@ -216,36 +220,133 @@ export default function HistoryStats() {
 
       {/* Grand Prix Tournaments Archive */}
       {Object.keys(tournaments).length > 0 && (
-        <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-6">
-          <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-            <Award className="text-purple-400" /> Grand Prix History
-          </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {Object.values(tournaments).map(t => {
-              const winner = t.winnerId ? fighters[t.winnerId] : null;
-              return (
-                <div key={t.id} className="bg-neutral-950 border border-neutral-800 rounded p-4 flex justify-between items-center">
-                  <div>
-                    <h3 className="font-bold text-white text-sm">{t.name} ({t.weightClass})</h3>
-                    <p className="text-xs text-neutral-500 font-mono mt-1">
-                      Status: <span className="text-neutral-300 uppercase font-bold text-[10px] bg-neutral-800 px-1 py-0.5 rounded">{t.status}</span>
-                      {t.completedDate && ` • Completed: ${t.completedDate}`}
-                    </p>
-                    {winner && (
-                      <p className="text-xs text-neutral-400 mt-2">
-                        Winner: <span className="text-purple-400 font-bold hover:underline cursor-pointer" onClick={() => setView('fighter-detail', { fighterId: winner.id })}>{winner.firstName} {winner.lastName}</span>
-                      </p>
-                    )}
-                  </div>
-                  <button 
-                    onClick={() => setView('tournaments')}
-                    className="text-xs font-bold bg-neutral-800 hover:bg-neutral-700 text-white py-1.5 px-3 rounded"
-                  >
-                    View Bracket
-                  </button>
-                </div>
-              );
-            })}
+        <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-6 space-y-4">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <h2 className="text-xl font-bold text-white flex items-center gap-2">
+              <Award className="text-purple-400" /> Grand Prix History
+            </h2>
+            
+            <div className="flex gap-1 bg-neutral-950 p-1 rounded border border-neutral-800">
+              {(['All', 'Active', 'Completed', 'Cancelled'] as const).map(f => (
+                <button
+                  key={f}
+                  onClick={() => setGpFilter(f)}
+                  className={`text-[10px] uppercase font-bold py-1 px-2.5 rounded transition-all ${
+                    gpFilter === f ? 'bg-purple-600 text-white' : 'text-neutral-400 hover:text-white'
+                  }`}
+                >
+                  {f}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="border-b border-neutral-800 text-[10px] text-neutral-400 uppercase tracking-wider font-bold">
+                  <th className="py-2.5">Date</th>
+                  <th className="py-2.5">Tournament</th>
+                  <th className="py-2.5">Weight Class</th>
+                  <th className="py-2.5">Winner</th>
+                  <th className="py-2.5">Runner-Up</th>
+                  <th className="py-2.5">Title Shot Status</th>
+                  <th className="py-2.5 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-neutral-800/40 text-sm">
+                {(() => {
+                  const filteredGps = Object.values(tournaments).filter(t => {
+                    if (gpFilter === 'All') return true;
+                    if (gpFilter === 'Active') return t.status === 'planned' || t.status === 'active';
+                    if (gpFilter === 'Completed') return t.status === 'completed';
+                    if (gpFilter === 'Cancelled') return t.status === 'cancelled';
+                    return true;
+                  });
+
+                  if (filteredGps.length === 0) {
+                    return (
+                      <tr>
+                        <td colSpan={7} className="py-6 text-center text-neutral-500 italic">No Grand Prix tournaments match this filter.</td>
+                      </tr>
+                    );
+                  }
+
+                  return filteredGps.map(t => {
+                    const winner = t.winnerId ? fighters[t.winnerId] : null;
+                    const finalSlot = t.fights.find(f => f.round === 'final');
+                    const runnerUpId = finalSlot ? (finalSlot.winnerId === finalSlot.redFighterId ? finalSlot.blueFighterId : finalSlot.redFighterId) : null;
+                    const runnerUp = runnerUpId ? fighters[runnerUpId] : null;
+                    
+                    let titleShotStatus = 'N/A';
+                    if (t.titleShotPromised) {
+                      if (t.titleShotUsed) {
+                        titleShotStatus = 'Used';
+                      } else {
+                        titleShotStatus = winner ? 'Pending' : 'TBD';
+                      }
+                    }
+
+                    const finalMatchup = t.fights.find(f => f.round === 'final');
+                    const archiveId = finalMatchup?.fightArchiveId;
+                    
+                    return (
+                      <tr key={t.id} className="hover:bg-neutral-800/30">
+                        <td className="py-3 text-neutral-400 font-mono text-xs">{t.completedDate || t.createdDate}</td>
+                        <td className="py-3 text-white font-bold">{t.name}</td>
+                        <td className="py-3 text-neutral-400">{t.weightClass}</td>
+                        <td className="py-3">
+                          {winner ? (
+                            <span 
+                              className="text-purple-400 font-bold hover:underline cursor-pointer"
+                              onClick={() => setView('fighter-detail', { fighterId: winner.id })}
+                            >
+                              {winner.firstName} {winner.lastName}
+                            </span>
+                          ) : (
+                            <span className="text-neutral-500">—</span>
+                          )}
+                        </td>
+                        <td className="py-3">
+                          {runnerUp ? (
+                            <span 
+                              className="text-neutral-300 hover:underline cursor-pointer"
+                              onClick={() => setView('fighter-detail', { fighterId: runnerUp.id })}
+                            >
+                              {runnerUp.firstName} {runnerUp.lastName}
+                            </span>
+                          ) : (
+                            <span className="text-neutral-500">—</span>
+                          )}
+                        </td>
+                        <td className="py-3">
+                          {titleShotStatus === 'Used' && <span className="text-green-400 font-bold text-xs bg-green-950/40 px-1.5 py-0.5 rounded font-sans">Used</span>}
+                          {titleShotStatus === 'Pending' && <span className="text-yellow-400 font-bold text-xs bg-yellow-950/40 px-1.5 py-0.5 rounded font-sans">Pending</span>}
+                          {titleShotStatus === 'TBD' && <span className="text-blue-400 text-xs bg-blue-950/40 px-1.5 py-0.5 rounded font-sans">TBD</span>}
+                          {titleShotStatus === 'N/A' && <span className="text-neutral-500 text-xs">—</span>}
+                        </td>
+                        <td className="py-3 text-right flex justify-end gap-2">
+                          {archiveId ? (
+                            <button
+                              onClick={() => setView('fight-detail', { fightArchiveId: archiveId })}
+                              className="text-xs font-bold text-purple-400 hover:text-purple-300 hover:underline"
+                            >
+                              Final Stats
+                            </button>
+                          ) : null}
+                          <button
+                            onClick={() => setView('tournaments')}
+                            className="text-xs font-bold bg-neutral-800 hover:bg-neutral-700 text-white py-1 px-2 rounded"
+                          >
+                            Bracket
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  });
+                })()}
+              </tbody>
+            </table>
           </div>
         </div>
       )}

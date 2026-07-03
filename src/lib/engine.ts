@@ -1,4 +1,4 @@
-import { GameState, FightMatchup, FightResult, Event, WeightClass, YearlyAwardSet, FightArchiveItem } from '../types/game';
+import { GameState, FightMatchup, FightResult, Event, WeightClass, YearlyAwardSet, FightArchiveItem, Fighter } from '../types/game';
 import { simulateFight } from './game/fightSimulator';
 import { calculateEventFinancials } from './game/economy';
 import { generateEventNewsAndStorylines, generateWeeklyNewsAndStorylines } from './game/news';
@@ -378,6 +378,24 @@ export function applyFightResult(state: GameState, eventId: string, fightIndex: 
           content: `A title fight scheduled between ${red.lastName} and ${blue.lastName} was invalid and downgraded to a non-title fight. Reason: ${titleValidation.reason}`,
           type: 'general'
       });
+  }
+
+  if (updatedMatchup.isTitleFight) {
+     if (!newState.tournaments) newState.tournaments = {};
+     
+     const checkAndClearShot = (f: Fighter, fId: string) => {
+        if (f.titleShotPromised) {
+           newState.fighters[fId] = { ...newState.fighters[fId], titleShotPromised: false };
+           const wcTourneys = Object.values(newState.tournaments).filter(t => t.weightClass === f.weightClass && t.winnerId === fId && t.status === 'completed');
+           if (wcTourneys.length > 0) {
+              const targetGp = wcTourneys[0];
+              newState.tournaments[targetGp.id] = { ...targetGp, titleShotUsed: true };
+           }
+        }
+     };
+     
+     checkAndClearShot(red, updatedMatchup.redCornerId);
+     checkAndClearShot(blue, updatedMatchup.blueCornerId);
   }
 
   // Apply result to fighters
@@ -840,6 +858,20 @@ export function finalizeEventFinancials(state: GameState, eventId: string): Game
         redRecordAfter: `${newState.fighters[f.redCornerId]?.record.wins || 0}-${newState.fighters[f.redCornerId]?.record.losses || 0}-${newState.fighters[f.redCornerId]?.record.draws || 0}`,
         blueRecordAfter: `${newState.fighters[f.blueCornerId]?.record.wins || 0}-${newState.fighters[f.blueCornerId]?.record.losses || 0}-${newState.fighters[f.blueCornerId]?.record.draws || 0}`
       };
+
+      if (f.tournamentId && f.tournamentFightSlotId && newState.tournaments?.[f.tournamentId]) {
+        const tourney = newState.tournaments[f.tournamentId];
+        const updatedFights = tourney.fights.map(slot => {
+          if (slot.id === f.tournamentFightSlotId) {
+            return { ...slot, fightArchiveId };
+          }
+          return slot;
+        });
+        newState.tournaments[f.tournamentId] = {
+          ...tourney,
+          fights: updatedFights
+        };
+      }
 
       if (f.isTitleFight && f.result.titleChangeInfo) {
         const tci = f.result.titleChangeInfo;

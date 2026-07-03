@@ -241,12 +241,18 @@ export function scheduleFinal(state: GameState, tournamentId: string, eventId: s
   
   const checkReplacement = (fighterId: string, originalFighterId: string): string => {
     const fighter = newState.fighters[fighterId];
-    const isUnavailable = !fighter || 
-      fighter.injuryStatus || 
-      (fighter.medicalSuspension && fighter.medicalSuspension.daysRemaining > 0) || 
-      fighter.fatigue > 75;
-      
-    if (isUnavailable) {
+    if (!fighter) throw new Error("Fighter not found");
+    
+    const isInjured = fighter.injuryStatus !== null;
+    const isSuspendedLong = fighter.medicalSuspension && fighter.medicalSuspension.daysRemaining > 35;
+    const isSuspendedShort = fighter.medicalSuspension && fighter.medicalSuspension.daysRemaining <= 35 && fighter.medicalSuspension.daysRemaining > 0;
+    const isFatigued = fighter.fatigue > 75;
+    
+    if (isSuspendedShort) {
+      throw new Error(`Finalist ${fighter.lastName} is medically suspended for ${fighter.medicalSuspension?.daysRemaining} days. Final must be delayed until they are cleared.`);
+    }
+    
+    if (isInjured || isSuspendedLong || isFatigued) {
       const unusedReserveId = updatedTourney.reserveFighterIds.find(resId => {
         const reserveFighter = newState.fighters[resId];
         const reserveUnavailable = !reserveFighter || 
@@ -278,14 +284,14 @@ export function scheduleFinal(state: GameState, tournamentId: string, eventId: s
             date: state.currentDate,
             type: 'general' as const,
             title: `Grand Prix Replacement: ${newF.lastName} enters final!`,
-            content: `Due to injury/suspension, ${origF.firstName} ${origF.lastName} is unable to compete. Reserve fighter ${newF.firstName} ${newF.lastName} steps in to face the other finalist.`
+            content: `Due to long-term injury/suspension, ${origF.firstName} ${origF.lastName} is unable to compete. Reserve fighter ${newF.firstName} ${newF.lastName} steps in to face the other finalist.`
           },
           ...newState.news
         ];
         
         return unusedReserveId;
       } else {
-        throw new Error(`Finalist ${fighter ? fighter.lastName : 'Unknown'} is unavailable and no healthy reserve is available. Final must be delayed.`);
+        throw new Error(`Finalist ${fighter.lastName} is unavailable and no healthy reserve is available. Final must be delayed.`);
       }
     }
     return fighterId;
@@ -366,7 +372,53 @@ export function cancelTournament(state: GameState, tournamentId: string): GameSt
     }
   });
   
-  delete newState.tournaments[tournamentId];
+  newState.tournaments[tournamentId] = {
+    ...tourney,
+    status: 'cancelled',
+    notes: [...(tourney.notes || []), `Tournament cancelled on ${state.currentDate}.`]
+  };
+  
+  return newState;
+}
+
+export function maintainTournamentRosterDepth(state: GameState, weightClass: WeightClass): GameState {
+  const eligible = Object.values(state.fighters).filter(f => 
+    f.weightClass === weightClass &&
+    f.contract &&
+    !f.injuryStatus &&
+    (!f.medicalSuspension || f.medicalSuspension.daysRemaining <= 0) &&
+    !f.isChampion
+  );
+  
+  let newState = { ...state, fighters: { ...state.fighters }, news: [...state.news] };
+  let currentEligibleCount = eligible.length;
+  
+  if (currentEligibleCount < 6 && newState.promotion.money > 150000) {
+    const freeAgents = Object.values(newState.fighters)
+      .filter(f => !f.contract && f.weightClass === weightClass)
+      .sort((a, b) => b.popularity - a.popularity || b.potential - a.potential);
+      
+    const needed = 6 - currentEligibleCount;
+    const toSignList = freeAgents.slice(0, needed);
+    
+    toSignList.forEach(toSign => {
+      const pay = 5000 + (toSign.popularity * 100);
+      if (newState.promotion.money > pay * 4) {
+        newState.fighters[toSign.id] = {
+          ...toSign,
+          contract: { payPerFight: pay, winBonus: pay, fightsRemaining: 4, exclusivity: true }
+        };
+        newState.news.unshift({
+          id: uuidv4(),
+          date: newState.currentDate,
+          type: 'contract' as const,
+          title: `Tournament Signing: ${toSign.lastName}`,
+          content: `${toSign.firstName} ${toSign.lastName} has signed a 4-fight contract to bolster the ${weightClass} Grand Prix roster.`
+        });
+        currentEligibleCount++;
+      }
+    });
+  }
   
   return newState;
 }
@@ -488,7 +540,7 @@ export function applyTournamentProgression(
 }
 
 export function runAutopilotTournaments(state: GameState): GameState {
-  let newState = { ...state, tournaments: { ...state.tournaments }, events: { ...state.events } };
+  let newState = { ...state, tournaments: { ...state.tournaments }, events: { ...state.events }, fighters: { ...state.fighters }, news: [...state.news] };
   
   const activeTourney = Object.values(newState.tournaments).find(t => t.status === 'planned' || t.status === 'active');
   
@@ -522,12 +574,25 @@ export function runAutopilotTournaments(state: GameState): GameState {
   if (state.promotion.reputation < 30 || state.promotion.money < 150000) {
     return newState;
   }
+
+  const weightClasses: WeightClass[] = ['Bantamweight', 'Featherweight', 'Lightweight', 'Welterweight', 'Middleweight', 'Heavyweight'];
+
+  // Maintain roster depth for tournament potential across all weight classes
+  const signedWcsInThisTick = new Set<WeightClass>();
+  weightClasses.forEach(wc => {
+    const prevSignedCount = Object.values(state.fighters).filter(f => f.weightClass === wc && f.contract).length;
+    newState = maintainTournamentRosterDepth(newState, wc);
+    const currSignedCount = Object.values(newState.fighters).filter(f => f.weightClass === wc && f.contract).length;
+    if (currSignedCount > prevSignedCount) {
+      signedWcsInThisTick.add(wc);
+    }
+  });
   
-  const completedTourneys = Object.values(state.tournaments).filter(t => t.status === 'completed');
+  const completedTourneys = Object.values(newState.tournaments).filter(t => t.status === 'completed');
   if (completedTourneys.length > 0) {
     const lastCompleted = completedTourneys.sort((a, b) => new Date(b.completedDate || '').getTime() - new Date(a.completedDate || '').getTime())[0];
     if (lastCompleted && lastCompleted.completedDate) {
-      const diffDays = Math.abs(new Date(state.currentDate).getTime() - new Date(lastCompleted.completedDate).getTime()) / (1000 * 60 * 60 * 24);
+      const diffDays = Math.abs(new Date(newState.currentDate).getTime() - new Date(lastCompleted.completedDate).getTime()) / (1000 * 60 * 60 * 24);
       if (diffDays < 270) {
         return newState;
       }
@@ -538,11 +603,9 @@ export function runAutopilotTournaments(state: GameState): GameState {
     return newState;
   }
   
-  const weightClasses: WeightClass[] = ['Bantamweight', 'Featherweight', 'Lightweight', 'Welterweight', 'Middleweight', 'Heavyweight'];
-  
   const candidates = weightClasses.map(wc => {
-    const title = state.titles[wc];
-    const wcFighters = Object.values(state.fighters).filter(f => 
+    const title = newState.titles[wc];
+    const wcFighters = Object.values(newState.fighters).filter(f => 
       f.weightClass === wc && 
       f.contract && 
       !f.injuryStatus && 
@@ -559,7 +622,7 @@ export function runAutopilotTournaments(state: GameState): GameState {
     score += wcFighters.length;
     
     return { wc, fighters: wcFighters, score };
-  }).filter(c => c.fighters.length >= 6);
+  }).filter(c => c.fighters.length >= 6 && !signedWcsInThisTick.has(c.wc));
   
   if (candidates.length === 0) return newState;
   

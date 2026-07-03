@@ -95,7 +95,26 @@ export function calculateEventProjections(
   
   if (mainEvent.isTitleFight) eventHype += 5;
   if (fights.length > 1 && fights[1].isTitleFight) eventHype += 2;
-  
+  // Tournament GP Hype Boosts
+  let hasSemis = false;
+  let hasFinal = false;
+  fights.forEach(f => {
+    if ('tournamentId' in f && (f as any).tournamentId) {
+      if ((f as any).tournamentRound === 'semifinal') {
+        eventHype += 4;
+        hasSemis = true;
+      } else if ((f as any).tournamentRound === 'final') {
+        eventHype += 12;
+        hasFinal = true;
+      }
+    }
+  });
+
+  if (hasFinal) {
+    warnings.push("Grand Prix final boosted fan interest");
+  } else if (hasSemis) {
+    warnings.push("Grand Prix semifinal card");
+  }
   // Storyline effects
   fights.forEach(f => {
     const relevantStorylines = storylines.filter(s => 
@@ -186,6 +205,27 @@ export function calculateEventProjections(
          warnings.push(`${tiredName} has high fatigue from a recent fight. Performance will suffer.`);
       }
     }
+  });
+
+  // Check for GP Promised Title Shot not being honored
+  fights.forEach(fight => {
+    const checkFighter = (fId: string) => {
+      const f = fighters[fId];
+      if (f && f.titleShotPromised && !fight.isTitleFight) {
+         const titleState = titles?.[f.weightClass];
+         if (titleState && titleState.undisputedChampionId) {
+            const champ = fighters[titleState.undisputedChampionId];
+            if (champ && !champ.injuryStatus && (!champ.medicalSuspension || champ.medicalSuspension.daysRemaining <= 0)) {
+               const isChampBooked = fights.some(otherFight => otherFight.redCornerId === champ.id || otherFight.blueCornerId === champ.id);
+               if (!isChampBooked) {
+                  warnings.push(`Promised title shot not being honored for ${f.lastName}.`);
+               }
+            }
+         }
+      }
+    };
+    checkFighter(fight.redCornerId);
+    checkFighter(fight.blueCornerId);
   });
 
   return {

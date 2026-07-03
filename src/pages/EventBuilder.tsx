@@ -535,6 +535,27 @@ export default function EventBuilder() {
                                 {belts['belt_' + fight.weightClass.toLowerCase()]?.shortName || 'TITLE'}
                               </span>
                             )}
+                            {(() => {
+                              const redF = fighters[fight.redCornerId];
+                              const blueF = fighters[fight.blueCornerId];
+                              if (!redF || !blueF) return false;
+                              const titleState = titles[fight.weightClass];
+                              if (!titleState || !titleState.undisputedChampionId) return false;
+                              
+                              const isRedChamp = titleState.undisputedChampionId === redF.id;
+                              const isBlueChamp = titleState.undisputedChampionId === blueF.id;
+                              
+                              const isRedGPWinner = redF.titleShotPromised;
+                              const isBlueGPWinner = blueF.titleShotPromised;
+                              
+                              const isGpTitleShotMatch = (isRedChamp && isBlueGPWinner) || (isBlueChamp && isRedGPWinner);
+                              
+                              return isGpTitleShotMatch && (
+                                <span className="text-purple-400 ml-1 font-bold">
+                                  🛡 GP Title Shot
+                                </span>
+                              );
+                            })()}
                             {(fight as any).tournamentId && (
                               <span className="text-purple-400 ml-1 font-bold">
                                 🛡 {((fight as any).tournamentRound === 'semifinal') ? 'GP SEMIFINAL' : 'GP FINAL'}

@@ -269,6 +269,62 @@ function generateAutoEvent(state: GameState, dateStr: string): Event | null {
     }
   }
 
+  // Priority 1.5: Grand Prix Winner Promised Title Shot
+  if (!titleFightBooked) {
+    for (const wc of weightClasses) {
+      if (titleFightBooked) break;
+      const gpWinner = (wcGroups[wc] || []).find(f => f.titleShotPromised && isAvailable(f.id));
+      if (gpWinner) {
+        const titleState = state.titles[wc as WeightClass];
+        if (titleState && titleState.undisputedChampionId) {
+          const champ = (wcGroups[wc] || []).find(f => f.id === titleState.undisputedChampionId);
+          if (champ && isAvailable(champ.id)) {
+            fights.push({
+              redCornerId: champ.id,
+              blueCornerId: gpWinner.id,
+              weightClass: wc as WeightClass,
+              isTitleFight: true,
+              titleFightType: titleState.status === 'inactive_champion' ? 'interim' : 'undisputed',
+              rounds: 5
+            });
+            bookedFighters.add(champ.id);
+            bookedFighters.add(gpWinner.id);
+            newNews.push({ 
+              id: uuidv4(), 
+              date: dateStr, 
+              title: `Grand Prix Title Shot Booked`, 
+              content: `Grand Prix winner ${gpWinner.lastName} will challenge champion ${champ.lastName} for the undisputed ${wc} championship.`, 
+              type: 'general' 
+            });
+            titleFightBooked = true;
+          }
+        } else if (titleState && titleState.status === 'vacant') {
+          const contender = (wcGroups[wc] || []).find(f => f.id !== gpWinner.id && isAvailable(f.id));
+          if (contender) {
+            fights.push({
+              redCornerId: gpWinner.id,
+              blueCornerId: contender.id,
+              weightClass: wc as WeightClass,
+              isTitleFight: true,
+              titleFightType: 'vacant_undisputed',
+              rounds: 5
+            });
+            bookedFighters.add(gpWinner.id);
+            bookedFighters.add(contender.id);
+            newNews.push({ 
+              id: uuidv4(), 
+              date: dateStr, 
+              title: `Grand Prix Title Shot Booked`, 
+              content: `${gpWinner.lastName} will fight for the vacant ${wc} championship.`, 
+              type: 'general' 
+            });
+            titleFightBooked = true;
+          }
+        }
+      }
+    }
+  }
+
   // Priority 2: Overdue Undisputed Defenses
   if (!titleFightBooked) {
     // find WCs with undisputed champ, active, and overdue (e.g. > 120 days)

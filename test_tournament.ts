@@ -1,5 +1,5 @@
 import { generateInitialWorld } from './src/lib/game/generator';
-import { createGrandPrixTournament, scheduleSemifinals, scheduleFinal, applyTournamentProgression } from './src/lib/game/tournament';
+import { createGrandPrixTournament, scheduleSemifinals, scheduleFinal, applyTournamentProgression, cancelTournament } from './src/lib/game/tournament';
 import { applyFightResult } from './src/lib/engine';
 import { simulateFight } from './src/lib/game/fightSimulator';
 import { FightMatchup } from './src/types/game';
@@ -20,7 +20,7 @@ try {
   const candidates = lwFighters.slice(0, 6).map(f => {
     return {
       ...f,
-      contract: f.contract || { id: uuidv4(), basePay: 10000, winBonus: 10000, fightsRemaining: 3, titleFightClause: false, payPerFight: 10000, exclusivity: 'exclusive' as const },
+      contract: f.contract || { fightsRemaining: 3, payPerFight: 10000, winBonus: 10000, exclusivity: true },
       injuryStatus: null,
       medicalSuspension: null,
       fatigue: 0
@@ -142,6 +142,64 @@ try {
   }
   console.log("10. Verified GP Winner legacy score and title shot promised flags applied successfully.");
   console.log("✅ ALL TOURNAMENT SYSTEM TESTS PASSED SUCCESSFULLY!");
+
+  // CANCELLATION TEST
+  console.log("\n=== RUNNING CANCEL TOURNAMENT TESTS ===");
+  let state2 = generateInitialWorld();
+  const candidates2 = Object.values(state2.fighters)
+    .filter(f => f.weightClass === 'Lightweight' && !f.isChampion)
+    .slice(0, 6)
+    .map(f => ({
+      ...f,
+      contract: f.contract || { fightsRemaining: 3, payPerFight: 10000, winBonus: 10000, exclusivity: true }
+    }));
+  
+  candidates2.forEach(c => {
+    state2.fighters[c.id] = c;
+  });
+  
+  state2 = createGrandPrixTournament(state2, {
+    weightClass: 'Lightweight',
+    name: 'Cancel Test Grand Prix',
+    titleShotPromised: true,
+    participantIds: candidates2.slice(0, 4).map(f => f.id),
+    reserveIds: candidates2.slice(4, 6).map(f => f.id)
+  });
+  
+  const cancelTourneyId = Object.keys(state2.tournaments).find(id => state2.tournaments[id].name === 'Cancel Test Grand Prix')!;
+  
+  const cancelEventId = 'cancel-event';
+  state2.events[cancelEventId] = {
+    id: cancelEventId,
+    name: "Cancel Event",
+    date: '2026-02-01',
+    venueId: Object.keys(state2.venues)[0],
+    ticketPrice: 50,
+    marketingSpend: 10000,
+    fights: [],
+    isCompleted: false
+  };
+  
+  state2 = scheduleSemifinals(state2, cancelTourneyId, cancelEventId);
+  console.log("1. Scheduled semifinals on upcoming event");
+  if (state2.events[cancelEventId].fights.length === 0) {
+    throw new Error("Fights should be scheduled on upcoming event.");
+  }
+  
+  state2 = cancelTournament(state2, cancelTourneyId);
+  console.log("2. Cancelled tournament");
+  
+  const cancelledTourney = state2.tournaments[cancelTourneyId];
+  if (cancelledTourney.status !== 'cancelled') {
+    throw new Error("Tournament status should be set to cancelled.");
+  }
+  
+  if (state2.events[cancelEventId].fights.length > 0) {
+    throw new Error("Scheduled fights should have been removed from the upcoming event upon cancellation.");
+  }
+  
+  console.log("3. Verified status is cancelled and scheduled fights are successfully removed!");
+  console.log("✅ ALL CANCEL TOURNAMENT TESTS PASSED SUCCESSFULLY!");
 
 } catch (err: any) {
   console.error("❌ TEST FAILED:", err.message);

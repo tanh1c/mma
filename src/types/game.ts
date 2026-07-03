@@ -474,6 +474,7 @@ export interface TournamentFightSlot {
   winnerId?: string | null;
   loserId?: string | null;
   isCompleted: boolean;
+  fightArchiveId?: string;
 }
 
 export interface GrandPrixTournament {

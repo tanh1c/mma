@@ -6,7 +6,7 @@ import { calculateEventProjections } from '../lib/game/economy';
 import { WEIGHT_CLASSES } from '../lib/game/constants';
 
 export default function Dashboard() {
-  const { promotion, currentDate, events, fighters, venues, news, storylines, titles, belts, setView, mode, autopilot, setMode, setAutopilot, advanceAutopilot, lastAutopilotSummary, sponsorDeals = [], mediaDeals = [], financeLedger = [], signSponsorDeal, signMediaDeal, renewDeal } = useGameStore();
+  const { promotion, currentDate, events, fighters, tournaments = {}, venues, news, storylines, titles, belts, setView, mode, autopilot, setMode, setAutopilot, advanceAutopilot, lastAutopilotSummary, sponsorDeals = [], mediaDeals = [], financeLedger = [], signSponsorDeal, signMediaDeal, renewDeal } = useGameStore();
 
   const [isAdvancing, setIsAdvancing] = useState(false);
   const [ledgerFilter, setLedgerFilter] = useState<'All' | 'Event' | 'Deals' | 'Costs' | 'Income'>('All');
@@ -115,6 +115,20 @@ export default function Dashboard() {
   });
 
   // We can skip the champ.lastFightDate alert since we now have engine-based inactivity tracking above.
+
+  // Grand Prix Promised Title Shot alerts
+  Object.values(fighters).forEach(f => {
+    if (f.contract && f.titleShotPromised) {
+      const gp = Object.values(tournaments).find(t => t.weightClass === f.weightClass && t.winnerId === f.id && t.status === 'completed');
+      const gpName = gp ? gp.name : `${f.weightClass} Grand Prix`;
+      alerts.push({
+        id: `gp-title-shot-${f.id}`,
+        type: 'info',
+        message: `${f.firstName} ${f.lastName} won the ${gpName} and is owed a title shot.`,
+        action: { label: 'Book Title Fight', onClick: () => setView('event-builder') }
+      });
+    }
+  });
 
   Object.values(fighters).forEach(f => {
     if (f.contract && f.contract.fightsRemaining <= 1) {
