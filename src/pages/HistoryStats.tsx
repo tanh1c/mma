@@ -1,10 +1,10 @@
 import React from 'react';
 import { useGameStore } from '../store/gameStore';
 import { WEIGHT_CLASSES } from '../lib/game/constants';
-import { Trophy, Calendar, Star, TrendingUp } from 'lucide-react';
+import { Trophy, Calendar, Star, TrendingUp, Award } from 'lucide-react';
 
 export default function HistoryStats() {
-  const { eventArchive, fightArchive, titleHistory, fighters, setView, belts, yearlyAwards = {}, financeLedger } = useGameStore();
+  const { eventArchive, fightArchive, titleHistory, fighters, setView, belts, yearlyAwards = {}, financeLedger, tournaments = {} } = useGameStore();
 
   const [expandedEventId, setExpandedEventId] = React.useState<string | null>(null);
 
@@ -68,6 +68,26 @@ export default function HistoryStats() {
         score += 10;
         score += (th.defenses * 5);
         titleDefenses += th.defenses;
+      }
+    });
+
+    // Grand Prix bonuses
+    Object.values(tournaments).forEach(t => {
+      if (t.status === 'completed') {
+        const isWinner = t.winnerId === f.id;
+        const isFinalist = t.fights.find(fight => fight.round === 'final') && 
+                           (t.fights.find(fight => fight.round === 'final')?.redFighterId === f.id || 
+                            t.fights.find(fight => fight.round === 'final')?.blueFighterId === f.id);
+        
+        if (isWinner) {
+          score += 50; 
+          const heldTitle = titleHistory.some(th => th.fighterId === f.id && th.beltType === 'undisputed');
+          if (heldTitle || f.isChampion) {
+            score += 30; 
+          }
+        } else if (isFinalist) {
+          score += 20; 
+        }
       }
     });
 
@@ -193,6 +213,42 @@ export default function HistoryStats() {
           </table>
         </div>
       </div>
+
+      {/* Grand Prix Tournaments Archive */}
+      {Object.keys(tournaments).length > 0 && (
+        <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-6">
+          <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
+            <Award className="text-purple-400" /> Grand Prix History
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {Object.values(tournaments).map(t => {
+              const winner = t.winnerId ? fighters[t.winnerId] : null;
+              return (
+                <div key={t.id} className="bg-neutral-950 border border-neutral-800 rounded p-4 flex justify-between items-center">
+                  <div>
+                    <h3 className="font-bold text-white text-sm">{t.name} ({t.weightClass})</h3>
+                    <p className="text-xs text-neutral-500 font-mono mt-1">
+                      Status: <span className="text-neutral-300 uppercase font-bold text-[10px] bg-neutral-800 px-1 py-0.5 rounded">{t.status}</span>
+                      {t.completedDate && ` • Completed: ${t.completedDate}`}
+                    </p>
+                    {winner && (
+                      <p className="text-xs text-neutral-400 mt-2">
+                        Winner: <span className="text-purple-400 font-bold hover:underline cursor-pointer" onClick={() => setView('fighter-detail', { fighterId: winner.id })}>{winner.firstName} {winner.lastName}</span>
+                      </p>
+                    )}
+                  </div>
+                  <button 
+                    onClick={() => setView('tournaments')}
+                    className="text-xs font-bold bg-neutral-800 hover:bg-neutral-700 text-white py-1.5 px-3 rounded"
+                  >
+                    View Bracket
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Yearly Awards */}
       {Object.keys(yearlyAwards).length > 0 && (

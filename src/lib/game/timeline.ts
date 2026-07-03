@@ -88,6 +88,29 @@ export function deriveFighterTimeline(state: GameState, fighterId: string): Care
     });
   }
 
+  // 4. Tournaments
+  Object.values(state.tournaments || {}).forEach(t => {
+     const participant = t.participants.find(p => p.fighterId === fighterId);
+     if (participant) {
+        const entryTitle = participant.replacementForFighterId ? `Entered ${t.name} (Reserve Replacement)` : `Entered ${t.name} (Seed #${participant.seed})`;
+        timeline.push({
+          date: t.startDate || t.createdDate,
+          type: 'contract',
+          title: `Grand Prix Entry`,
+          description: entryTitle
+        });
+        
+        if (t.winnerId === fighterId && t.completedDate) {
+          timeline.push({
+            date: t.completedDate,
+            type: 'award',
+            title: `Grand Prix Champion`,
+            description: `Won the ${t.name}! Earned prestigious trophy${t.titleShotPromised ? ' and a promised Undisputed title shot' : ''}.`
+          });
+        }
+     }
+  });
+
   // Sort descending
   timeline.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 

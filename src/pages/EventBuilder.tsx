@@ -143,6 +143,11 @@ export default function EventBuilder() {
   };
 
   const removeFight = (index: number) => {
+    const fight = fights[index];
+    if (fight && ('tournamentId' in fight) && (fight as any).tournamentId) {
+      alert("This is a tournament fight. You cannot remove or modify tournament fights directly. Cancel the tournament on the Tournaments page instead.");
+      return;
+    }
     setFights(fights.filter((_, i) => i !== index));
   };
 
@@ -528,6 +533,11 @@ export default function EventBuilder() {
                               <span className="text-yellow-500 ml-1">
                                 🏆 {fight.titleFightType === 'interim' ? 'INTERIM ' : fight.titleFightType === 'unification' ? 'UNIFICATION ' : ''}
                                 {belts['belt_' + fight.weightClass.toLowerCase()]?.shortName || 'TITLE'}
+                              </span>
+                            )}
+                            {(fight as any).tournamentId && (
+                              <span className="text-purple-400 ml-1 font-bold">
+                                🛡 {((fight as any).tournamentRound === 'semifinal') ? 'GP SEMIFINAL' : 'GP FINAL'}
                               </span>
                             )}
                           </span>

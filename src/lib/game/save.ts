@@ -76,7 +76,8 @@ function extractSaveState(state: GameState): Partial<GameState> {
     yearlyAwards: state.yearlyAwards,
     sponsorDeals: state.sponsorDeals,
     mediaDeals: state.mediaDeals,
-    financeLedger: state.financeLedger
+    financeLedger: state.financeLedger,
+    tournaments: state.tournaments || {}
   };
 }
 
@@ -145,6 +146,7 @@ function validateAndMigrateState(parsed: any): GameState | null {
   if (!state.sponsorDeals) state.sponsorDeals = [];
   if (!state.mediaDeals) state.mediaDeals = [];
   if (!state.financeLedger) state.financeLedger = [];
+  if (!state.tournaments) state.tournaments = {};
   
   // Migrate ledger entries missing isSummary/affectsCash
   if (state.financeLedger.length > 0) {

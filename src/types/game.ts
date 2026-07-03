@@ -80,6 +80,7 @@ export interface Fighter {
   rankingScore?: number; // Elo-like score for stable rankings
   history: string[]; // brief fight history/results strings
   lastFightDate: string | null;
+  titleShotPromised?: boolean;
 }
 
 export interface Promotion {
@@ -108,6 +109,9 @@ export interface FightMatchup {
   titleFightType?: 'undisputed' | 'interim' | 'vacant_undisputed' | 'unification';
   rounds: number; // 3 or 5
   result?: FightResult;
+  tournamentId?: string;
+  tournamentRound?: 'semifinal' | 'final';
+  tournamentFightSlotId?: string;
 }
 
 export interface FighterRoundStats {
@@ -441,4 +445,52 @@ export interface GameState {
   sponsorDeals?: SponsorDeal[];
   mediaDeals?: MediaDeal[];
   financeLedger?: FinanceLedgerEntry[];
+  tournaments: Record<string, GrandPrixTournament>;
+}
+
+export type TournamentStatus =
+  | 'planned'
+  | 'active'
+  | 'completed'
+  | 'cancelled';
+
+export type TournamentRound =
+  | 'semifinal'
+  | 'final';
+
+export interface TournamentParticipant {
+  fighterId: string;
+  seed: number;
+  replacementForFighterId?: string;
+}
+
+export interface TournamentFightSlot {
+  id: string;
+  round: TournamentRound;
+  fightId?: string;
+  eventId?: string;
+  redFighterId?: string;
+  blueFighterId?: string;
+  winnerId?: string | null;
+  loserId?: string | null;
+  isCompleted: boolean;
+}
+
+export interface GrandPrixTournament {
+  id: string;
+  name: string;
+  shortName: string;
+  weightClass: WeightClass;
+  status: TournamentStatus;
+  createdDate: string;
+  startDate?: string;
+  completedDate?: string;
+  participants: TournamentParticipant[];
+  reserveFighterIds: string[];
+  fights: TournamentFightSlot[];
+  winnerId?: string | null;
+  titleShotPromised?: boolean;
+  titleShotUsed?: boolean;
+  prestige: number;
+  notes?: string[];
 }

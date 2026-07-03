@@ -208,6 +208,23 @@ export default function FighterDetail() {
           const titleFights = fighterFights.filter(a => a.isTitleFight).length;
           const avgPerf = Math.floor(fighterFights.reduce((acc, a) => acc + (a.performanceRating || 0), 0) / fighterFights.length);
           
+          // Grand Prix Stats
+          const tournamentsList = Object.values(state.tournaments || {});
+          const gpWins = tournamentsList.filter(t => t.winnerId === f.id && t.status === 'completed').length;
+          const gpFinals = tournamentsList.filter(t => t.status === 'completed' && t.fights.some(fight => fight.round === 'final' && (fight.redFighterId === f.id || fight.blueFighterId === f.id))).length;
+          let gpRecordWins = 0;
+          let gpRecordLosses = 0;
+          tournamentsList.forEach(t => {
+            t.fights.forEach(fight => {
+              if (fight.isCompleted) {
+                if (fight.redFighterId === f.id || fight.blueFighterId === f.id) {
+                  if (fight.winnerId === f.id) gpRecordWins++;
+                  else if (fight.winnerId) gpRecordLosses++;
+                }
+              }
+            });
+          });
+          
           let currentStreak = 0;
           for (const a of fighterFights) {
              if (a.winnerId === f.id) currentStreak++;
@@ -263,6 +280,27 @@ export default function FighterDetail() {
                       <div className="text-xl font-bold text-neutral-500">{decLosses}</div>
                    </div>
                 </div>
+                 
+                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+                    <div className="bg-neutral-950 p-3 rounded border border-neutral-800 text-center">
+                       <div className="text-xs text-neutral-500 uppercase tracking-widest mb-1">Grand Prix Wins</div>
+                       <div className="text-xl font-bold text-purple-400">{gpWins}</div>
+                    </div>
+                    <div className="bg-neutral-950 p-3 rounded border border-neutral-800 text-center">
+                       <div className="text-xs text-neutral-500 uppercase tracking-widest mb-1">Grand Prix Finals</div>
+                       <div className="text-xl font-bold text-blue-400">{gpFinals}</div>
+                    </div>
+                    <div className="bg-neutral-950 p-3 rounded border border-neutral-800 text-center">
+                       <div className="text-xs text-neutral-500 uppercase tracking-widest mb-1">GP Record</div>
+                       <div className="text-xl font-bold text-white">{gpRecordWins} - {gpRecordLosses}</div>
+                    </div>
+                    <div className="bg-neutral-950 p-3 rounded border border-neutral-800 text-center">
+                       <div className="text-xs text-neutral-500 uppercase tracking-widest mb-1">Promised Title Shot</div>
+                       <div className={`text-xl font-bold ${f.titleShotPromised ? 'text-green-400' : 'text-neutral-500'}`}>
+                         {f.titleShotPromised ? 'YES' : 'NO'}
+                       </div>
+                    </div>
+                 </div>
               </div>
 
               <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-6">

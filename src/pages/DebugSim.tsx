@@ -5,6 +5,8 @@ import { PRNG } from '../lib/game/rng';
 import { Fighter, FightMatchup, FightResult } from '../types/game';
 import { v4 as uuidv4 } from 'uuid';
 import { useGameStore } from '../store/gameStore';
+import { createGrandPrixTournament, scheduleSemifinals, scheduleFinal } from '../lib/game/tournament';
+import { applyFightResult } from '../lib/engine';
 
 const createFighter = (name: string, attrs: Partial<Fighter['attributes']>, age: number = 28): Fighter => {
   const rng = new PRNG(Math.random());
@@ -75,6 +77,172 @@ export default function DebugSim() {
   const store = useGameStore();
   const [results, setResults] = useState<any[]>([]);
   const [report, setReport] = useState<any | null>(null);
+  const [testLog, setTestLog] = useState<string[]>([]);
+  
+  const runTournamentTestWorkflow = () => {
+    const logs: string[] = [];
+    const log = (msg: string) => {
+      logs.push(msg);
+      setTestLog([...logs]);
+    };
+    
+    log("Starting Tournament Test Workflow...");
+    
+    try {
+      const lwFighters = Object.values(store.fighters).filter(f => f.weightClass === 'Lightweight');
+      if (lwFighters.length < 6) {
+        throw new Error("Need at least 6 Lightweight fighters in database to run test.");
+      }
+      
+      log(`Found ${lwFighters.length} Lightweight fighters. Preparing top 6 for tournament...`);
+      
+      const candidates = lwFighters.slice(0, 6).map((f, i) => {
+        return {
+          ...f,
+          contract: f.contract || { id: uuidv4(), basePay: 10000, winBonus: 10000, fightsRemaining: 3, titleFightClause: false, payPerFight: 10000, exclusivity: 'exclusive' as const },
+          injuryStatus: null,
+          medicalSuspension: null,
+          fatigue: 0
+        };
+      });
+      
+      let testState: any = {
+        ...store,
+        fighters: { ...store.fighters },
+        tournaments: { ...store.tournaments },
+        events: { ...store.events }
+      };
+      
+      candidates.forEach(c => {
+        testState.fighters[c.id] = c;
+      });
+      
+      const pIds = candidates.slice(0, 4).map(f => f.id);
+      const rIds = candidates.slice(4, 6).map(f => f.id);
+      
+      log(`Participants: ${candidates.slice(0,4).map(f => f.lastName).join(', ')}`);
+      log(`Reserves: ${candidates.slice(4,6).map(f => f.lastName).join(', ')}`);
+      
+      testState = createGrandPrixTournament(testState, {
+        weightClass: 'Lightweight',
+        name: 'Debug Test Lightweight Grand Prix',
+        titleShotPromised: true,
+        participantIds: pIds,
+        reserveIds: rIds
+      });
+      
+      const tourneyId = Object.keys(testState.tournaments).find(id => testState.tournaments[id].name === 'Debug Test Lightweight Grand Prix');
+      if (!tourneyId) throw new Error("Failed to create tournament.");
+      log(`Created Grand Prix with ID: ${tourneyId}`);
+      
+      const eventId = 'test-evt-semis';
+      testState.events[eventId] = {
+        id: eventId,
+        name: "GP Semifinals Event",
+        date: testState.currentDate,
+        venueId: Object.keys(testState.venues)[0],
+        ticketPrice: 50,
+        marketingSpend: 10000,
+        fights: [],
+        isCompleted: false
+      };
+      
+      log("Scheduling semifinals onto GP Semifinals Event...");
+      testState = scheduleSemifinals(testState, tourneyId, eventId);
+      
+      const t = testState.tournaments[tourneyId];
+      const semiSlots = t.fights.filter(f => f.round === 'semifinal');
+      if (semiSlots.some(s => !s.fightId)) {
+        throw new Error("Semifinal slots are missing fightId after scheduling.");
+      }
+      log("Semifinals scheduled successfully.");
+      
+      log("Simulating semifinals event...");
+      const eventToSim = testState.events[eventId];
+      eventToSim.fights.forEach((fight, idx) => {
+         const redF = testState.fighters[fight.redCornerId];
+         const blueF = testState.fighters[fight.blueCornerId];
+         const res = simulateFight(fight as FightMatchup, redF, blueF);
+         testState = applyFightResult(testState, eventId, idx, res);
+      });
+      
+      testState.events[eventId].isCompleted = true;
+      log("Semifinal fights simulated.");
+      
+      const t2 = testState.tournaments[tourneyId];
+      const finalSlot = t2.fights.find(f => f.round === 'final');
+      if (!finalSlot?.redFighterId || !finalSlot?.blueFighterId) {
+        throw new Error("Finalist slots not populated after semifinals simulation.");
+      }
+      
+      const finalist1 = testState.fighters[finalSlot.redFighterId];
+      const finalist2 = testState.fighters[finalSlot.blueFighterId];
+      log(`Finalists set: ${finalist1.lastName} vs ${finalist2.lastName}`);
+      
+      log("Testing reserve replacement logic... injuring finalist 1.");
+      const origFinalist1Id = finalSlot.redFighterId;
+      testState.fighters[origFinalist1Id] = {
+        ...testState.fighters[origFinalist1Id],
+        injuryStatus: { id: 'test-gp-inj', type: 'Broken Hand', daysRemaining: 30 }
+      };
+      
+      const finalEventId = 'test-evt-final';
+      testState.events[finalEventId] = {
+        id: finalEventId,
+        name: "GP Final Event",
+        date: testState.currentDate,
+        venueId: Object.keys(testState.venues)[0],
+        ticketPrice: 50,
+        marketingSpend: 10000,
+        fights: [],
+        isCompleted: false
+      };
+      
+      log("Scheduling final. Replacement should trigger automatically...");
+      testState = scheduleFinal(testState, tourneyId, finalEventId);
+      
+      const t3 = testState.tournaments[tourneyId];
+      const updatedFinalSlot = t3.fights.find(f => f.round === 'final');
+      if (updatedFinalSlot?.redFighterId === origFinalist1Id) {
+        throw new Error("Replacement did not occur; injured finalist was booked.");
+      }
+      
+      const activeFinalistRed = testState.fighters[updatedFinalSlot!.redFighterId!];
+      log(`Replacement successful: Reserve ${activeFinalistRed.lastName} entered the final to replace injured ${testState.fighters[origFinalist1Id].lastName}`);
+      
+      log("Simulating final event...");
+      const finalEventToSim = testState.events[finalEventId];
+      finalEventToSim.fights.forEach((fight, idx) => {
+         const redF = testState.fighters[fight.redCornerId];
+         const blueF = testState.fighters[fight.blueCornerId];
+         const res = simulateFight(fight as FightMatchup, redF, blueF);
+         testState = applyFightResult(testState, finalEventId, idx, res);
+      });
+      
+      testState.events[finalEventId].isCompleted = true;
+      log("Final fight simulated.");
+      
+      const t4 = testState.tournaments[tourneyId];
+      if (t4.status !== 'completed' || !t4.winnerId) {
+        throw new Error("Tournament status did not update to completed with winner.");
+      }
+      
+      const winnerF = testState.fighters[t4.winnerId];
+      log(`Tournament Winner crowned: ${winnerF.firstName} ${winnerF.lastName}!`);
+      
+      if (t4.titleShotPromised && !winnerF.titleShotPromised) {
+        throw new Error("Winner did not receive the promised title shot flag.");
+      }
+      log("Promised title shot successfully awarded to winner.");
+      
+      store.importGame(JSON.stringify(testState));
+      log("Tournament Workflow Test passed successfully! State updated locally.");
+      
+    } catch (err: any) {
+      log(`❌ TEST FAILED: ${err.message}`);
+      alert(`Test Failed: ${err.message}`);
+    }
+  };
 
   const runTest = (testIdx: number) => {
     const test = tests[testIdx];
@@ -446,7 +614,19 @@ export default function DebugSim() {
           <button onClick={() => runAutoSim(730)} className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded">
             Run 730 Days
           </button>
+          <button onClick={runTournamentTestWorkflow} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
+            Run GP Test Workflow
+          </button>
         </div>
+
+        {testLog.length > 0 && (
+          <div className="bg-neutral-950 border border-neutral-800 p-4 rounded-lg font-mono text-xs text-neutral-400 space-y-1 mb-6 max-h-60 overflow-y-auto text-left">
+            <h4 className="font-bold text-white mb-2 uppercase">Test Workflow Output</h4>
+            {testLog.map((log, idx) => (
+              <p key={idx}>{log}</p>
+            ))}
+          </div>
+        )}
 
         {report && (
           <div className="space-y-4">
@@ -522,6 +702,45 @@ export default function DebugSim() {
                 </div>
               </div>
             )}
+            
+            {/* Tournaments Report Block */}
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+              <div className="bg-neutral-950 p-4 border border-neutral-800 rounded">
+                <p className="text-xs text-neutral-500 uppercase">Active Tournaments</p>
+                <p className="text-xl font-bold text-purple-400">{report.activeTournamentsCount}</p>
+              </div>
+              <div className="bg-neutral-950 p-4 border border-neutral-800 rounded">
+                <p className="text-xs text-neutral-500 uppercase">Completed Tournaments</p>
+                <p className="text-xl font-bold text-green-400">{report.completedTournamentsCount}</p>
+              </div>
+              <div className="bg-neutral-950 p-4 border border-neutral-800 rounded">
+                <p className="text-xs text-neutral-500 uppercase">GP Fights Missing Results</p>
+                <p className="text-xl font-bold text-red-400">{report.missingResultsFightsCount}</p>
+              </div>
+            </div>
+
+            {report.tournamentWinners.length > 0 && (
+              <div className="bg-neutral-950 p-4 border border-neutral-800 rounded">
+                <h4 className="font-bold text-white mb-2">Grand Prix Winners</h4>
+                <ul className="text-sm text-neutral-300 space-y-1">
+                  {report.tournamentWinners.map((w: string, idx: number) => (
+                    <li key={idx} className="text-green-400 font-semibold">• {w}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {report.invalidTournamentStates.length > 0 && (
+              <div className="bg-red-950 p-4 border border-red-800 rounded">
+                <h4 className="font-bold text-red-400 mb-2">Tournament Invariant Errors</h4>
+                <ul className="text-sm text-red-300 space-y-1">
+                  {report.invalidTournamentStates.map((err: string, idx: number) => (
+                    <li key={idx}>• {err}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
             {report.roundStatsErrors > 0 && (
               <div className="bg-red-950 p-4 border border-red-800 rounded">
                 <p className="text-sm text-red-400 font-bold">⚠ {report.roundStatsErrors} roundStats validation errors detected (rounds with missing/empty judges)</p>
@@ -626,6 +845,51 @@ function calculateReport(store: any, initialFights: number) {
       }
    });
 
+   // Tournament stats
+   const tournaments = state.tournaments || {};
+   const tournamentsList = Object.values(tournaments);
+   const activeTournamentsCount = tournamentsList.filter((t: any) => t.status === 'active' || t.status === 'planned').length;
+   const completedTournamentsCount = tournamentsList.filter((t: any) => t.status === 'completed').length;
+   
+   const tournamentWinners: string[] = [];
+   const invalidTournamentStates: string[] = [];
+   let missingResultsFightsCount = 0;
+   
+   tournamentsList.forEach((t: any) => {
+      if (t.status === 'completed') {
+         if (t.winnerId) {
+            const winnerF = state.fighters[t.winnerId];
+            if (winnerF) tournamentWinners.push(`${winnerF.firstName} ${winnerF.lastName} (${t.name})`);
+         } else {
+            invalidTournamentStates.push(`${t.name}: status is completed but has no winnerId`);
+         }
+      }
+      
+      const participantIds = t.participants.map((p: any) => p.fighterId);
+      if (new Set(participantIds).size !== participantIds.length) {
+         invalidTournamentStates.push(`${t.name}: has duplicate participant IDs`);
+      }
+      
+      t.fights.forEach((fSlot: any) => {
+         if (fSlot.isCompleted && !fSlot.winnerId) {
+            missingResultsFightsCount++;
+         }
+         if (fSlot.eventId && !fSlot.isCompleted) {
+            const event = state.events[fSlot.eventId];
+            if (event && !event.isCompleted) {
+               const redF = state.fighters[fSlot.redFighterId];
+               const blueF = state.fighters[fSlot.blueFighterId];
+               if (redF && (redF.injuryStatus || (redF.medicalSuspension && redF.medicalSuspension.daysRemaining > 0))) {
+                  invalidTournamentStates.push(`${t.name}: unavailable fighter ${redF.lastName} is scheduled in an upcoming fight`);
+               }
+               if (blueF && (blueF.injuryStatus || (blueF.medicalSuspension && blueF.medicalSuspension.daysRemaining > 0))) {
+                  invalidTournamentStates.push(`${t.name}: unavailable fighter ${blueF.lastName} is scheduled in an upcoming fight`);
+               }
+            }
+         }
+      });
+   });
+
    return {
       tenEightCount,
       totalRoundsScored, 
@@ -648,6 +912,11 @@ function calculateReport(store: any, initialFights: number) {
       activeMedia,
       expiredMedia,
       roundStatsErrors,
-      titleInvariantErrors
+      titleInvariantErrors,
+      activeTournamentsCount,
+      completedTournamentsCount,
+      tournamentWinners,
+      invalidTournamentStates,
+      missingResultsFightsCount
    };
 }

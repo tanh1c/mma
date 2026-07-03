@@ -2,7 +2,7 @@ import React, { useEffect, useRef, Suspense } from 'react';
 import { useGameStore } from './store/gameStore';
 import { 
   Users, UserPlus, Calendar, Trophy, Newspaper, 
-  Settings, Play, Save, Download, LayoutDashboard, Upload, FileJson
+  Settings, Play, Save, Download, LayoutDashboard, Upload, FileJson, Award
 } from 'lucide-react';
 import Dashboard from './pages/Dashboard';
 
@@ -16,6 +16,7 @@ const EventSimulation = React.lazy(() => import('./pages/EventSimulation'));
 const DebugSim = React.lazy(() => import('./pages/DebugSim'));
 const HistoryStats = React.lazy(() => import('./pages/HistoryStats'));
 const FightDetail = React.lazy(() => import('./pages/FightDetail').then(module => ({ default: module.FightDetail })));
+const Tournaments = React.lazy(() => import('./pages/Tournaments'));
 
 function App() {
   const { currentView, setView, promotion, currentDate, advanceDays, newGame, saveGame, loadGame, exportGame, importGame } = useGameStore();
@@ -54,6 +55,7 @@ function App() {
                case 'news': return <News />;
                case 'history': return <HistoryStats />;
                case 'fight-detail': return <FightDetail />;
+               case 'tournaments': return <Tournaments />;
                case 'debug': return <DebugSim />;
                default: return <Dashboard />;
              }
@@ -76,6 +78,7 @@ function App() {
           <NavItem icon={<Users size={18} />} label="Roster" active={currentView === 'roster'} onClick={() => setView('roster')} />
           <NavItem icon={<Calendar size={18} />} label="Book Event" active={currentView === 'event-builder'} onClick={() => setView('event-builder')} />
           <NavItem icon={<Trophy size={18} />} label="Rankings" active={currentView === 'rankings'} onClick={() => setView('rankings')} />
+          <NavItem icon={<Award size={18} />} label="Tournaments" active={currentView === 'tournaments'} onClick={() => setView('tournaments')} />
           <NavItem icon={<UserPlus size={18} />} label="Free Agents" active={currentView === 'free-agents'} onClick={() => setView('free-agents')} />
           <NavItem icon={<Newspaper size={18} />} label="News" active={currentView === 'news'} onClick={() => setView('news')} />
           <NavItem icon={<Download size={18} />} label="History & Stats" active={currentView === 'history'} onClick={() => setView('history')} />

@@ -9,6 +9,8 @@ import { createNewGame, saveGameLocally, loadGameLocally, exportGameToJSON, impo
 
 import { autoBookEventsAndContracts, maintainDeals } from '../lib/game/autobooker';
 import { quickSimulateEvent } from '../lib/engine';
+import { createGrandPrixTournament, scheduleSemifinals, scheduleFinal, cancelTournament, runAutopilotTournaments } from '../lib/game/tournament';
+import { WeightClass } from '../types/game';
 
 export interface ActiveSimulation {
   eventId: string | null;
@@ -19,7 +21,7 @@ export interface ActiveSimulation {
 }
 
 interface GameStore extends GameState {
-  currentView: 'dashboard' | 'roster' | 'free-agents' | 'event-builder' | 'simulation' | 'rankings' | 'news' | 'fighter-detail' | 'debug' | 'history' | 'fight-detail';
+  currentView: 'dashboard' | 'roster' | 'free-agents' | 'event-builder' | 'simulation' | 'rankings' | 'news' | 'fighter-detail' | 'debug' | 'history' | 'fight-detail' | 'tournaments';
   selectedFighterId: string | null;
   selectedEventId: string | null;
   selectedFightArchiveId: string | null;
@@ -49,6 +51,10 @@ interface GameStore extends GameState {
   finalizeCurrentEvent: () => void;
   exportGame: () => void;
   importGame: (jsonData: string) => void;
+  createTournament: (options: { weightClass: WeightClass, name: string, titleShotPromised: boolean, participantIds?: string[], reserveIds?: string[] }) => void;
+  scheduleSemifinals: (tournamentId: string, eventId: string) => void;
+  scheduleFinal: (tournamentId: string, eventId: string) => void;
+  cancelTournament: (tournamentId: string) => void;
 }
 
 export const useGameStore = create<GameStore>((set, get) => ({
@@ -173,11 +179,13 @@ export const useGameStore = create<GameStore>((set, get) => ({
           yearlyAwards: newState.yearlyAwards,
           sponsorDeals: newState.sponsorDeals,
           mediaDeals: newState.mediaDeals,
-          financeLedger: newState.financeLedger
+          financeLedger: newState.financeLedger,
+          tournaments: newState.tournaments || {}
         };
         
         // Auto-book events and contracts
         gameState = autoBookEventsAndContracts(gameState);
+        gameState = runAutopilotTournaments(gameState);
 
         // Advance 1 day
         gameState = advanceTime(gameState, 1);
@@ -653,6 +661,57 @@ export const useGameStore = create<GameStore>((set, get) => ({
       return {
         ...tempState
       };
+    });
+  },
+
+  createTournament: (options) => {
+    set((state) => {
+      try {
+        const nextState = createGrandPrixTournament(state, options);
+        return nextState;
+      } catch (err: any) {
+        alert(err.message);
+        return state;
+      }
+    });
+  },
+  
+  scheduleSemifinals: (tournamentId, eventId) => {
+    set((state) => {
+      try {
+        const nextState = scheduleSemifinals(state, tournamentId, eventId);
+        alert("Semifinals scheduled successfully!");
+        return nextState;
+      } catch (err: any) {
+        alert(err.message);
+        return state;
+      }
+    });
+  },
+  
+  scheduleFinal: (tournamentId, eventId) => {
+    set((state) => {
+      try {
+        const nextState = scheduleFinal(state, tournamentId, eventId);
+        alert("Final scheduled successfully!");
+        return nextState;
+      } catch (err: any) {
+        alert(err.message);
+        return state;
+      }
+    });
+  },
+  
+  cancelTournament: (tournamentId) => {
+    set((state) => {
+      try {
+        const nextState = cancelTournament(state, tournamentId);
+        alert("Tournament cancelled.");
+        return nextState;
+      } catch (err: any) {
+        alert(err.message);
+        return state;
+      }
     });
   },
 

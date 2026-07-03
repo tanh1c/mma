@@ -2,6 +2,7 @@ import { GameState, FightMatchup, FightResult, Event, WeightClass, YearlyAwardSe
 import { simulateFight } from './game/fightSimulator';
 import { calculateEventFinancials } from './game/economy';
 import { generateEventNewsAndStorylines, generateWeeklyNewsAndStorylines } from './game/news';
+import { applyTournamentProgression } from './game/tournament';
 import { v4 as uuidv4 } from 'uuid';
 import { format, addDays } from 'date-fns';
 
@@ -606,7 +607,13 @@ export function applyFightResult(state: GameState, eventId: string, fightIndex: 
   newEvent.fights[fightIndex] = updatedMatchup;
   newState.events[eventId] = newEvent;
 
-  return syncChampionFlags(newState);
+  let finalState = syncChampionFlags(newState);
+  if (updatedMatchup.tournamentId && updatedMatchup.tournamentFightSlotId) {
+    const loserId = result.winnerId ? (result.winnerId === red.id ? blue.id : red.id) : null;
+    finalState = applyTournamentProgression(finalState, updatedMatchup.tournamentId, updatedMatchup.tournamentFightSlotId, result.winnerId, loserId);
+  }
+
+  return finalState;
 }
 
 export function finalizeEventFinancials(state: GameState, eventId: string): GameState {

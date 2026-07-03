@@ -373,7 +373,8 @@ export function generateInitialWorld(seed?: number): GameState {
         isActive: true
       }
     ],
-    financeLedger: []
+    financeLedger: [],
+    tournaments: {}
   };
 
   initialState = initializeRankingScores(initialState);
