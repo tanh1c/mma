@@ -693,7 +693,12 @@ export const useGameStore = create<GameStore>((set, get) => ({
     set((state) => {
       try {
         const nextState = scheduleFinal(state, tournamentId, eventId);
-        alert("Final scheduled successfully!");
+        const tourney = nextState.tournaments[tournamentId];
+        if (tourney && tourney.finalDelayReason) {
+          alert(`Grand Prix Final Delayed: ${tourney.finalDelayReason}\nReschedule expected after: ${tourney.earliestFinalDate}`);
+        } else {
+          alert("Final scheduled successfully!");
+        }
         return nextState;
       } catch (err: any) {
         alert(err.message);

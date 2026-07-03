@@ -102,6 +102,35 @@ export function autoBookEventsAndContracts(state: GameState): GameState {
     }
   }
 
+  // Record autobook delay notes for GP winners if champion is unavailable
+  Object.values(newState.fighters).forEach(f => {
+    if (f.contract && f.titleShotPromised) {
+      const titleState = newState.titles[f.weightClass];
+      if (titleState && titleState.undisputedChampionId) {
+        const champ = newState.fighters[titleState.undisputedChampionId];
+        let reason = "";
+        if (!champ) reason = "Champion not found.";
+        else if (champ.injuryStatus) reason = `Champion ${champ.lastName} is injured.`;
+        else if (champ.medicalSuspension && champ.medicalSuspension.daysRemaining > 0) reason = `Champion ${champ.lastName} is medically suspended.`;
+        else if (champ.fatigue >= 50) reason = `Champion ${champ.lastName} is fatigued.`;
+        
+        if (reason) {
+          const gp = Object.values(newState.tournaments || {}).find(t => t.weightClass === f.weightClass && t.winnerId === f.id && t.status === 'completed' && !t.titleShotUsed);
+          if (gp) {
+            const noteMsg = `Autobook Title Shot Pending: ${reason}`;
+            const exists = (gp.notes || []).some(n => n.startsWith("Autobook Title Shot Pending"));
+            if (!exists || (gp.notes && gp.notes[gp.notes.length - 1] !== noteMsg)) {
+              newState.tournaments[gp.id] = {
+                ...gp,
+                notes: [...(gp.notes || []), noteMsg]
+              };
+            }
+          }
+        }
+      }
+    }
+  });
+
   // Handle contracts: renew champions and top contenders, sign if thin, release bloat
   newState = maintainRoster(newState);
 

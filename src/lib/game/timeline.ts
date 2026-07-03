@@ -92,13 +92,71 @@ export function deriveFighterTimeline(state: GameState, fighterId: string): Care
   Object.values(state.tournaments || {}).forEach(t => {
      const participant = t.participants.find(p => p.fighterId === fighterId);
      if (participant) {
-        const entryTitle = participant.replacementForFighterId ? `Entered ${t.name} (Reserve Replacement)` : `Entered ${t.name} (Seed #${participant.seed})`;
+        const entryTitle = participant.replacementForFighterId 
+          ? `Entered ${t.name} (Reserve Replacement)` 
+          : `Entered ${t.name} (Seed #${participant.seed})`;
+        
         timeline.push({
           date: t.startDate || t.createdDate,
           type: 'contract',
           title: `Grand Prix Entry`,
           description: entryTitle
         });
+        
+        if (participant.replacementForFighterId) {
+          const origFighter = state.fighters[participant.replacementForFighterId];
+          const origName = origFighter ? `${origFighter.firstName} ${origFighter.lastName}` : 'Unknown';
+          timeline.push({
+            date: t.startDate || t.createdDate,
+            type: 'contract',
+            title: 'Grand Prix Reserve Entry',
+            description: `Entered final as reserve replacement for ${origName}.`
+          });
+        }
+        
+        // Semifinal result
+        const semiFight = t.fights.find(fight => fight.round === 'semifinal' && fight.isCompleted && (fight.redFighterId === fighterId || fight.blueFighterId === fighterId));
+        if (semiFight) {
+           const isWin = semiFight.winnerId === fighterId;
+           const opponentId = semiFight.redFighterId === fighterId ? semiFight.blueFighterId : semiFight.redFighterId;
+           const oppName = opponentId ? (state.fighters[opponentId] ? state.fighters[opponentId].lastName : 'Unknown') : 'Unknown';
+           
+           const fightDate = Object.values(state.fightArchive).find(a => a.id === semiFight.fightArchiveId)?.date || t.semifinalCompletedDate || t.startDate || t.createdDate;
+           
+           timeline.push({
+             date: fightDate,
+             type: isWin ? 'fight_win' : 'fight_loss',
+             title: `Grand Prix Semifinal: ${isWin ? 'Victory' : 'Defeat'}`,
+             description: isWin ? `Won semifinal vs ${oppName} to advance to final` : `Lost semifinal vs ${oppName}`
+           });
+        }
+        
+        // Final result
+        const finalFight = t.fights.find(fight => fight.round === 'final' && fight.isCompleted && (fight.redFighterId === fighterId || fight.blueFighterId === fighterId));
+        if (finalFight) {
+           const isWin = finalFight.winnerId === fighterId;
+           const opponentId = finalFight.redFighterId === fighterId ? finalFight.blueFighterId : finalFight.redFighterId;
+           const oppName = opponentId ? (state.fighters[opponentId] ? state.fighters[opponentId].lastName : 'Unknown') : 'Unknown';
+           
+           const fightDate = Object.values(state.fightArchive).find(a => a.id === finalFight.fightArchiveId)?.date || t.completedDate || t.startDate || t.createdDate;
+           
+           timeline.push({
+             date: fightDate,
+             type: isWin ? 'fight_win' : 'fight_loss',
+             title: `Grand Prix Final: ${isWin ? 'Victory' : 'Defeat'}`,
+             description: isWin ? `Won final vs ${oppName} to win the tournament!` : `Lost final vs ${oppName}`
+           });
+        }
+        
+        // Final delayed
+        if (t.finalDelayReason && t.delayedFighterId === fighterId && t.earliestFinalDate) {
+           timeline.push({
+             date: t.earliestFinalDate,
+             type: 'injury',
+             title: 'Grand Prix Final Delayed',
+             description: `Final delayed: ${t.finalDelayReason}`
+           });
+        }
         
         if (t.winnerId === fighterId && t.completedDate) {
           timeline.push({

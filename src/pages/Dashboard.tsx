@@ -4,6 +4,7 @@ import { format, differenceInDays } from 'date-fns';
 import { Trophy, TrendingUp, Users, DollarSign, Calendar, AlertTriangle, AlertCircle, Info, FastForward, Settings, Play } from 'lucide-react';
 import { calculateEventProjections } from '../lib/game/economy';
 import { WEIGHT_CLASSES } from '../lib/game/constants';
+import { getPendingTitleShotDebts } from '../lib/game/tournament';
 
 export default function Dashboard() {
   const { promotion, currentDate, events, fighters, tournaments = {}, venues, news, storylines, titles, belts, setView, mode, autopilot, setMode, setAutopilot, advanceAutopilot, lastAutopilotSummary, sponsorDeals = [], mediaDeals = [], financeLedger = [], signSponsorDeal, signMediaDeal, renewDeal } = useGameStore();
@@ -117,17 +118,43 @@ export default function Dashboard() {
   // We can skip the champ.lastFightDate alert since we now have engine-based inactivity tracking above.
 
   // Grand Prix Promised Title Shot alerts
-  Object.values(fighters).forEach(f => {
-    if (f.contract && f.titleShotPromised) {
-      const gp = Object.values(tournaments).find(t => t.weightClass === f.weightClass && t.winnerId === f.id && t.status === 'completed');
-      const gpName = gp ? gp.name : `${f.weightClass} Grand Prix`;
-      alerts.push({
-        id: `gp-title-shot-${f.id}`,
-        type: 'info',
-        message: `${f.firstName} ${f.lastName} won the ${gpName} and is owed a title shot.`,
-        action: { label: 'Book Title Fight', onClick: () => setView('event-builder') }
-      });
+  const tempState = { currentDate, events, fighters, tournaments, titles } as any;
+  const debts = getPendingTitleShotDebts(tempState);
+  debts.forEach(d => {
+    if (d.status === 'used') return;
+    
+    const f = fighters[d.fighterId];
+    if (!f) return;
+    
+    const gp = tournaments[d.tournamentId];
+    const gpName = gp ? gp.name : `${d.weightClass} Grand Prix`;
+    
+    let type: 'info' | 'warning' | 'danger' = 'info';
+    if (d.daysPending > 180) {
+      type = 'danger';
+    } else if (d.status === 'champion_unavailable' || d.status === 'blocked_by_unification' || d.status === 'blocked_by_interim') {
+      type = 'warning';
     }
+    
+    let message = `${f.firstName} ${f.lastName} won the ${gpName} and is owed a title shot (${d.daysPending} days pending).`;
+    if (d.status === 'scheduled') {
+      message = `${f.firstName} ${f.lastName}'s Grand Prix title shot vs Champion is scheduled.`;
+    } else if (d.status === 'champion_unavailable') {
+      message = `${f.firstName} ${f.lastName}'s title shot is delayed because the champion is injured/suspended.`;
+    } else if (d.status === 'fighter_unavailable') {
+      message = `${f.firstName} ${f.lastName} is injured/suspended, delaying their owed title shot.`;
+    } else if (d.status === 'blocked_by_unification') {
+      message = `${f.firstName} ${f.lastName}'s title shot is blocked pending division unification.`;
+    } else if (d.status === 'blocked_by_interim') {
+      message = `${f.firstName} ${f.lastName}'s title shot is blocked pending interim champion obligations.`;
+    }
+    
+    alerts.push({
+      id: `gp-debt-${d.fighterId}`,
+      type,
+      message,
+      action: d.status === 'pending' ? { label: 'Book Title Fight', onClick: () => setView('event-builder') } : undefined
+    });
   });
 
   Object.values(fighters).forEach(f => {

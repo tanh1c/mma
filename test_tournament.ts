@@ -31,6 +31,12 @@ try {
     state.fighters[c.id] = c;
   });
   
+  Object.values(state.events).forEach(e => {
+    if (!e.isCompleted) {
+      e.fights = e.fights.filter(f => !candidates.some(c => c.id === f.redCornerId || c.id === f.blueCornerId));
+    }
+  });
+  
   const pIds = candidates.slice(0, 4).map(f => f.id);
   const rIds = candidates.slice(4, 6).map(f => f.id);
   
@@ -90,16 +96,18 @@ try {
     throw new Error("Final slot red/blue corners should be populated.");
   }
   
-  // Injure finalist 1 to test reserve replacement
   const origFinalist1 = finalSlot.redFighterId;
-  console.log(`6. Injuring finalist ${state.fighters[origFinalist1].lastName} to test reserve replacement...`);
-  state.fighters[origFinalist1].injuryStatus = { id: 'test-gp-inj', type: 'Broken Hand', daysRemaining: 30 };
+  const origFinalist2 = finalSlot.blueFighterId;
   
-  // Create Final Event
-  const finalEventId = 'final-event';
+  // CASE A: Short Medical Suspension (e.g. 20 days)
+  console.log("\n--- TESTING CASE A: Short Medical Suspension ---");
+  console.log(`Giving finalist ${state.fighters[origFinalist1].lastName} a 20-day medical suspension...`);
+  state.fighters[origFinalist1].medicalSuspension = { id: 'test-gp-sus', reason: 'hard_fight', daysRemaining: 20, severity: 'minor' };
+  
+  const finalEventId = 'final-event-a';
   state.events[finalEventId] = {
     id: finalEventId,
-    name: "Cage Dynasty GP Finals",
+    name: "Cage Dynasty GP Finals A",
     date: '2026-03-01',
     venueId: Object.keys(state.venues)[0],
     ticketPrice: 60,
@@ -108,18 +116,45 @@ try {
     isCompleted: false
   };
   
-  // Schedule Final
   state = scheduleFinal(state, tourneyId, finalEventId);
-  
-  const tourneyAfterFinalSchedule = state.tournaments[tourneyId];
-  const finalMatchup = tourneyAfterFinalSchedule.fights.find(f => f.round === 'final');
-  console.log(`7. Final scheduled. Matchup: ${state.fighters[finalMatchup?.redFighterId || ''].lastName} vs ${state.fighters[finalMatchup?.blueFighterId || ''].lastName}`);
-  if (finalMatchup?.redFighterId === origFinalist1) {
-    throw new Error("Injured finalist should have been replaced by a reserve!");
+  const tourneyCaseA = state.tournaments[tourneyId];
+  console.log(`Case A Result: finalDelayReason = "${tourneyCaseA.finalDelayReason}" | earliestFinalDate = "${tourneyCaseA.earliestFinalDate}"`);
+  if (!tourneyCaseA.finalDelayReason || !tourneyCaseA.earliestFinalDate || tourneyCaseA.delayedFighterId !== origFinalist1) {
+    throw new Error("Case A Failed: Short medical suspension should have triggered a delay.");
   }
+  if (tourneyCaseA.fights.find(f => f.round === 'final')?.eventId) {
+    throw new Error("Case A Failed: Final should remain unscheduled during delay.");
+  }
+  console.log("✅ Case A Passed!");
   
-  // Simulate Final
-  console.log("8. Simulating Final fight...");
+  // Clear Case A suspension & delay
+  state.fighters[origFinalist1].medicalSuspension = null;
+  state.fighters[origFinalist2].medicalSuspension = null;
+  state.fighters[origFinalist2].injuryStatus = null;
+  state.fighters[origFinalist2].fatigue = 0;
+  state.tournaments[tourneyId].finalDelayReason = null;
+  state.tournaments[tourneyId].earliestFinalDate = null;
+  state.tournaments[tourneyId].delayedFighterId = null;
+  
+  // CASE B: Long Injury / Suspension with Reserve available
+  console.log("\n--- TESTING CASE B: Long Injury / Suspension (Reserve Available) ---");
+  console.log(`Giving finalist ${state.fighters[origFinalist1].lastName} a long 50-day injury...`);
+  state.fighters[origFinalist1].injuryStatus = { id: 'test-gp-inj-long', type: 'ACL Tear', daysRemaining: 50 };
+  
+  state = scheduleFinal(state, tourneyId, finalEventId);
+  const tourneyCaseB = state.tournaments[tourneyId];
+  const finalMatchupB = tourneyCaseB.fights.find(f => f.round === 'final')!;
+  console.log(`Case B Result: Final scheduled on Event ${finalMatchupB.eventId} | Matchup: ${state.fighters[finalMatchupB.redFighterId || ''].lastName} vs ${state.fighters[finalMatchupB.blueFighterId || ''].lastName}`);
+  if (finalMatchupB.redFighterId === origFinalist1) {
+    throw new Error("Case B Failed: Injured finalist should have been replaced by a reserve!");
+  }
+  if (!finalMatchupB.eventId) {
+    throw new Error("Case B Failed: Final should be successfully scheduled with reserve.");
+  }
+  console.log("✅ Case B Passed!");
+  
+  // Simulate Final to complete it
+  console.log("Simulating Final fight for Case B...");
   const finalEvent = state.events[finalEventId];
   finalEvent.fights.forEach((fight, idx) => {
      const redF = state.fighters[fight.redCornerId];
@@ -127,11 +162,10 @@ try {
      const res = simulateFight(fight as FightMatchup, redF, blueF);
      state = applyFightResult(state, finalEventId, idx, res);
   });
-  
   state.events[finalEventId].isCompleted = true;
   
   const completedTourney = state.tournaments[tourneyId];
-  console.log(`9. Grand Prix completed! Status: ${completedTourney.status} | Winner: ${state.fighters[completedTourney.winnerId || ''].lastName}`);
+  console.log(`Grand Prix completed! Winner: ${state.fighters[completedTourney.winnerId || ''].lastName}`);
   if (completedTourney.status !== 'completed' || !completedTourney.winnerId) {
     throw new Error("Tournament should be completed with winnerId set.");
   }
@@ -140,8 +174,93 @@ try {
   if (!gpWinner.titleShotPromised) {
     throw new Error("GP Winner should have earned a promised title shot.");
   }
-  console.log("10. Verified GP Winner legacy score and title shot promised flags applied successfully.");
-  console.log("✅ ALL TOURNAMENT SYSTEM TESTS PASSED SUCCESSFULLY!");
+  
+  // CASE C: Unavailable, No Reserve Available
+  console.log("\n--- TESTING CASE C: Long Injury (No Reserve Available) ---");
+  let stateC = generateInitialWorld();
+  const candidatesC = Object.values(stateC.fighters)
+    .filter(f => f.weightClass === 'Lightweight' && !f.isChampion)
+    .slice(0, 4) // Only 4 fighters, NO reserves!
+    .map(f => ({
+      ...f,
+      contract: f.contract || { fightsRemaining: 3, payPerFight: 10000, winBonus: 10000, exclusivity: true },
+      injuryStatus: null,
+      medicalSuspension: null,
+      fatigue: 0
+    }));
+  
+  candidatesC.forEach(c => {
+    stateC.fighters[c.id] = c;
+  });
+  
+  Object.values(stateC.events).forEach(e => {
+    if (!e.isCompleted) {
+      e.fights = e.fights.filter(f => !candidatesC.some(c => c.id === f.redCornerId || c.id === f.blueCornerId));
+    }
+  });
+  
+  stateC = createGrandPrixTournament(stateC, {
+    weightClass: 'Lightweight',
+    name: 'Case C Grand Prix',
+    titleShotPromised: true,
+    participantIds: candidatesC.slice(0, 4).map(f => f.id),
+    reserveIds: [] // NO RESERVES!
+  });
+  
+  const tourneyIdC = Object.keys(stateC.tournaments)[0];
+  const semiEventIdC = 'semi-event-c';
+  stateC.events[semiEventIdC] = {
+    id: semiEventIdC,
+    name: "Case C GP Semis",
+    date: '2026-02-01',
+    venueId: Object.keys(stateC.venues)[0],
+    ticketPrice: 50,
+    marketingSpend: 10000,
+    fights: [],
+    isCompleted: false
+  };
+  
+  stateC = scheduleSemifinals(stateC, tourneyIdC, semiEventIdC);
+  
+  // Simulate semis
+  stateC.events[semiEventIdC].fights.forEach((fight, idx) => {
+    const redF = stateC.fighters[fight.redCornerId];
+    const blueF = stateC.fighters[fight.blueCornerId];
+    const res = simulateFight(fight as FightMatchup, redF, blueF);
+    stateC = applyFightResult(stateC, semiEventIdC, idx, res);
+  });
+  stateC.events[semiEventIdC].isCompleted = true;
+  
+  const finalSlotC = stateC.tournaments[tourneyIdC].fights.find(f => f.round === 'final')!;
+  const finalistC1 = finalSlotC.redFighterId!;
+  
+  console.log(`Giving finalist ${stateC.fighters[finalistC1].lastName} a 60-day injury...`);
+  stateC.fighters[finalistC1].injuryStatus = { id: 'test-c-inj', type: 'Broken Leg', daysRemaining: 60 };
+  
+  const finalEventIdC = 'final-event-c';
+  stateC.events[finalEventIdC] = {
+    id: finalEventIdC,
+    name: "Case C GP Finals",
+    date: '2026-03-01',
+    venueId: Object.keys(stateC.venues)[0],
+    ticketPrice: 60,
+    marketingSpend: 15000,
+    fights: [],
+    isCompleted: false
+  };
+  
+  stateC = scheduleFinal(stateC, tourneyIdC, finalEventIdC);
+  const tourneyAfterC = stateC.tournaments[tourneyIdC];
+  console.log(`Case C Result: finalDelayReason = "${tourneyAfterC.finalDelayReason}" | earliestFinalDate = "${tourneyAfterC.earliestFinalDate}"`);
+  if (!tourneyAfterC.finalDelayReason || !tourneyAfterC.earliestFinalDate) {
+    throw new Error("Case C Failed: Long injury with no reserve should have triggered a delay.");
+  }
+  if (tourneyAfterC.fights.find(f => f.round === 'final')?.eventId) {
+    throw new Error("Case C Failed: Final slot should remain unscheduled.");
+  }
+  console.log("Case C Passed!");
+  
+  console.log("✅ ALL TOURNAMENT WORKFLOW TESTS PASSED!");
 
   // CANCELLATION TEST
   console.log("\n=== RUNNING CANCEL TOURNAMENT TESTS ===");
@@ -151,11 +270,20 @@ try {
     .slice(0, 6)
     .map(f => ({
       ...f,
-      contract: f.contract || { fightsRemaining: 3, payPerFight: 10000, winBonus: 10000, exclusivity: true }
+      contract: f.contract || { fightsRemaining: 3, payPerFight: 10000, winBonus: 10000, exclusivity: true },
+      injuryStatus: null,
+      medicalSuspension: null,
+      fatigue: 0
     }));
   
   candidates2.forEach(c => {
     state2.fighters[c.id] = c;
+  });
+  
+  Object.values(state2.events).forEach(e => {
+    if (!e.isCompleted) {
+      e.fights = e.fights.filter(f => !candidates2.some(c => c.id === f.redCornerId || c.id === f.blueCornerId));
+    }
   });
   
   state2 = createGrandPrixTournament(state2, {

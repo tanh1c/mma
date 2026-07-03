@@ -230,7 +230,8 @@ export function scheduleFinal(state: GameState, tournamentId: string, eventId: s
     ...state, 
     tournaments: { ...state.tournaments }, 
     events: { ...state.events },
-    fighters: { ...state.fighters }
+    fighters: { ...state.fighters },
+    news: [...state.news]
   };
   
   const updatedTourney = { ...tourney, fights: [...tourney.fights] };
@@ -239,6 +240,15 @@ export function scheduleFinal(state: GameState, tournamentId: string, eventId: s
   let finalist1 = w1;
   let finalist2 = w2;
   
+  let delayReason: string | null = null;
+  let delayFighterId: string | null = null;
+  let delayEarliestDate: string | null = null;
+
+  const addDaysStr = (dateStr: string, days: number): string => {
+    const d = addDays(new Date(dateStr), days);
+    return d.toISOString().split('T')[0];
+  };
+
   const checkReplacement = (fighterId: string, originalFighterId: string): string => {
     const fighter = newState.fighters[fighterId];
     if (!fighter) throw new Error("Fighter not found");
@@ -249,18 +259,22 @@ export function scheduleFinal(state: GameState, tournamentId: string, eventId: s
     const isFatigued = fighter.fatigue > 75;
     
     if (isSuspendedShort) {
-      throw new Error(`Finalist ${fighter.lastName} is medically suspended for ${fighter.medicalSuspension?.daysRemaining} days. Final must be delayed until they are cleared.`);
+      delayReason = `${fighter.lastName} is medically suspended for ${fighter.medicalSuspension?.daysRemaining} days.`;
+      delayFighterId = fighter.id;
+      delayEarliestDate = addDaysStr(newState.currentDate, fighter.medicalSuspension!.daysRemaining);
+      return fighterId;
     }
     
     if (isInjured || isSuspendedLong || isFatigued) {
       const unusedReserveId = updatedTourney.reserveFighterIds.find(resId => {
         const reserveFighter = newState.fighters[resId];
-        const reserveUnavailable = !reserveFighter || 
-          !reserveFighter.contract ||
-          reserveFighter.injuryStatus || 
-          (reserveFighter.medicalSuspension && reserveFighter.medicalSuspension.daysRemaining > 0) ||
-          reserveFighter.fatigue > 75 ||
-          Object.values(newState.events).some(e => !e.isCompleted && e.fights.some(f => f.redCornerId === resId || f.blueCornerId === resId));
+        const hasNoContract = !reserveFighter || !reserveFighter.contract;
+        const isInjured = reserveFighter?.injuryStatus;
+        const isSuspended = reserveFighter?.medicalSuspension && reserveFighter.medicalSuspension.daysRemaining > 0;
+        const isFatigued = reserveFighter?.fatigue > 75;
+        const isBooked = Object.values(newState.events).some(e => !e.isCompleted && e.fights.some(f => f.redCornerId === resId || f.blueCornerId === resId));
+        
+        const reserveUnavailable = hasNoContract || isInjured || isSuspended || isFatigued || isBooked;
         return !reserveUnavailable && resId !== finalist1 && resId !== finalist2;
       });
       
@@ -291,18 +305,51 @@ export function scheduleFinal(state: GameState, tournamentId: string, eventId: s
         
         return unusedReserveId;
       } else {
-        throw new Error(`Finalist ${fighter.lastName} is unavailable and no healthy reserve is available. Final must be delayed.`);
+        delayReason = `${fighter.lastName} is unavailable and no reserve is available.`;
+        delayFighterId = fighter.id;
+        if (fighter.medicalSuspension && fighter.medicalSuspension.daysRemaining > 0) {
+          delayEarliestDate = addDaysStr(newState.currentDate, fighter.medicalSuspension.daysRemaining);
+        } else {
+          delayEarliestDate = addDaysStr(newState.currentDate, 30);
+        }
+        return fighterId;
       }
     }
     return fighterId;
   };
   
-  try {
-    finalist1 = checkReplacement(w1, w1);
+  finalist1 = checkReplacement(w1, w1);
+  if (!delayReason) {
     finalist2 = checkReplacement(w2, w2);
-  } catch (err: any) {
-    throw new Error(err.message);
   }
+  
+  if (delayReason) {
+    updatedTourney.finalDelayReason = delayReason;
+    updatedTourney.earliestFinalDate = delayEarliestDate;
+    updatedTourney.delayedFighterId = delayFighterId;
+    updatedTourney.notes = [...(updatedTourney.notes || []), `Final delayed: ${delayReason}`];
+    
+    const isNewDelay = tourney.finalDelayReason !== delayReason || tourney.earliestFinalDate !== delayEarliestDate;
+    if (isNewDelay) {
+      newState.news = [
+        {
+          id: uuidv4(),
+          date: state.currentDate,
+          type: 'general' as const,
+          title: `Grand Prix Final Delayed`,
+          content: `The final of the ${updatedTourney.name} has been delayed. Reason: ${delayReason}. Earliest expected reschedule: ${delayEarliestDate}.`
+        },
+        ...newState.news
+      ];
+    }
+    
+    newState.tournaments[tournamentId] = updatedTourney;
+    return newState;
+  }
+  
+  updatedTourney.finalDelayReason = null;
+  updatedTourney.earliestFinalDate = null;
+  updatedTourney.delayedFighterId = null;
   
   const fightId = uuidv4();
   const matchup: FightMatchup = {
@@ -472,6 +519,10 @@ export function applyTournamentProgression(
         blueFighterId: w2 || undefined
       };
       
+      updatedTourney.semifinalCompletedDate = state.currentDate;
+      const d = addDays(new Date(state.currentDate), 28);
+      updatedTourney.recommendedFinalDate = d.toISOString().split('T')[0];
+      
       const f1 = w1 ? newState.fighters[w1] : null;
       const f2 = w2 ? newState.fighters[w2] : null;
       const names = (f1 ? f1.lastName : 'Unknown') + ' vs ' + (f2 ? f2.lastName : 'Unknown');
@@ -558,7 +609,20 @@ export function runAutopilotTournaments(state: GameState): GameState {
       const semifinalsDone = activeTourney.fights.filter(f => f.round === 'semifinal').every(s => s.isCompleted);
       const finalSlot = activeTourney.fights.find(f => f.round === 'final');
       if (semifinalsDone && finalSlot && !finalSlot.eventId) {
-         const upcomingEvent = Object.values(newState.events).find(e => !e.isCompleted && e.date >= state.currentDate);
+         if (activeTourney.earliestFinalDate && newState.currentDate < activeTourney.earliestFinalDate) {
+            return newState;
+         }
+         
+         const minDate = activeTourney.semifinalCompletedDate 
+           ? addDays(new Date(activeTourney.semifinalCompletedDate), 21).toISOString().split('T')[0]
+           : state.currentDate;
+
+         const upcomingEvent = Object.values(newState.events).find(e => 
+            !e.isCompleted && 
+            e.date >= state.currentDate &&
+            e.date >= minDate
+         );
+         
          if (upcomingEvent) {
             try {
               newState = scheduleFinal(newState, activeTourney.id, upcomingEvent.id);
@@ -650,4 +714,73 @@ export function runAutopilotTournaments(state: GameState): GameState {
   }
   
   return newState;
+}
+
+export interface TitleShotDebt {
+  fighterId: string;
+  tournamentId: string;
+  weightClass: WeightClass;
+  dateEarned: string;
+  daysPending: number;
+  championId: string | null;
+  status: 'pending' | 'champion_unavailable' | 'fighter_unavailable' | 'scheduled' | 'used' | 'blocked_by_unification' | 'blocked_by_interim';
+}
+
+export function getPendingTitleShotDebts(state: GameState): TitleShotDebt[] {
+  const debts: TitleShotDebt[] = [];
+  
+  Object.values(state.tournaments || {}).forEach(t => {
+    if (t.status === 'completed' && t.titleShotPromised && t.winnerId) {
+      const fighter = state.fighters[t.winnerId];
+      if (!fighter) return;
+      
+      const dateEarned = t.completedDate || t.createdDate;
+      const daysPending = Math.floor(Math.abs(new Date(state.currentDate).getTime() - new Date(dateEarned).getTime()) / (1000 * 3600 * 24));
+      
+      const titleState = state.titles[t.weightClass];
+      const championId = titleState?.undisputedChampionId || null;
+      
+      let status: TitleShotDebt['status'] = 'pending';
+      
+      if (t.titleShotUsed) {
+        status = 'used';
+      } else {
+        // Check if scheduled
+        const isScheduled = Object.values(state.events).some(e => 
+          !e.isCompleted && 
+          e.fights.some(f => 
+            f.isTitleFight && 
+            (f.redCornerId === t.winnerId || f.blueCornerId === t.winnerId)
+          )
+        );
+        
+        if (isScheduled) {
+          status = 'scheduled';
+        } else if (fighter.injuryStatus || (fighter.medicalSuspension && fighter.medicalSuspension.daysRemaining > 0)) {
+          status = 'fighter_unavailable';
+        } else if (titleState?.status === 'unification_needed') {
+          status = 'blocked_by_unification';
+        } else if (titleState?.status === 'inactive_champion' && titleState.interimChampionId) {
+          status = 'blocked_by_interim';
+        } else if (championId) {
+          const champ = state.fighters[championId];
+          if (champ && (champ.injuryStatus || (champ.medicalSuspension && champ.medicalSuspension.daysRemaining > 0))) {
+            status = 'champion_unavailable';
+          }
+        }
+      }
+      
+      debts.push({
+        fighterId: t.winnerId,
+        tournamentId: t.id,
+        weightClass: t.weightClass,
+        dateEarned,
+        daysPending,
+        championId,
+        status
+      });
+    }
+  });
+  
+  return debts;
 }

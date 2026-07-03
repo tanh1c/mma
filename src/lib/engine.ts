@@ -683,6 +683,16 @@ export function finalizeEventFinancials(state: GameState, eventId: string): Game
     newState.titles
   );
 
+  let gpFinalBonus = 0;
+  const hasGpFinal = newEvent.fights.some(f => (f as any).tournamentId && (f as any).tournamentRound === 'final');
+  if (hasGpFinal && results.fanReaction > 75) {
+    gpFinalBonus = 25000;
+  }
+
+  results.broadcastRevenue += gpFinalBonus;
+  results.totalRevenue += gpFinalBonus;
+  results.profit += gpFinalBonus;
+
   // Calculate deal bonuses
   let dealBonusRevenue = 0;
   const numTitleFights = newEvent.fights.filter(f => f.isTitleFight).length;
@@ -720,7 +730,7 @@ export function finalizeEventFinancials(state: GameState, eventId: string): Game
      id: uuidv4(),
      date: newState.currentDate,
      type: 'event_revenue',
-     amount: results.gateRevenue + results.broadcastRevenue - dealBonusRevenue,
+     amount: results.gateRevenue + results.broadcastRevenue - dealBonusRevenue - gpFinalBonus,
      description: `Gate & Broadcast: ${newEvent.name}`,
      eventId: newEvent.id,
      affectsCash: true,
@@ -734,6 +744,19 @@ export function finalizeEventFinancials(state: GameState, eventId: string): Game
         type: 'sponsor_event_bonus', // generic label for this
         amount: dealBonusRevenue,
         description: `Deal bonuses from ${newEvent.name}`,
+        eventId: newEvent.id,
+        affectsCash: true,
+        isSummary: false
+     });
+  }
+
+  if (gpFinalBonus > 0) {
+     newState.financeLedger.unshift({
+        id: uuidv4(),
+        date: newState.currentDate,
+        type: 'sponsor_event_bonus',
+        amount: gpFinalBonus,
+        description: `Grand Prix Final Commercial Bonus (${newEvent.name} - high rating)`,
         eventId: newEvent.id,
         affectsCash: true,
         isSummary: false
@@ -823,7 +846,8 @@ export function finalizeEventFinancials(state: GameState, eventId: string): Game
     venueCost: results.venueCost,
     marketingCost: results.marketingCost,
     fighterBasePay: results.fighterBasePay,
-    fighterWinBonuses: results.fighterWinBonuses
+    fighterWinBonuses: results.fighterWinBonuses,
+    gpBonusRevenue: gpFinalBonus
   };
   
   newState.eventArchive = { ...newState.eventArchive, [eventArchiveItem.id]: eventArchiveItem };

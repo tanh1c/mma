@@ -704,18 +704,71 @@ export default function DebugSim() {
             )}
             
             {/* Tournaments Report Block */}
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-              <div className="bg-neutral-950 p-4 border border-neutral-800 rounded">
-                <p className="text-xs text-neutral-500 uppercase">Active Tournaments</p>
-                <p className="text-xl font-bold text-purple-400">{report.activeTournamentsCount}</p>
+            <div className="bg-neutral-900/40 p-4 border border-neutral-800 rounded space-y-4">
+              <h4 className="font-bold text-white mb-2 uppercase tracking-wide text-xs text-purple-400">Detailed Tournament Stats</h4>
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                <div className="bg-neutral-950 p-3 border border-neutral-800 rounded text-center">
+                  <p className="text-[10px] text-neutral-500 uppercase">Planned</p>
+                  <p className="text-lg font-bold text-blue-400">{report.plannedTournamentsCount}</p>
+                </div>
+                <div className="bg-neutral-950 p-3 border border-neutral-800 rounded text-center">
+                  <p className="text-[10px] text-neutral-500 uppercase">Active</p>
+                  <p className="text-lg font-bold text-purple-400">{report.activeTournamentsCount}</p>
+                </div>
+                <div className="bg-neutral-950 p-3 border border-neutral-800 rounded text-center">
+                  <p className="text-[10px] text-neutral-500 uppercase">Completed</p>
+                  <p className="text-lg font-bold text-green-400">{report.completedTournamentsCount}</p>
+                </div>
+                <div className="bg-neutral-950 p-3 border border-neutral-800 rounded text-center">
+                  <p className="text-[10px] text-neutral-500 uppercase">Cancelled</p>
+                  <p className="text-lg font-bold text-neutral-500">{report.cancelledTournamentsCount}</p>
+                </div>
+                <div className="bg-neutral-950 p-3 border border-neutral-800 rounded text-center">
+                  <p className="text-[10px] text-neutral-500 uppercase">Delayed Finals</p>
+                  <p className="text-lg font-bold text-yellow-500">{report.delayedFinalsCount}</p>
+                </div>
               </div>
-              <div className="bg-neutral-950 p-4 border border-neutral-800 rounded">
-                <p className="text-xs text-neutral-500 uppercase">Completed Tournaments</p>
-                <p className="text-xl font-bold text-green-400">{report.completedTournamentsCount}</p>
+
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-2">
+                <div className="bg-neutral-950 p-3 border border-neutral-800 rounded text-center">
+                  <p className="text-[10px] text-neutral-500 uppercase">GP Shots Pending</p>
+                  <p className="text-base font-bold text-white">{report.titleShotsPending}</p>
+                </div>
+                <div className="bg-neutral-950 p-3 border border-neutral-800 rounded text-center">
+                  <p className="text-[10px] text-neutral-500 uppercase">GP Shots Used</p>
+                  <p className="text-base font-bold text-neutral-400">{report.titleShotsUsed}</p>
+                </div>
+                <div className="bg-neutral-950 p-3 border border-neutral-800 rounded text-center">
+                  <p className="text-[10px] text-neutral-500 uppercase">Reserve Replacements</p>
+                  <p className="text-base font-bold text-white">{report.reserveReplacementsCount}</p>
+                </div>
+                <div className="bg-neutral-950 p-3 border border-neutral-800 rounded text-center">
+                  <p className="text-[10px] text-neutral-500 uppercase">Missing FightArchiveIds</p>
+                  <p className="text-base font-bold text-red-400">{report.missingFightArchiveIdCount}</p>
+                </div>
               </div>
-              <div className="bg-neutral-950 p-4 border border-neutral-800 rounded">
-                <p className="text-xs text-neutral-500 uppercase">GP Fights Missing Results</p>
-                <p className="text-xl font-bold text-red-400">{report.missingResultsFightsCount}</p>
+            </div>
+
+            {/* General Invariants Checks Block */}
+            <div className="bg-neutral-900/40 p-4 border border-neutral-800 rounded space-y-2">
+              <h4 className="font-bold text-white mb-2 uppercase tracking-wide text-xs text-blue-400">General Codebase Invariants</h4>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
+                <div className="flex justify-between p-2 bg-neutral-950 rounded border border-neutral-850">
+                  <span className="text-neutral-400">Duplicate Champions</span>
+                  <span className={`font-bold ${report.duplicateChampionsCount > 0 ? 'text-red-400' : 'text-green-400'}`}>{report.duplicateChampionsCount}</span>
+                </div>
+                <div className="flex justify-between p-2 bg-neutral-950 rounded border border-neutral-850">
+                  <span className="text-neutral-400">Completed Events w/o Result</span>
+                  <span className={`font-bold ${report.completedEventMissingResult > 0 ? 'text-red-400' : 'text-green-400'}`}>{report.completedEventMissingResult}</span>
+                </div>
+                <div className="flex justify-between p-2 bg-neutral-950 rounded border border-neutral-850">
+                  <span className="text-neutral-400">Suspended Fighter Booked</span>
+                  <span className={`font-bold ${report.suspendedFightersBooked > 0 ? 'text-red-400' : 'text-green-400'}`}>{report.suspendedFightersBooked}</span>
+                </div>
+                <div className="flex justify-between p-2 bg-neutral-950 rounded border border-neutral-850">
+                  <span className="text-neutral-400">Ledger Inconsistencies</span>
+                  <span className={`font-bold ${report.ledgerInconsistencies > 0 ? 'text-red-400' : 'text-green-400'}`}>{report.ledgerInconsistencies}</span>
+                </div>
               </div>
             </div>
 
@@ -848,12 +901,20 @@ function calculateReport(store: any, initialFights: number) {
    // Tournament stats
    const tournaments = state.tournaments || {};
    const tournamentsList = Object.values(tournaments);
-   const activeTournamentsCount = tournamentsList.filter((t: any) => t.status === 'active' || t.status === 'planned').length;
+   const activeTournamentsCount = tournamentsList.filter((t: any) => t.status === 'active').length;
+   const plannedTournamentsCount = tournamentsList.filter((t: any) => t.status === 'planned').length;
    const completedTournamentsCount = tournamentsList.filter((t: any) => t.status === 'completed').length;
+   const cancelledTournamentsCount = tournamentsList.filter((t: any) => t.status === 'cancelled').length;
+   const delayedFinalsCount = tournamentsList.filter((t: any) => t.finalDelayReason).length;
    
    const tournamentWinners: string[] = [];
    const invalidTournamentStates: string[] = [];
    let missingResultsFightsCount = 0;
+   
+   let titleShotsPending = 0;
+   let titleShotsUsed = 0;
+   let reserveReplacementsCount = 0;
+   let missingFightArchiveIdCount = 0;
    
    tournamentsList.forEach((t: any) => {
       if (t.status === 'completed') {
@@ -865,14 +926,28 @@ function calculateReport(store: any, initialFights: number) {
          }
       }
       
+      if (t.titleShotPromised) {
+        if (t.titleShotUsed) titleShotsUsed++;
+        else titleShotsPending++;
+      }
+      
       const participantIds = t.participants.map((p: any) => p.fighterId);
       if (new Set(participantIds).size !== participantIds.length) {
          invalidTournamentStates.push(`${t.name}: has duplicate participant IDs`);
       }
       
+      t.participants.forEach((p: any) => {
+        if (p.replacementForFighterId) {
+          reserveReplacementsCount++;
+        }
+      });
+      
       t.fights.forEach((fSlot: any) => {
          if (fSlot.isCompleted && !fSlot.winnerId) {
             missingResultsFightsCount++;
+         }
+         if (fSlot.isCompleted && !fSlot.fightArchiveId) {
+            missingFightArchiveIdCount++;
          }
          if (fSlot.eventId && !fSlot.isCompleted) {
             const event = state.events[fSlot.eventId];
@@ -888,6 +963,48 @@ function calculateReport(store: any, initialFights: number) {
             }
          }
       });
+   });
+
+   // General checks
+   let duplicateChampionsCount = 0;
+   const undisputedChampIds = Object.values(state.titles).map((t: any) => t.undisputedChampionId).filter(Boolean);
+   undisputedChampIds.forEach(id => {
+     const matchCount = undisputedChampIds.filter(cid => cid === id).length;
+     if (matchCount > 1) {
+        duplicateChampionsCount++;
+     }
+   });
+
+   let completedEventMissingResult = 0;
+   Object.values(state.events).forEach((e: any) => {
+     if (e.isCompleted) {
+        if (e.fights.some((f: any) => !f.result)) {
+           completedEventMissingResult++;
+        }
+     }
+   });
+
+   let suspendedFightersBooked = 0;
+   Object.values(state.events).forEach((e: any) => {
+     if (!e.isCompleted) {
+        e.fights.forEach((f: any) => {
+           const red = state.fighters[f.redCornerId];
+           const blue = state.fighters[f.blueCornerId];
+           if (red && (red.injuryStatus || (red.medicalSuspension && red.medicalSuspension.daysRemaining > 0))) {
+              suspendedFightersBooked++;
+           }
+           if (blue && (blue.injuryStatus || (blue.medicalSuspension && blue.medicalSuspension.daysRemaining > 0))) {
+              suspendedFightersBooked++;
+           }
+        });
+     }
+   });
+
+   let ledgerInconsistencies = 0;
+   ledger.forEach((entry: any) => {
+      if (entry.amount === undefined || isNaN(entry.amount)) {
+         ledgerInconsistencies++;
+      }
    });
 
    return {
@@ -914,9 +1031,20 @@ function calculateReport(store: any, initialFights: number) {
       roundStatsErrors,
       titleInvariantErrors,
       activeTournamentsCount,
+      plannedTournamentsCount,
       completedTournamentsCount,
+      cancelledTournamentsCount,
+      delayedFinalsCount,
       tournamentWinners,
       invalidTournamentStates,
-      missingResultsFightsCount
+      missingResultsFightsCount,
+      titleShotsPending,
+      titleShotsUsed,
+      reserveReplacementsCount,
+      missingFightArchiveIdCount,
+      duplicateChampionsCount,
+      completedEventMissingResult,
+      suspendedFightersBooked,
+      ledgerInconsistencies
    };
 }

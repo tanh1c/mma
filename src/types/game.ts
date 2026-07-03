@@ -235,6 +235,7 @@ export interface EventArchiveItem {
   marketingCost?: number;
   fighterBasePay?: number;
   fighterWinBonuses?: number;
+  gpBonusRevenue?: number;
 }
 
 export interface TitleHistoryItem {
@@ -494,4 +495,9 @@ export interface GrandPrixTournament {
   titleShotUsed?: boolean;
   prestige: number;
   notes?: string[];
+  finalDelayReason?: string | null;
+  earliestFinalDate?: string | null;
+  delayedFighterId?: string | null;
+  semifinalCompletedDate?: string | null;
+  recommendedFinalDate?: string | null;
 }

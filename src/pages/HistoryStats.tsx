@@ -75,6 +75,7 @@ export default function HistoryStats() {
     // Grand Prix bonuses
     Object.values(tournaments).forEach(t => {
       if (t.status === 'completed') {
+        const dateEarned = t.completedDate || t.createdDate;
         const isWinner = t.winnerId === f.id;
         const isFinalist = t.fights.find(fight => fight.round === 'final') && 
                            (t.fights.find(fight => fight.round === 'final')?.redFighterId === f.id || 
@@ -88,6 +89,14 @@ export default function HistoryStats() {
           }
           if (t.titleShotPromised && t.titleShotUsed) {
             score += 15;
+            const wonTitleAfterGp = titleHistory.some(th => 
+              th.fighterId === f.id && 
+              th.beltType === 'undisputed' && 
+              th.dateWon >= dateEarned
+            );
+            if (wonTitleAfterGp) {
+              score += 25;
+            }
           }
         } else if (isFinalist) {
           score += 20; 
@@ -248,9 +257,12 @@ export default function HistoryStats() {
                   <th className="py-2.5">Date</th>
                   <th className="py-2.5">Tournament</th>
                   <th className="py-2.5">Weight Class</th>
+                  <th className="py-2.5">Prestige</th>
+                  <th className="py-2.5">Reserve Used?</th>
                   <th className="py-2.5">Winner</th>
                   <th className="py-2.5">Runner-Up</th>
                   <th className="py-2.5">Title Shot Status</th>
+                  <th className="py-2.5">Fights</th>
                   <th className="py-2.5 text-right">Actions</th>
                 </tr>
               </thead>
@@ -267,7 +279,7 @@ export default function HistoryStats() {
                   if (filteredGps.length === 0) {
                     return (
                       <tr>
-                        <td colSpan={7} className="py-6 text-center text-neutral-500 italic">No Grand Prix tournaments match this filter.</td>
+                        <td colSpan={10} className="py-6 text-center text-neutral-500 italic">No Grand Prix tournaments match this filter.</td>
                       </tr>
                     );
                   }
@@ -278,6 +290,8 @@ export default function HistoryStats() {
                     const runnerUpId = finalSlot ? (finalSlot.winnerId === finalSlot.redFighterId ? finalSlot.blueFighterId : finalSlot.redFighterId) : null;
                     const runnerUp = runnerUpId ? fighters[runnerUpId] : null;
                     
+                    const reserveUsed = t.participants.some(p => p.replacementForFighterId !== undefined && p.replacementForFighterId !== null);
+                    
                     let titleShotStatus = 'N/A';
                     if (t.titleShotPromised) {
                       if (t.titleShotUsed) {
@@ -287,14 +301,24 @@ export default function HistoryStats() {
                       }
                     }
 
-                    const finalMatchup = t.fights.find(f => f.round === 'final');
-                    const archiveId = finalMatchup?.fightArchiveId;
+                    const semiFights = t.fights.filter(f => f.round === 'semifinal');
+                    const s1Archive = semiFights[0]?.fightArchiveId;
+                    const s2Archive = semiFights[1]?.fightArchiveId;
+                    const finalArchive = finalSlot?.fightArchiveId;
                     
                     return (
                       <tr key={t.id} className="hover:bg-neutral-800/30">
                         <td className="py-3 text-neutral-400 font-mono text-xs">{t.completedDate || t.createdDate}</td>
                         <td className="py-3 text-white font-bold">{t.name}</td>
                         <td className="py-3 text-neutral-400">{t.weightClass}</td>
+                        <td className="py-3 text-neutral-300 font-mono">{t.prestige ?? 0}%</td>
+                        <td className="py-3 text-neutral-400 font-mono text-xs">
+                          {reserveUsed ? (
+                            <span className="text-yellow-500 font-bold bg-yellow-950/20 px-1 py-0.5 rounded">YES</span>
+                          ) : (
+                            <span className="text-neutral-500">NO</span>
+                          )}
+                        </td>
                         <td className="py-3">
                           {winner ? (
                             <span 
@@ -325,18 +349,25 @@ export default function HistoryStats() {
                           {titleShotStatus === 'TBD' && <span className="text-blue-400 text-xs bg-blue-950/40 px-1.5 py-0.5 rounded font-sans">TBD</span>}
                           {titleShotStatus === 'N/A' && <span className="text-neutral-500 text-xs">—</span>}
                         </td>
-                        <td className="py-3 text-right flex justify-end gap-2">
-                          {archiveId ? (
-                            <button
-                              onClick={() => setView('fight-detail', { fightArchiveId: archiveId })}
-                              className="text-xs font-bold text-purple-400 hover:text-purple-300 hover:underline"
-                            >
-                              Final Stats
-                            </button>
-                          ) : null}
+                        <td className="py-3">
+                          <div className="flex gap-1.5 text-[10px] font-bold font-mono">
+                            {s1Archive ? (
+                              <button onClick={() => setView('fight-detail', { fightArchiveId: s1Archive })} className="text-purple-400 hover:underline">SF1</button>
+                            ) : <span className="text-neutral-600">SF1</span>}
+                            <span className="text-neutral-700">|</span>
+                            {s2Archive ? (
+                              <button onClick={() => setView('fight-detail', { fightArchiveId: s2Archive })} className="text-purple-400 hover:underline">SF2</button>
+                            ) : <span className="text-neutral-600">SF2</span>}
+                            <span className="text-neutral-700">|</span>
+                            {finalArchive ? (
+                              <button onClick={() => setView('fight-detail', { fightArchiveId: finalArchive })} className="text-purple-400 hover:underline font-bold">FNL</button>
+                            ) : <span className="text-neutral-600">FNL</span>}
+                          </div>
+                        </td>
+                        <td className="py-3 text-right">
                           <button
                             onClick={() => setView('tournaments')}
-                            className="text-xs font-bold bg-neutral-800 hover:bg-neutral-700 text-white py-1 px-2 rounded"
+                            className="text-xs font-bold bg-neutral-800 hover:bg-neutral-700 text-white py-1 px-2.5 rounded transition-colors"
                           >
                             Bracket
                           </button>
@@ -575,7 +606,10 @@ export default function HistoryStats() {
                           <div className="space-y-1">
                             <p className="text-xs text-neutral-500 uppercase font-bold tracking-wider">Revenue</p>
                             <p className="text-neutral-300 flex justify-between"><span>Gate Revenue</span><span className="text-green-400 font-mono">${(e.gateRevenue ?? 0).toLocaleString()}</span></p>
-                            <p className="text-neutral-300 flex justify-between"><span>Broadcast/Deal</span><span className="text-green-400 font-mono">${(e.broadcastRevenue ?? 0).toLocaleString()}</span></p>
+                            <p className="text-neutral-300 flex justify-between"><span>Broadcast/Deal</span><span className="text-green-400 font-mono">${((e.broadcastRevenue ?? 0) - (e.gpBonusRevenue ?? 0)).toLocaleString()}</span></p>
+                            {e.gpBonusRevenue ? (
+                              <p className="text-purple-400 flex justify-between"><span>GP Final Boost</span><span className="text-green-400 font-mono">+${e.gpBonusRevenue.toLocaleString()}</span></p>
+                            ) : null}
                           </div>
                           <div className="space-y-1">
                             <p className="text-xs text-neutral-500 uppercase font-bold tracking-wider">Costs</p>

@@ -470,6 +470,26 @@ export default function Tournaments() {
                               {slot.winnerId === slot.blueFighterId && <Check size={14} />}
                             </div>
                           </div>
+                          {selectedTourney.finalDelayReason && (
+                            <div className="bg-red-950/25 border border-red-900/40 p-3 rounded text-xs text-red-300 space-y-1.5 mt-2 text-left">
+                              <p className="font-bold flex items-center gap-1 text-red-400">
+                                <AlertTriangle size={14} />
+                                Grand Prix Final Delayed
+                              </p>
+                              <p>{selectedTourney.finalDelayReason}</p>
+                              <p className="text-[10px] text-neutral-400 font-mono">
+                                Earliest reschedule date: <span className="text-neutral-200 font-semibold">{selectedTourney.earliestFinalDate}</span>
+                              </p>
+                              {currentDate >= (selectedTourney.earliestFinalDate || '') && (
+                                <button
+                                  onClick={() => setSchedulingSlot({ tourneyId: selectedTourney.id, round: 'final' })}
+                                  className="mt-2 bg-purple-600 hover:bg-purple-500 text-white font-bold py-1 px-2.5 rounded text-[10px] uppercase transition-colors"
+                                >
+                                  Retry Scheduling Final
+                                </button>
+                              )}
+                            </div>
+                          )}
                           {(() => {
                             if (!slot.isCompleted) return null;
                             const manualId = `archive_${slot.eventId}_${slot.redFighterId}_${slot.blueFighterId}`;
