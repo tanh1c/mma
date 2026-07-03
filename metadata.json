@@ -1,0 +1,6 @@
+{
+  "name": "Cage Dynasty",
+  "description": "A browser-based text-heavy MMA promotion management game.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
