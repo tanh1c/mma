@@ -146,6 +146,21 @@ function validateAndMigrateState(parsed: any): GameState | null {
   if (!state.mediaDeals) state.mediaDeals = [];
   if (!state.financeLedger) state.financeLedger = [];
   
+  // Migrate ledger entries missing isSummary/affectsCash
+  if (state.financeLedger.length > 0) {
+    state.financeLedger = state.financeLedger.map((entry: any) => {
+      if (entry.isSummary === undefined || entry.affectsCash === undefined) {
+        const isSummaryType = entry.type === 'event_profit' || entry.type === 'event_cost';
+        return {
+          ...entry,
+          isSummary: isSummaryType,
+          affectsCash: !isSummaryType
+        };
+      }
+      return entry;
+    });
+  }
+  
   if (!state.belts) {
     state.belts = {};
     const WEIGHT_CLASSES = ['Bantamweight', 'Featherweight', 'Lightweight', 'Welterweight', 'Middleweight', 'Heavyweight'] as const;

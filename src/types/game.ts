@@ -225,6 +225,12 @@ export interface EventArchiveItem {
   profit: number;
   fanReaction: number;
   fightIds: string[];
+  gateRevenue?: number;
+  broadcastRevenue?: number;
+  venueCost?: number;
+  marketingCost?: number;
+  fighterBasePay?: number;
+  fighterWinBonuses?: number;
 }
 
 export interface TitleHistoryItem {

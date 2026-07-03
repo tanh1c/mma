@@ -11,6 +11,8 @@ interface SimState {
   r2BodyDmg: number;
   r1LegDmg: number;
   r2LegDmg: number;
+  r1CutSeverity: number; // 0-100
+  r2CutSeverity: number; // 0-100
 }
 
 function randomFloat(min: number, max: number) {
@@ -40,12 +42,13 @@ function getStyleModifier(style1: FighterStyle, style2: FighterStyle): number {
 function applyPreFightModifiers(fighter: Fighter) {
   let mod = 1.0;
   
-  // Age modifier
-  if (fighter.age > 33) mod *= 0.96;
-  if (fighter.age > 35) mod *= 0.96;
-  if (fighter.age > 37) mod *= 0.96;
-  if (fighter.age < 25) mod *= 1.02;
-  if (fighter.age < 23) mod *= 1.02;
+  // Age modifier: mitigated by fight IQ (since attributes already degrade with age, pre-fight penalty should be minor)
+  const agePen = 0.015 * (1 - Math.max(0, (fighter.attributes.fightIq - 50) / 100));
+  if (fighter.age > 33) mod *= (1 - agePen);
+  if (fighter.age > 35) mod *= (1 - agePen);
+  if (fighter.age > 37) mod *= (1 - agePen);
+  if (fighter.age < 25) mod *= 1.005;
+  if (fighter.age < 23) mod *= 1.005;
 
   // Morale modifier
   if (fighter.morale < 40) mod *= 0.95;
@@ -84,18 +87,61 @@ export function simulateFight(matchup: FightMatchup, red: Fighter, blue: Fighter
   // Gameplan and good night/bad night variance
   r1Mod *= randomFloat(0.95, 1.05);
   r2Mod *= randomFloat(0.95, 1.05);
-  
+
+  // Determine which fighter is the favorite (higher total attributes)
+  const r1AttrTotal = Object.values(red.attributes).reduce((a, b) => a + b, 0);
+  const r2AttrTotal = Object.values(blue.attributes).reduce((a, b) => a + b, 0);
+  const attrGap = Math.abs(r1AttrTotal - r2AttrTotal);
+  const r1IsFavorite = r1AttrTotal >= r2AttrTotal;
+
+  // Bad night chance modifier for favorites: overconfidence, low morale, high fatigue
+  const calcBadNightShift = (fighter: Fighter, isFav: boolean) => {
+    let shift = 0;
+    if (!isFav) return shift;
+    if (fighter.morale < 50) shift += 5; // bad night 18% -> ~23%
+    if (fighter.fatigue > 30) shift += 3;
+    if (fighter.momentum > 85) shift += 3; // overconfidence
+    return shift;
+  };
+  const r1BadShift = calcBadNightShift(red, r1IsFavorite);
+  const r2BadShift = calcBadNightShift(blue, !r1IsFavorite);
+
+  // Reduced variance night rolls (was 10/10/20/20/40 -> now 8/8/18/18/48)
   const r1Roll = randomFloat(0, 100);
-  if (r1Roll < 10) r1Mod *= randomFloat(1.30, 1.55); // Fight of their life
-  else if (r1Roll < 20) r1Mod *= randomFloat(0.50, 0.70); // Completely flat
-  else if (r1Roll < 40) r1Mod *= randomFloat(1.10, 1.25); // Good night
-  else if (r1Roll < 60) r1Mod *= randomFloat(0.75, 0.90); // Bad night
+  if (r1Roll < 8) r1Mod *= randomFloat(1.15, 1.30); // Fight of their life
+  else if (r1Roll < 16) r1Mod *= randomFloat(0.65, 0.80); // Completely flat
+  else if (r1Roll < 34 - r1BadShift) r1Mod *= randomFloat(1.05, 1.15); // Good night
+  else if (r1Roll < 52 + r1BadShift) r1Mod *= randomFloat(0.82, 0.95); // Bad night
   
   const r2Roll = randomFloat(0, 100);
-  if (r2Roll < 10) r2Mod *= randomFloat(1.30, 1.55);
-  else if (r2Roll < 20) r2Mod *= randomFloat(0.50, 0.70);
-  else if (r2Roll < 40) r2Mod *= randomFloat(1.10, 1.25); 
-  else if (r2Roll < 60) r2Mod *= randomFloat(0.75, 0.90); 
+  if (r2Roll < 8) r2Mod *= randomFloat(1.15, 1.30);
+  else if (r2Roll < 16) r2Mod *= randomFloat(0.65, 0.80);
+  else if (r2Roll < 34 - r2BadShift) r2Mod *= randomFloat(1.05, 1.15);
+  else if (r2Roll < 52 + r2BadShift) r2Mod *= randomFloat(0.82, 0.95);
+
+  // Upset mechanics for massive mismatches (Top Contender vs Journeyman)
+  if (attrGap > 150) {
+    const underdogIsRed = r1AttrTotal < r2AttrTotal;
+    // Rare event (23.5% chance): Underdog zones in, Favorite is completely flat
+    if (randomFloat(0, 100) < 23.5) {
+      if (underdogIsRed) {
+        r1Mod *= randomFloat(1.20, 1.35);
+        r2Mod *= randomFloat(0.55, 0.70);
+      } else {
+        r2Mod *= randomFloat(1.20, 1.35);
+        r1Mod *= randomFloat(0.55, 0.70);
+      }
+    }
+  }
+
+  // Journeyman grit: underdog with high toughness/IQ fights above their level
+  if (attrGap > 80) {
+    const underdogIsRed = r1AttrTotal < r2AttrTotal;
+    const underdog = underdogIsRed ? red : blue;
+    const gritBonus = ((underdog.attributes.toughness - 50) / 350) + ((underdog.attributes.fightIq - 50) / 350);
+    if (underdogIsRed) r1Mod += Math.max(0, gritBonus);
+    else r2Mod += Math.max(0, gritBonus);
+  }
   
   const r1StyleMod = getStyleModifier(red.style, blue.style);
   const r2StyleMod = getStyleModifier(blue.style, red.style);
@@ -111,7 +157,19 @@ export function simulateFight(matchup: FightMatchup, red: Fighter, blue: Fighter
     r2BodyDmg: 0,
     r1LegDmg: 0,
     r2LegDmg: 0,
+    r1CutSeverity: 0,
+    r2CutSeverity: 0,
   };
+
+  // Glass chin survival instinct: fighters with very low chin but high defense/IQ adopt defensive style
+  let r1GlassChinDefStyle = false;
+  let r2GlassChinDefStyle = false;
+  if (red.attributes.chin < 30 && (red.attributes.defense > 70 || red.attributes.fightIq > 70)) {
+    r1GlassChinDefStyle = true;
+  }
+  if (blue.attributes.chin < 30 && (blue.attributes.defense > 70 || blue.attributes.fightIq > 70)) {
+    r2GlassChinDefStyle = true;
+  }
 
   let winnerId: string | null = null;
   let loserId: string | null = null;
@@ -172,21 +230,28 @@ export function simulateFight(matchup: FightMatchup, red: Fighter, blue: Fighter
     
     if (red.attributes.power > 75 && red.attributes.power > red.attributes.cardio + 10) {
       if (r === 1) r1Explosion = red.attributes.power > red.attributes.cardio + 25 ? 1.4 : 1.25;
-      else if (r === 2) r1Explosion = red.attributes.power > red.attributes.cardio + 25 ? 1.1 : 1.05;
-      else r1Explosion = 0.85; // Sharp decay in round 3+
+      else if (r === 2) r1Explosion = red.attributes.power > red.attributes.cardio + 25 ? 1.15 : 1.10;
+      else r1Explosion = 0.88; // Slightly softer decay in round 3+
     }
     if (blue.attributes.power > 75 && blue.attributes.power > blue.attributes.cardio + 10) {
       if (r === 1) r2Explosion = blue.attributes.power > blue.attributes.cardio + 25 ? 1.4 : 1.25;
-      else if (r === 2) r2Explosion = blue.attributes.power > blue.attributes.cardio + 25 ? 1.1 : 1.05;
-      else r2Explosion = 0.85;
+      else if (r === 2) r2Explosion = blue.attributes.power > blue.attributes.cardio + 25 ? 1.15 : 1.10;
+      else r2Explosion = 0.88;
     }
 
     const r1IqMod = 1 + ((red.attributes.fightIq - 50) / 300); // 100 IQ = 1.16
     const r2IqMod = 1 + ((blue.attributes.fightIq - 50) / 300);
     const r1ToughnessMod = 1 + ((red.attributes.toughness - 50) / 300); // 100 Toughness = 1.16
     const r2ToughnessMod = 1 + ((blue.attributes.toughness - 50) / 300);
-    const r1SpeedMod = 1 + ((red.attributes.speed - 50) / 200); // 100 Speed = 1.25
-    const r2SpeedMod = 1 + ((blue.attributes.speed - 50) / 200);
+    
+    // Effective speed: fight IQ helps slow but smart fighters anticipate and offset speed deficit
+    const getEffectiveSpeed = (speed: number, fightIq: number) => {
+      return speed + Math.max(0, (fightIq - speed) * 0.4);
+    };
+    const r1EffSpeed = getEffectiveSpeed(red.attributes.speed, red.attributes.fightIq);
+    const r2EffSpeed = getEffectiveSpeed(blue.attributes.speed, blue.attributes.fightIq);
+    const r1SpeedMod = 1 + ((r1EffSpeed - 50) / 200);
+    const r2SpeedMod = 1 + ((r2EffSpeed - 50) / 200);
 
     // Simulate in 1-minute chunks (5 per round)
     for (let minute = 1; minute <= 5; minute++) {
@@ -196,10 +261,19 @@ export function simulateFight(matchup: FightMatchup, red: Fighter, blue: Fighter
 
       if (isStanding) {
         // Striking exchange
-        const r1Offense = red.attributes.striking * r1FatiguePen * r1Mod * r1StyleMod * r1IqMod * r1SpeedMod * r1Explosion;
-        const r2Offense = blue.attributes.striking * r2FatiguePen * r2Mod * r2StyleMod * r2IqMod * r2SpeedMod * r2Explosion;
-        const r1Defense = red.attributes.defense * r1FatiguePen * r1Mod * r1StyleMod * r1IqMod * r1SpeedMod;
-        const r2Defense = blue.attributes.defense * r2FatiguePen * r2Mod * r2StyleMod * r2IqMod * r2SpeedMod;
+        // Glass chin survival instinct: reduce offense and incoming damage by 10% each
+        const r1GlassMod = r1GlassChinDefStyle ? 0.90 : 1.0;
+        const r2GlassMod = r2GlassChinDefStyle ? 0.90 : 1.0;
+        const r1GlassDefBonus = r1GlassChinDefStyle ? 1.10 : 1.0;
+        const r2GlassDefBonus = r2GlassChinDefStyle ? 1.10 : 1.0;
+        
+        const r1IqDefBonus = 1 + Math.max(0, (red.attributes.fightIq - 50) / 250);
+        const r2IqDefBonus = 1 + Math.max(0, (blue.attributes.fightIq - 50) / 250);
+
+        const r1Offense = red.attributes.striking * r1FatiguePen * r1Mod * r1StyleMod * r1IqMod * r1SpeedMod * r1Explosion * r1GlassMod;
+        const r2Offense = blue.attributes.striking * r2FatiguePen * r2Mod * r2StyleMod * r2IqMod * r2SpeedMod * r2Explosion * r2GlassMod;
+        const r1Defense = red.attributes.defense * r1FatiguePen * r1Mod * r1StyleMod * r1IqMod * r1SpeedMod * r1GlassDefBonus * r1IqDefBonus;
+        const r2Defense = blue.attributes.defense * r2FatiguePen * r2Mod * r2StyleMod * r2IqMod * r2SpeedMod * r2GlassDefBonus * r2IqDefBonus;
         
         const r1Roll = r1Offense * randomFloat(0.35, 1.65) - r2Defense * randomFloat(0.45, 1.35);
         const r2Roll = r2Offense * randomFloat(0.35, 1.65) - r1Defense * randomFloat(0.45, 1.35);
@@ -208,7 +282,8 @@ export function simulateFight(matchup: FightMatchup, red: Fighter, blue: Fighter
         let r1Lucky = false;
         let r2Lucky = false;
         
-        const calcLuckyChance = (atk: Fighter, def: Fighter, atkFatiguePen: number) => {
+        // Lucky shot: underdog gets slightly higher ceiling (4.5%), favorite capped lower (3.5%)
+        const calcLuckyChance = (atk: Fighter, def: Fighter, atkFatiguePen: number, isUnderdog: boolean) => {
           let chance = 0.5; // Base tiny chance
           chance += (atk.attributes.power - 50) / 15;
           chance += (atk.attributes.striking - 50) / 20;
@@ -217,11 +292,27 @@ export function simulateFight(matchup: FightMatchup, red: Fighter, blue: Fighter
           chance -= (def.attributes.chin - 50) / 10;
           chance *= atkFatiguePen; 
           chance += (r * 0.15); // slightly higher in later rounds due to sloppy defense
-          return Math.max(0.1, Math.min(6.0, chance)); // max 6% per minute
+          const cap = isUnderdog ? 4.5 : 3.5;
+          return Math.max(0.1, Math.min(cap, chance));
         };
+
+        const r1IsUnderdog = r1AttrTotal < r2AttrTotal;
+        const r2IsUnderdog = r2AttrTotal < r1AttrTotal;
         
-        if (randomFloat(0, 100) < calcLuckyChance(blue, red, r2FatiguePen)) { diff = -65; r2Lucky = true; } 
-        else if (randomFloat(0, 100) < calcLuckyChance(red, blue, r1FatiguePen)) { diff = 65; r1Lucky = true; }
+        if (randomFloat(0, 100) < calcLuckyChance(blue, red, r2FatiguePen, r2IsUnderdog)) {
+          // For underdog lucky shots: 40% chance it's partial (extra damage + knockdown but not full KO sequence)
+          if (r2IsUnderdog && randomFloat(0, 100) < 40) {
+            diff = -45; r2Lucky = false; // Partial lucky shot - big damage, not full KO trigger
+          } else {
+            diff = -65; r2Lucky = true;
+          }
+        } else if (randomFloat(0, 100) < calcLuckyChance(red, blue, r1FatiguePen, r1IsUnderdog)) {
+          if (r1IsUnderdog && randomFloat(0, 100) < 40) {
+            diff = 45; r1Lucky = false; // Partial lucky shot - big damage, not full KO trigger
+          } else {
+            diff = 65; r1Lucky = true;
+          }
+        }
 
         if (diff > 20) {
           // Red wins exchange clearly
@@ -270,7 +361,8 @@ export function simulateFight(matchup: FightMatchup, red: Fighter, blue: Fighter
           if (knockedDown || dmg > (blue.attributes.chin * r2ToughnessMod) * randomFloat(1.1, 1.6) || state.r2HeadDmg > (blue.attributes.chin * r2ToughnessMod) * randomFloat(7.0, 10.0)) {
             let koChance = 8 + (r1Explosion > 1 ? 5 : 0);
             if (r1Lucky) koChance += 25;
-            if (blue.attributes.chin < 70) koChance += 10;
+            if (blue.attributes.chin < 70 && blue.attributes.chin >= 30) koChance += 10;
+            if (blue.attributes.chin < 30) koChance += 10; // Reduced from +15 total for glass chin
             
             // Survival checks
             let survivalMod = 0;
@@ -344,7 +436,8 @@ export function simulateFight(matchup: FightMatchup, red: Fighter, blue: Fighter
           if (knockedDown || dmg > (red.attributes.chin * r1ToughnessMod) * randomFloat(0.9, 1.4) || state.r1HeadDmg > (red.attributes.chin * r1ToughnessMod) * randomFloat(6.0, 9.0)) {
             let koChance = 10 + (r2Explosion > 1 ? 8 : 0);
             if (r2Lucky) koChance += 25;
-            if (red.attributes.chin < 70) koChance += 15;
+            if (red.attributes.chin < 70 && red.attributes.chin >= 30) koChance += 10;
+            if (red.attributes.chin < 30) koChance += 10; // Reduced from +15 total for glass chin
             
             // Survival checks
             let survivalMod = 0;
@@ -418,19 +511,35 @@ export function simulateFight(matchup: FightMatchup, red: Fighter, blue: Fighter
 
         // Takedown attempts if still standing
         if (isStanding) {
-          const r1DistanceControl = (red.attributes.speed + red.attributes.striking + red.attributes.fightIq) / 300; // 0 to 1
-          const r2DistanceControl = (blue.attributes.speed + blue.attributes.striking + blue.attributes.fightIq) / 300;
+          // Increased distance control weight for speed (1.5x) to help strikers maintain range
+          const r1DistanceControl = (red.attributes.speed * 1.5 + red.attributes.striking + red.attributes.fightIq) / 350;
+          const r2DistanceControl = (blue.attributes.speed * 1.5 + blue.attributes.striking + blue.attributes.fightIq) / 350;
+
+          // High distance control gives a TDD multiplier (strikers maintain range better)
+          const r1TddDistBonus = r1DistanceControl > 0.7 ? 1.15 : 1.0;
+          const r2TddDistBonus = r2DistanceControl > 0.7 ? 1.15 : 1.0;
+
+          const redWrestlingAdv = red.attributes.wrestling - blue.attributes.wrestling;
+          const blueWrestlingAdv = blue.attributes.wrestling - red.attributes.wrestling;
+
+          const blueEffWrestling = redWrestlingAdv > 20 ? blue.attributes.wrestling * 0.75 : blue.attributes.wrestling;
+          const redEffWrestling = blueWrestlingAdv > 20 ? red.attributes.wrestling * 0.75 : red.attributes.wrestling;
 
           const r1Td = (red.attributes.wrestling * r1FatiguePen * r1Mod * r1IqMod * r1SpeedMod) * randomFloat(0.7, 1.25);
-          const r2Tdd = (blue.attributes.wrestling * r2FatiguePen * r2Mod * r2IqMod * r2SpeedMod * (1 + (r2DistanceControl * 0.3))) * randomFloat(0.85, 1.45);
+          const r2Tdd = (blueEffWrestling * r2FatiguePen * r2Mod * r2IqMod * r2SpeedMod * (1 + (r2DistanceControl * 0.3)) * r2TddDistBonus) * randomFloat(0.85, 1.45);
           
           const r2Td = (blue.attributes.wrestling * r2FatiguePen * r2Mod * r2IqMod * r2SpeedMod) * randomFloat(0.7, 1.25);
-          const r1Tdd = (red.attributes.wrestling * r1FatiguePen * r1Mod * r1IqMod * r1SpeedMod * (1 + (r1DistanceControl * 0.3))) * randomFloat(0.85, 1.45);
+          const r1Tdd = (redEffWrestling * r1FatiguePen * r1Mod * r1IqMod * r1SpeedMod * (1 + (r1DistanceControl * 0.3)) * r1TddDistBonus) * randomFloat(0.85, 1.45);
 
+          // When a wrestler is behind on damage, reduce takedown urgency slightly
+          const redDmgBehind = state.r1Damage > state.r2Damage + 20;
+          const blueDmgBehind = state.r2Damage > state.r1Damage + 20;
           const redWantsTd = red.attributes.wrestling > red.attributes.striking + 5 || (state.r1Damage > state.r2Damage && red.attributes.fightIq > 50);
           const blueWantsTd = blue.attributes.wrestling > blue.attributes.striking + 5 || (state.r2Damage > state.r1Damage && blue.attributes.fightIq > 50);
+          const redTdUrgency = redDmgBehind && redWantsTd ? 50 : (redWrestlingAdv > 20 ? 80 : 55);
+          const blueTdUrgency = blueDmgBehind && blueWantsTd ? 50 : (blueWrestlingAdv > 20 ? 80 : 55);
 
-          if (redWantsTd && r1Td > r2Tdd * 1.05 && randomFloat(0, 100) < 55) {
+          if (redWantsTd && r1Td > r2Tdd * 1.05 && randomFloat(0, 100) < redTdUrgency) {
             isStanding = false;
             topPosition = red.id;
             r1Stats.takedownsAttempted++;
@@ -440,7 +549,7 @@ export function simulateFight(matchup: FightMatchup, red: Fighter, blue: Fighter
           } else if (redWantsTd && r1Td <= r2Tdd * 1.05 && randomFloat(0, 100) < 35) {
             r1Stats.takedownsAttempted++;
             if (minute === 4) commentary.push(`${red.lastName} attempts a takedown but ${blue.lastName} defends well with great distance control.`);
-          } else if (blueWantsTd && r2Td > r1Tdd * 1.05 && randomFloat(0, 100) < 55) {
+          } else if (blueWantsTd && r2Td > r1Tdd * 1.05 && randomFloat(0, 100) < blueTdUrgency) {
             isStanding = false;
             topPosition = blue.id;
             r2Stats.takedownsAttempted++;
@@ -450,6 +559,38 @@ export function simulateFight(matchup: FightMatchup, red: Fighter, blue: Fighter
           } else if (blueWantsTd && r2Td <= r1Tdd * 1.05 && randomFloat(0, 100) < 35) {
             r2Stats.takedownsAttempted++;
             if (minute === 4) commentary.push(`${blue.lastName} looks for a takedown, but it is stuffed by ${red.lastName}.`);
+          }
+
+          // Explosive fighter flash KO check in round 1
+          if (r === 1 && isStanding) {
+            const r1FlashKo = red.attributes.power > blue.attributes.cardio + 25 && red.attributes.cardio < 40 && red.attributes.power > 75;
+            const r2FlashKo = blue.attributes.power > red.attributes.cardio + 25 && blue.attributes.cardio < 40 && blue.attributes.power > 75;
+            if (r1FlashKo && randomFloat(0, 100) < 15) {
+              // Flash KO attempt
+              if (randomFloat(0, 100) < 8) {
+                winnerId = red.id; loserId = blue.id; method = 'KO/TKO';
+                stopRound = r; stopTime = `${minute}:00`; roundEndedEarly = true;
+                commentary.push(`FLASH KO! ${red.lastName} catches ${blue.lastName} with an explosive shot right out of the gate!`);
+                break;
+              } else {
+                // Near-miss: big damage + potential knockdown
+                state.r2Damage += red.attributes.power * 0.4;
+                state.r2HeadDmg += red.attributes.power * 0.3;
+                commentary.push(`${red.lastName} explodes with power early! ${blue.lastName} is rocked!`);
+              }
+            }
+            if (r2FlashKo && randomFloat(0, 100) < 15) {
+              if (randomFloat(0, 100) < 8) {
+                winnerId = blue.id; loserId = red.id; method = 'KO/TKO';
+                stopRound = r; stopTime = `${minute}:00`; roundEndedEarly = true;
+                commentary.push(`FLASH KO! ${blue.lastName} catches ${red.lastName} with an explosive shot right out of the gate!`);
+                break;
+              } else {
+                state.r1Damage += blue.attributes.power * 0.4;
+                state.r1HeadDmg += blue.attributes.power * 0.3;
+                commentary.push(`${blue.lastName} explodes with power early! ${red.lastName} is rocked!`);
+              }
+            }
           }
         }
 
@@ -474,11 +615,14 @@ export function simulateFight(matchup: FightMatchup, red: Fighter, blue: Fighter
 
         // Submissions
         const topSubOffense = topFighter.attributes.submissions * topFatigue * topMod * topIq;
-        const botSubDefense = (bottomFighter.attributes.grappling * 0.7 + bottomFighter.attributes.fightIq * 0.3) * botFatigue * botMod * botIq;
+        // Sub defense survival: even with weak sub defense, high speed or toughness provides escape bonus
+        const botSubDefSurvival = Math.max(0, ((bottomFighter.attributes.speed > 70 ? (bottomFighter.attributes.speed - 70) / 750 : 0) + (bottomFighter.attributes.toughness > 70 ? (bottomFighter.attributes.toughness - 70) / 750 : 0)));
+        const botSubDefense = (bottomFighter.attributes.grappling * 0.7 + bottomFighter.attributes.fightIq * 0.3) * botFatigue * botMod * botIq * (1 + botSubDefSurvival);
         const topSubRoll = topSubOffense * randomFloat(0.5, 1.4) - botSubDefense * randomFloat(0.4, 1.2);
         
-        // Sweep/Standup
-        const sweepAtt = (bottomFighter.attributes.grappling * botFatigue * botMod * botIq) * randomFloat(0.7, 1.3);
+        // Sweep/Standup - fighters with weak sub defense get slightly higher standup chance (desperation)
+        const botDesperationBonus = bottomFighter.attributes.grappling < 40 ? 1.15 : 1.0;
+        const sweepAtt = (bottomFighter.attributes.grappling * botFatigue * botMod * botIq * botDesperationBonus) * randomFloat(0.7, 1.3);
         const topControl = (topFighter.attributes.grappling * topFatigue * topMod * topIq) * randomFloat(0.7, 1.3);
 
         // BJJ guys on bottom might also attempt subs
@@ -499,7 +643,13 @@ export function simulateFight(matchup: FightMatchup, red: Fighter, blue: Fighter
           }
           roundKeyMoments.push(`Minute ${minute}: Submission attempt by ${topFighter.lastName}`);
           
-          if (topSubRoll > 65 && randomFloat(0, 100) < 14) {
+          // Dynamic sub finish chance based on grappling skill gap
+          let topFinishProb = 10;
+          const topSubDefGap = topFighter.attributes.submissions - bottomFighter.attributes.grappling;
+          if (topSubDefGap > 40) {
+            topFinishProb += Math.min(12, (topSubDefGap - 40) / 3);
+          }
+          if (topSubRoll > 65 && randomFloat(0, 100) < topFinishProb) {
             winnerId = topFighter.id; loserId = bottomFighter.id; method = 'Submission';
             stopRound = r; stopTime = `${minute}:00`; roundEndedEarly = true;
             commentary.push(`${topFighter.lastName} locks in a deep submission! ${bottomFighter.lastName} taps out! It is over!`);
@@ -518,7 +668,13 @@ export function simulateFight(matchup: FightMatchup, red: Fighter, blue: Fighter
           }
           roundKeyMoments.push(`Minute ${minute}: Submission attempt by ${bottomFighter.lastName}`);
           
-          if (botSubRoll > 70 && randomFloat(0, 100) < 8) {
+          // Dynamic bottom sub finish chance based on grappling skill gap
+          let botFinishProb = 6;
+          const botSubDefGap = bottomFighter.attributes.submissions - topFighter.attributes.grappling;
+          if (botSubDefGap > 40) {
+            botFinishProb += Math.min(8, (botSubDefGap - 40) / 4);
+          }
+          if (botSubRoll > 70 && randomFloat(0, 100) < botFinishProb) {
             winnerId = bottomFighter.id; loserId = topFighter.id; method = 'Submission';
             stopRound = r; stopTime = `${minute}:00`; roundEndedEarly = true;
             commentary.push(`Unbelievable! ${bottomFighter.lastName} catches a submission from the bottom! ${topFighter.lastName} has to tap!`);
@@ -583,11 +739,17 @@ export function simulateFight(matchup: FightMatchup, red: Fighter, blue: Fighter
       
       // Cardio drain: lower cardio attribute = more drain. FightIQ mitigates age drain.
       const r1IqMitigation = Math.max(0, (red.attributes.fightIq - 50) / 100);
-      const r1AgeDrain = Math.max(1, 1 + (red.age > 33 ? (red.age - 33) * 0.04 : 0) - r1IqMitigation);
+      const r1AgeDrain = Math.max(0.6, 1 + (red.age > 33 ? (red.age - 33) * 0.04 : 0) - r1IqMitigation);
       const r2IqMitigation = Math.max(0, (blue.attributes.fightIq - 50) / 100);
-      const r2AgeDrain = Math.max(1, 1 + (blue.age > 33 ? (blue.age - 33) * 0.04 : 0) - r2IqMitigation);
-      const r1Drain = randomFloat(1, 4) * (150 - red.attributes.cardio) / 50 * r1AgeDrain;
-      const r2Drain = randomFloat(1, 4) * (150 - blue.attributes.cardio) / 50 * r2AgeDrain;
+      const r2AgeDrain = Math.max(0.6, 1 + (blue.age > 33 ? (blue.age - 33) * 0.04 : 0) - r2IqMitigation);
+      
+      const r1BaseDrain = randomFloat(1, 4) * (150 - red.attributes.cardio) / 50;
+      const r2BaseDrain = randomFloat(1, 4) * (150 - blue.attributes.cardio) / 50;
+      
+      // Fight IQ pacing/breathing reduces overall drain
+      const r1Drain = r1BaseDrain * r1AgeDrain * (1 - Math.max(0, (red.attributes.fightIq - 50) / 150));
+      const r2Drain = r2BaseDrain * r2AgeDrain * (1 - Math.max(0, (blue.attributes.fightIq - 50) / 150));
+      
       state.r1Cardio = Math.max(5, state.r1Cardio - r1Drain);
       state.r2Cardio = Math.max(5, state.r2Cardio - r2Drain);
     }
@@ -597,8 +759,18 @@ export function simulateFight(matchup: FightMatchup, red: Fighter, blue: Fighter
     r2Stats.staminaEnd = state.r2Cardio;
 
     // Score the round for each judge (10-point must system)
-    const r1Overall = (r1RoundStrikes * 1.0) + (r1RoundControl * 0.05) + (r1Knockdowns * 20) + (r1SubAttempts * 12) + (red.attributes.fightIq * 0.02) + 10;
-    const r2Overall = (r2RoundStrikes * 1.0) + (r2RoundControl * 0.05) + (r2Knockdowns * 20) + (r2SubAttempts * 12) + (blue.attributes.fightIq * 0.02) + 10;
+    let r1Overall = (r1RoundStrikes * 1.0) + (r1RoundControl * 0.05) + (r1Knockdowns * 20) + (r1SubAttempts * 12) + (red.attributes.fightIq * 0.08) + 10;
+    let r2Overall = (r2RoundStrikes * 1.0) + (r2RoundControl * 0.05) + (r2Knockdowns * 20) + (r2SubAttempts * 12) + (blue.attributes.fightIq * 0.08) + 10;
+
+    // Compress scoring differential in mismatches to reduce 10-8 rate
+    // In real MMA, even dominant rounds usually have the loser landing some offense
+    const scoreDiff = Math.abs(r1Overall - r2Overall);
+    if (scoreDiff > 30) {
+      const compression = 0.7; // Compress the gap
+      const midpoint = (r1Overall + r2Overall) / 2;
+      r1Overall = midpoint + (r1Overall - midpoint) * compression;
+      r2Overall = midpoint + (r2Overall - midpoint) * compression;
+    }
 
     const judgesRoundScores: JudgeRoundScore[] = [];
 
@@ -609,16 +781,24 @@ export function simulateFight(matchup: FightMatchup, red: Fighter, blue: Fighter
        let redR = 10, blueR = 10;
        let reason: JudgeRoundScore['reason'] = 'close-round';
        
-       // Force a 10-9 winner if scores are somewhat close
+       // Bad judging in close rounds
        if (Math.abs(j1 - j2) < 3.0) {
-          if (randomFloat(0, 1) > 0.5) j1 += 3.1; else j2 += 3.1;
+          const closeRoll = randomFloat(0, 100);
+          if (closeRoll < 70) {
+            // 70%: give it to the actual winner (slight favor to more strikes)
+            if (r1RoundStrikes >= r2RoundStrikes) j1 += 3.1; else j2 += 3.1;
+          } else if (closeRoll < 95) {
+            // 25%: bad judging - give it to the other fighter
+            if (r1RoundStrikes >= r2RoundStrikes) j2 += 3.1; else j1 += 3.1;
+          }
+          // 5%: leave as 10-10 (no adjustment, contributes to draws slightly)
        }
        
-       // strict 10-8 criteria helper
+       // strict 10-8 criteria helper - tightened thresholds
        const is10_8 = (kdFor: number, kdAgainst: number, dmgFor: number, dmgAgainst: number, ctrlFor: number, sigFor: number, sigAgainst: number, subFor: number) => {
           // If opponent had meaningful offense, force 10-9 unless multiple knockdowns
-          if (sigAgainst >= 5 && kdFor - kdAgainst < 2) return false;
-          if (dmgAgainst >= 40 && kdFor - kdAgainst < 2) return false;
+          if (sigAgainst >= 4 && kdFor - kdAgainst < 2) return false;
+          if (dmgAgainst >= 25 && kdFor - kdAgainst < 2) return false;
           // If no knockdowns and no near-finish level stats, never 10-8
           if (kdFor === 0 && dmgFor < 250 && subFor < 3) return false;
 
@@ -626,13 +806,13 @@ export function simulateFight(matchup: FightMatchup, red: Fighter, blue: Fighter
           if (kdFor - kdAgainst >= 2) return true;
 
           // 1 knockdown + huge current-round damage gap + opponent did virtually nothing
-          if (kdFor > kdAgainst && dmgFor > dmgAgainst * 5.0 && (dmgFor > 150) && sigAgainst <= 3) return true;
+          if (kdFor > kdAgainst && dmgFor > dmgAgainst * 7.0 && (dmgFor > 200) && sigAgainst <= 2) return true;
 
           // huge damage gap + opponent landed almost nothing
-          if (dmgFor > dmgAgainst * 10.0 && dmgFor > 350 && sigAgainst <= 2 && sigFor > 25) return true;
+          if (dmgFor > dmgAgainst * 12.0 && dmgFor > 400 && sigAgainst <= 2 && dmgAgainst <= 10 && sigFor > 25) return true;
 
           // extreme control + real damage/submission threat + opponent had very low offense
-          if (ctrlFor > 270 && (dmgFor > 200 || subFor >= 4) && sigAgainst <= 1 && dmgAgainst <= 5) return true;
+          if (ctrlFor > 280 && (dmgFor > 250 || subFor >= 4) && sigAgainst <= 1 && dmgAgainst <= 5) return true;
 
           return false;
        };
@@ -694,21 +874,51 @@ export function simulateFight(matchup: FightMatchup, red: Fighter, blue: Fighter
 
     if (roundEndedEarly) break;
 
-    // Recovery between rounds
-    state.r1Cardio = Math.min(100, state.r1Cardio + randomFloat(8, 18) * (red.attributes.cardio / 50));
-    state.r2Cardio = Math.min(100, state.r2Cardio + randomFloat(8, 18) * (blue.attributes.cardio / 50));
+    // Recovery between rounds: flatter scale to help low-cardio fighters pace themselves and survive
+    state.r1Cardio = Math.min(100, state.r1Cardio + randomFloat(10, 20) * (0.5 + red.attributes.cardio / 100));
+    state.r2Cardio = Math.min(100, state.r2Cardio + randomFloat(10, 20) * (0.5 + blue.attributes.cardio / 100));
 
-    // Evaluate injuries (Cuts) - rare
+    // Cut accumulation mechanic: track severity based on head damage sustained this round
+    const r1HeadDmgThisRound = state.r1HeadDmg - (r > 1 ? (allRoundStats.slice(0, -1).reduce((acc, rs) => acc + rs.red.damageTaken * 0.6, 0)) : 0);
+    const r2HeadDmgThisRound = state.r2HeadDmg - (r > 1 ? (allRoundStats.slice(0, -1).reduce((acc, rs) => acc + rs.blue.damageTaken * 0.6, 0)) : 0);
+    if (r1HeadDmgThisRound > 30) {
+      state.r1CutSeverity += (r1HeadDmgThisRound / Math.max(20, red.attributes.chin)) * randomFloat(5, 25);
+    }
+    if (r2HeadDmgThisRound > 30) {
+      state.r2CutSeverity += (r2HeadDmgThisRound / Math.max(20, blue.attributes.chin)) * randomFloat(5, 25);
+    }
+
+    // Evaluate injuries (Cuts / Doctor Stoppage) between rounds
+    // Cut severity-based doctor stoppage (5-10% when severity is high enough)
+    if (state.r1CutSeverity > 60) {
+       const cutStopChance = 5 + (state.r1CutSeverity - 60) * 0.125; // 5-10% range
+       if (randomFloat(0, 100) < cutStopChance) {
+         winnerId = blue.id; loserId = red.id; method = 'Doctor Stoppage';
+         stopRound = r; stopTime = '5:00'; roundEndedEarly = true;
+         commentary.push(`The doctor is checking a massive cut on ${red.lastName}... and he waves it off! Fight is over!`);
+         break;
+       }
+    }
+    if (state.r2CutSeverity > 60) {
+       const cutStopChance = 5 + (state.r2CutSeverity - 60) * 0.125;
+       if (randomFloat(0, 100) < cutStopChance) {
+         winnerId = red.id; loserId = blue.id; method = 'Doctor Stoppage';
+         stopRound = r; stopTime = '5:00'; roundEndedEarly = true;
+         commentary.push(`The cageside doctor inspects ${blue.lastName}'s eye and stops the fight! What a bloody war.`);
+         break;
+       }
+    }
+    // Legacy massive-damage doctor stoppage (kept but extremely rare)
     if (state.r1HeadDmg > 150 && randomFloat(0, 100) < 0.8) {
        winnerId = blue.id; loserId = red.id; method = 'Doctor Stoppage';
        stopRound = r; stopTime = '5:00'; roundEndedEarly = true;
-       commentary.push(`The doctor is checking a massive cut on ${red.lastName}... and he waves it off! Fight is over!`);
+       commentary.push(`The doctor stops the fight due to severe damage to ${red.lastName}!`);
        break;
     }
     if (state.r2HeadDmg > 150 && randomFloat(0, 100) < 0.8) {
        winnerId = red.id; loserId = blue.id; method = 'Doctor Stoppage';
        stopRound = r; stopTime = '5:00'; roundEndedEarly = true;
-       commentary.push(`The cageside doctor inspects ${blue.lastName}'s eye and stops the fight! What a bloody war.`);
+       commentary.push(`The doctor stops the fight due to severe damage to ${blue.lastName}!`);
        break;
     }
   }

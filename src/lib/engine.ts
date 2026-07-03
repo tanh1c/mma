@@ -792,7 +792,13 @@ export function finalizeEventFinancials(state: GameState, eventId: string): Game
     cost: results.totalCost,
     profit: results.profit,
     fanReaction: results.fanReaction,
-    fightIds: newEvent.fights.map(f => `archive_${newEvent.id}_${f.redCornerId}_${f.blueCornerId}`)
+    fightIds: newEvent.fights.map(f => `archive_${newEvent.id}_${f.redCornerId}_${f.blueCornerId}`),
+    gateRevenue: results.gateRevenue,
+    broadcastRevenue: results.broadcastRevenue,
+    venueCost: results.venueCost,
+    marketingCost: results.marketingCost,
+    fighterBasePay: results.fighterBasePay,
+    fighterWinBonuses: results.fighterWinBonuses
   };
   
   newState.eventArchive = { ...newState.eventArchive, [eventArchiveItem.id]: eventArchiveItem };

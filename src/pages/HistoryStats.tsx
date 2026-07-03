@@ -4,7 +4,9 @@ import { WEIGHT_CLASSES } from '../lib/game/constants';
 import { Trophy, Calendar, Star, TrendingUp } from 'lucide-react';
 
 export default function HistoryStats() {
-  const { eventArchive, fightArchive, titleHistory, fighters, setView, belts, yearlyAwards = {} } = useGameStore();
+  const { eventArchive, fightArchive, titleHistory, fighters, setView, belts, yearlyAwards = {}, financeLedger } = useGameStore();
+
+  const [expandedEventId, setExpandedEventId] = React.useState<string | null>(null);
 
   const events = Object.values(eventArchive).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   const fights = Object.values(fightArchive).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
@@ -389,20 +391,69 @@ export default function HistoryStats() {
           {events.length === 0 ? (
             <p className="text-neutral-500 italic">No events completed yet.</p>
           ) : (
-            <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2">
-              {events.map(e => (
-                <div key={e.id} className="bg-neutral-950 p-3 rounded border border-neutral-800 flex justify-between items-center">
-                  <div>
-                    <h3 className="font-bold text-white">{e.name}</h3>
-                    <p className="text-xs text-neutral-500">{e.date} • {e.attendance.toLocaleString()} Fans</p>
+            <div className="space-y-2 max-h-[500px] overflow-y-auto pr-2">
+              {events.map(e => {
+                const isExpanded = expandedEventId === e.id;
+                const eventLedger = (financeLedger || []).filter(l => l.eventId === e.id);
+                return (
+                  <div key={e.id} className="bg-neutral-950 rounded border border-neutral-800">
+                    <div 
+                      className="p-3 flex justify-between items-center cursor-pointer hover:bg-neutral-800/50 transition-colors"
+                      onClick={() => setExpandedEventId(isExpanded ? null : e.id)}
+                    >
+                      <div>
+                        <h3 className="font-bold text-white">{e.name}</h3>
+                        <p className="text-xs text-neutral-500">{e.date} • {e.attendance.toLocaleString()} Fans</p>
+                      </div>
+                      <div className="text-right flex items-center gap-2">
+                         <p className={`text-sm font-bold ${e.profit >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                           {e.profit >= 0 ? '+' : '-'}${Math.abs(e.profit).toLocaleString()}
+                         </p>
+                         <span className="text-neutral-600 text-xs">{isExpanded ? '▲' : '▼'}</span>
+                      </div>
+                    </div>
+                    {isExpanded && (
+                      <div className="border-t border-neutral-800 p-3 space-y-3">
+                        <div className="grid grid-cols-2 gap-2 text-sm">
+                          <div className="space-y-1">
+                            <p className="text-xs text-neutral-500 uppercase font-bold tracking-wider">Revenue</p>
+                            <p className="text-neutral-300 flex justify-between"><span>Gate Revenue</span><span className="text-green-400 font-mono">${(e.gateRevenue ?? 0).toLocaleString()}</span></p>
+                            <p className="text-neutral-300 flex justify-between"><span>Broadcast/Deal</span><span className="text-green-400 font-mono">${(e.broadcastRevenue ?? 0).toLocaleString()}</span></p>
+                          </div>
+                          <div className="space-y-1">
+                            <p className="text-xs text-neutral-500 uppercase font-bold tracking-wider">Costs</p>
+                            <p className="text-neutral-300 flex justify-between"><span>Venue</span><span className="text-red-400 font-mono">-${(e.venueCost ?? 0).toLocaleString()}</span></p>
+                            <p className="text-neutral-300 flex justify-between"><span>Marketing</span><span className="text-red-400 font-mono">-${(e.marketingCost ?? 0).toLocaleString()}</span></p>
+                            <p className="text-neutral-300 flex justify-between"><span>Fighter Pay</span><span className="text-red-400 font-mono">-${(e.fighterBasePay ?? 0).toLocaleString()}</span></p>
+                            <p className="text-neutral-300 flex justify-between"><span>Win Bonuses</span><span className="text-red-400 font-mono">-${(e.fighterWinBonuses ?? 0).toLocaleString()}</span></p>
+                          </div>
+                        </div>
+                        <div className="border-t border-neutral-800 pt-2 flex justify-between items-center">
+                          <span className="text-sm font-bold text-white">Net P/L</span>
+                          <span className={`text-sm font-bold font-mono ${e.profit >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                            {e.profit >= 0 ? '+' : '-'}${Math.abs(e.profit).toLocaleString()}
+                          </span>
+                        </div>
+                        {eventLedger.length > 0 && (
+                          <div className="border-t border-neutral-800 pt-2">
+                            <p className="text-xs text-neutral-500 uppercase font-bold tracking-wider mb-1">Ledger Entries</p>
+                            <div className="space-y-0.5 max-h-32 overflow-y-auto">
+                              {eventLedger.map(l => (
+                                <div key={l.id} className="flex justify-between text-xs">
+                                  <span className={`${l.isSummary ? 'text-blue-400 italic' : 'text-neutral-400'}`}>{l.description}</span>
+                                  <span className={`font-mono ${l.amount >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                    {l.amount >= 0 ? '+' : ''}{l.amount.toLocaleString()}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
-                  <div className="text-right">
-                     <p className={`text-sm font-bold ${e.profit >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                       {e.profit >= 0 ? '+' : '-'}${Math.abs(e.profit).toLocaleString()}
-                     </p>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

@@ -129,7 +129,7 @@ export function maintainDeals(state: GameState): GameState {
   // Clean up expired ones or replace them
   if (newState.sponsorDeals) {
     let activeSponsor = newState.sponsorDeals.find(d => d.isActive);
-    if (!activeSponsor || new Date(newState.currentDate) > new Date(activeSponsor.expiresDate)) {
+    if (!activeSponsor || new Date(newState.currentDate) >= new Date(activeSponsor.expiresDate)) {
       if (activeSponsor) activeSponsor.isActive = false; // Mark old as inactive
       
       const bestSponsor = [...availableSponsors].reverse().find(s => rep >= s.req);
@@ -156,7 +156,7 @@ export function maintainDeals(state: GameState): GameState {
   
   if (newState.mediaDeals) {
     let activeMedia = newState.mediaDeals.find(d => d.isActive);
-    if (!activeMedia || new Date(newState.currentDate) > new Date(activeMedia.expiresDate)) {
+    if (!activeMedia || new Date(newState.currentDate) >= new Date(activeMedia.expiresDate)) {
       if (activeMedia) activeMedia.isActive = false;
       
       const bestMedia = [...availableMedia].reverse().find(s => rep >= s.req);
@@ -179,6 +179,28 @@ export function maintainDeals(state: GameState): GameState {
          }, ...newState.news];
       }
     }
+  }
+  
+  // Ensure no duplicate active deals
+  if (newState.sponsorDeals) {
+    let foundActive = false;
+    newState.sponsorDeals = newState.sponsorDeals.map(d => {
+      if (d.isActive) {
+        if (foundActive) return { ...d, isActive: false };
+        foundActive = true;
+      }
+      return d;
+    });
+  }
+  if (newState.mediaDeals) {
+    let foundActive = false;
+    newState.mediaDeals = newState.mediaDeals.map(d => {
+      if (d.isActive) {
+        if (foundActive) return { ...d, isActive: false };
+        foundActive = true;
+      }
+      return d;
+    });
   }
   
   return newState;

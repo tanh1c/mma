@@ -86,8 +86,15 @@ export default function DebugSim() {
     let finishes = 0;
     let decisions = 0;
     let docStoppages = 0;
+    let koTkoCount = 0;
+    let subCount = 0;
+    let tenEightCount = 0;
+    let totalJudgeScores = 0;
+    let medSuspensions = 0;
+    let upsetCount = 0; // blue (underdog) wins - only meaningful for test index 6
     const methods: Record<string, number> = {};
     let sampleCommentary: string[] = [];
+    let roundStatsErrors = 0;
 
     const simCount = 200;
 
@@ -107,8 +114,14 @@ export default function DebugSim() {
       const res = simulateFight(matchup, redClone, blueClone);
       
       if (res.winnerId === test.red.id) redWins++;
-      else if (res.winnerId === test.blue.id) blueWins++;
+      else if (res.winnerId === test.blue.id) {
+        blueWins++;
+        if (testIdx === 6) upsetCount++; // Journeyman beating Top Contender is an upset
+      }
       else draws++;
+
+      if (res.method === 'KO/TKO') koTkoCount++;
+      if (res.method === 'Submission') subCount++;
 
       if (res.method.includes('Decision')) decisions++;
       else if (res.method === 'Doctor Stoppage') { docStoppages++; finishes++; }
@@ -117,6 +130,20 @@ export default function DebugSim() {
       methods[res.method] = (methods[res.method] || 0) + 1;
       totalRounds += res.round;
       totalPerformance += res.performanceRating;
+
+      if (res.medicalSuspensions) medSuspensions += res.medicalSuspensions.length;
+
+      if (res.roundStats) {
+        res.roundStats.forEach(rs => {
+          if (!rs.judges || rs.judges.length === 0) {
+            roundStatsErrors++;
+          }
+          rs.judges.forEach(j => {
+            totalJudgeScores++;
+            if (j.redScore === 8 || j.blueScore === 8) tenEightCount++;
+          });
+        });
+      }
       
       if (i === 0) sampleCommentary = res.commentary;
     }
@@ -134,7 +161,15 @@ export default function DebugSim() {
         finishRate: ((finishes / simCount) * 100).toFixed(1),
         decisionRate: ((decisions / simCount) * 100).toFixed(1),
         drawRate: ((draws / simCount) * 100).toFixed(1),
-        docStoppageRate: ((docStoppages / simCount) * 100).toFixed(1)
+        docStoppageRate: ((docStoppages / simCount) * 100).toFixed(1),
+        koTkoRate: ((koTkoCount / simCount) * 100).toFixed(1),
+        subRate: ((subCount / simCount) * 100).toFixed(1),
+        tenEightRate: totalJudgeScores > 0 ? ((tenEightCount / totalJudgeScores) * 100).toFixed(2) : '0.00',
+        tenEightCount,
+        totalJudgeScores,
+        medSuspensions,
+        upsetCount: testIdx === 6 ? upsetCount : undefined,
+        roundStatsErrors
       };
       return newRes;
     });
@@ -362,12 +397,21 @@ export default function DebugSim() {
                       <span className="block text-white font-bold">Rates</span>
                       Fin: {results[i].finishRate}%<br/>
                       Dec: {results[i].decisionRate}%<br/>
-                      Doc: {results[i].docStoppageRate}%
+                      Doc: {results[i].docStoppageRate}%<br/>
+                      KO/TKO: {results[i].koTkoRate}%<br/>
+                      Sub: {results[i].subRate}%
                     </div>
                     <div>
                       <span className="block text-white font-bold">Averages</span>
                       Rnd: {results[i].avgRound}<br/>
-                      Perf: {results[i].avgPerf}/100
+                      Perf: {results[i].avgPerf}/100<br/>
+                      <span className="block text-white font-bold mt-2">Extras</span>
+                      10-8s: {results[i].tenEightCount} ({results[i].tenEightRate}%)<br/>
+                      Med Susp: {results[i].medSuspensions}<br/>
+                      RS Errors: {results[i].roundStatsErrors}
+                      {results[i].upsetCount !== undefined && (
+                        <><br/><span className="text-yellow-400">Upsets: {results[i].upsetCount} ({((results[i].upsetCount / 200) * 100).toFixed(1)}%)</span></>
+                      )}
                     </div>
                   </div>
 
@@ -399,6 +443,9 @@ export default function DebugSim() {
           <button onClick={() => runAutoSim(365)} className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded">
             Run 365 Days
           </button>
+          <button onClick={() => runAutoSim(730)} className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded">
+            Run 730 Days
+          </button>
         </div>
 
         {report && (
@@ -426,7 +473,7 @@ export default function DebugSim() {
                  <p className="text-xs text-neutral-400">Total given in sim</p>
                </div>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                <div className="bg-neutral-950 p-4 border border-neutral-800 rounded">
                   <h4 className="font-bold text-white mb-2">Title Status Counts</h4>
                   <ul className="text-sm text-neutral-300">
@@ -441,13 +488,55 @@ export default function DebugSim() {
                <div className="bg-neutral-950 p-4 border border-neutral-800 rounded">
                   <h4 className="font-bold text-white mb-2">Finish Methods</h4>
                   <ul className="text-sm text-neutral-300">
-                     <li className="flex justify-between w-48"><span>KO/TKO</span><span className="font-bold">{report.methods.knockouts}</span></li>
-                     <li className="flex justify-between w-48"><span>Submission</span><span className="font-bold">{report.methods.submissions}</span></li>
+                     <li className="flex justify-between w-48"><span>KO/TKO</span><span className="font-bold">{report.methods.knockouts} ({report.koTkoRate}%)</span></li>
+                     <li className="flex justify-between w-48"><span>Submission</span><span className="font-bold">{report.methods.submissions} ({report.subRate}%)</span></li>
                      <li className="flex justify-between w-48"><span>Decision</span><span className="font-bold">{report.methods.decisions}</span></li>
-                     <li className="flex justify-between w-48"><span>Draw</span><span className="font-bold">{report.methods.draws}</span></li>
+                     <li className="flex justify-between w-48"><span>Draw</span><span className="font-bold">{report.methods.draws} ({report.drawRate}%)</span></li>
+                  </ul>
+               </div>
+               <div className="bg-neutral-950 p-4 border border-neutral-800 rounded">
+                  <h4 className="font-bold text-white mb-2">Deals & Ledger</h4>
+                  <ul className="text-sm text-neutral-300 space-y-1">
+                     <li className="flex justify-between w-56"><span>Active Sponsors</span><span className="font-bold text-green-400">{report.activeSponsors}</span></li>
+                     <li className="flex justify-between w-56"><span>Expired Sponsors</span><span className="font-bold text-neutral-500">{report.expiredSponsors}</span></li>
+                     <li className="flex justify-between w-56"><span>Active Media</span><span className="font-bold text-green-400">{report.activeMedia}</span></li>
+                     <li className="flex justify-between w-56"><span>Expired Media</span><span className="font-bold text-neutral-500">{report.expiredMedia}</span></li>
+                     <li className="border-t border-neutral-800 pt-1 flex justify-between w-56"><span>Ledger Entries</span><span className="font-bold">{report.ledgerTotal}</span></li>
+                     <li className="flex justify-between w-56"><span>Summary Rows</span><span className="font-bold text-blue-400">{report.ledgerSummaryRows}</span></li>
+                     <li className="flex justify-between w-56"><span>Cash-Affecting</span><span className="font-bold text-yellow-400">{report.ledgerCashRows}</span></li>
                   </ul>
                </div>
             </div>
+            {report.ledgerByType && Object.keys(report.ledgerByType).length > 0 && (
+              <div className="bg-neutral-950 p-4 border border-neutral-800 rounded">
+                <h4 className="font-bold text-white mb-2">Ledger Entries by Type</h4>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
+                  {Object.entries(report.ledgerByType)
+                    .sort((a, b) => (b[1] as number) - (a[1] as number))
+                    .map(([type, count]) => (
+                    <div key={type} className="flex justify-between text-neutral-300">
+                      <span className="text-neutral-400">{type}</span>
+                      <span className="font-bold font-mono">{count as number}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {report.roundStatsErrors > 0 && (
+              <div className="bg-red-950 p-4 border border-red-800 rounded">
+                <p className="text-sm text-red-400 font-bold">⚠ {report.roundStatsErrors} roundStats validation errors detected (rounds with missing/empty judges)</p>
+              </div>
+            )}
+            {report.titleInvariantErrors.length > 0 && (
+              <div className="bg-red-950 p-4 border border-red-800 rounded">
+                <h4 className="font-bold text-red-400 mb-2">Title Invariant Errors</h4>
+                <ul className="text-sm text-red-300 space-y-1">
+                  {report.titleInvariantErrors.map((err: string, idx: number) => (
+                    <li key={idx}>• {err}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -465,8 +554,10 @@ function calculateReport(store: any, initialFights: number) {
    let submissions = 0;
    let decisions = 0;
    let draws = 0;
+   let roundStatsErrors = 0;
    
    const newFights = Object.values(state.fightArchive).slice(initialFights);
+   const totalFights = newFights.length;
    
    newFights.forEach((f: any) => {
       if (f.method === 'KO/TKO') knockouts++;
@@ -481,6 +572,9 @@ function calculateReport(store: any, initialFights: number) {
 
       if (f.roundStats) {
          f.roundStats.forEach((rs: any) => {
+            if (!rs.judges || rs.judges.length === 0) {
+               roundStatsErrors++;
+            }
             rs.judges.forEach((j: any) => {
                totalRoundsScored += 2; // red and blue score
                if (j.redScore === 8 || j.blueScore === 8) {
@@ -496,6 +590,42 @@ function calculateReport(store: any, initialFights: number) {
       titleStatuses[t.status] = (titleStatuses[t.status] || 0) + 1;
    });
 
+   // Ledger summary
+   const ledger = state.financeLedger || [];
+   const ledgerTotal = ledger.length;
+   let ledgerSummaryRows = 0;
+   let ledgerCashRows = 0;
+   const ledgerByType: Record<string, number> = {};
+   
+   ledger.forEach((entry: any) => {
+      if (entry.isSummary) ledgerSummaryRows++;
+      if (entry.affectsCash) ledgerCashRows++;
+      ledgerByType[entry.type] = (ledgerByType[entry.type] || 0) + 1;
+   });
+
+   // Deal counts
+   const sponsorDeals = state.sponsorDeals || [];
+   const mediaDeals = state.mediaDeals || [];
+   const activeSponsors = sponsorDeals.filter((d: any) => d.isActive).length;
+   const expiredSponsors = sponsorDeals.filter((d: any) => !d.isActive).length;
+   const activeMedia = mediaDeals.filter((d: any) => d.isActive).length;
+   const expiredMedia = mediaDeals.filter((d: any) => !d.isActive).length;
+
+   // Title invariant check
+   const titleInvariantErrors: string[] = [];
+   Object.keys(state.titles).forEach(wc => {
+      const t = state.titles[wc];
+      if (t.undisputedChampionId && t.interimChampionId && t.undisputedChampionId === t.interimChampionId) {
+         titleInvariantErrors.push(`${wc}: Same fighter is both undisputed and interim champion`);
+      }
+      if (t.status === 'vacant' && (t.undisputedChampionId || t.interimChampionId)) {
+         titleInvariantErrors.push(`${wc}: Status is vacant but has a champion`);
+      }
+      if (t.status !== 'vacant' && !t.undisputedChampionId && !t.interimChampionId) {
+         titleInvariantErrors.push(`${wc}: Status is ${t.status} but has no champions`);
+      }
+   });
+
    return {
       tenEightCount,
       totalRoundsScored, 
@@ -503,9 +633,21 @@ function calculateReport(store: any, initialFights: number) {
       awardsGenerated: Object.keys(state.yearlyAwards || {}).length,
       eventsCompleted: state.lastAutopilotSummary?.eventsCompleted || 0,
       titleStatuses,
-      fightsSimulated: newFights.length,
+      fightsSimulated: totalFights,
       medicalSuspensionsGiven,
-      methods: { knockouts, submissions, decisions, draws }
+      methods: { knockouts, submissions, decisions, draws },
+      koTkoRate: totalFights > 0 ? ((knockouts / totalFights) * 100).toFixed(1) : '0.0',
+      subRate: totalFights > 0 ? ((submissions / totalFights) * 100).toFixed(1) : '0.0',
+      drawRate: totalFights > 0 ? ((draws / totalFights) * 100).toFixed(1) : '0.0',
+      ledgerTotal,
+      ledgerSummaryRows,
+      ledgerCashRows,
+      ledgerByType,
+      activeSponsors,
+      expiredSponsors,
+      activeMedia,
+      expiredMedia,
+      roundStatsErrors,
+      titleInvariantErrors
    };
 }
-

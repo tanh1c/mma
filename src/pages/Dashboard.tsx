@@ -650,12 +650,14 @@ export default function Dashboard() {
                </div>
                <div className="space-y-2 max-h-[300px] overflow-y-auto pr-2">
                  {filteredLedger.length > 0 ? filteredLedger.slice(0, 50).map(entry => (
-                   <div key={entry.id} className="flex justify-between items-center text-sm py-1 border-b border-neutral-800/50">
+                   <div key={entry.id} className={`flex justify-between items-center text-sm py-1.5 border-b border-neutral-800/50 ${entry.isSummary ? 'bg-neutral-950 px-2 py-2 rounded border border-blue-900/30 my-1' : ''}`}>
                      <div>
-                       <p className="text-neutral-300">{entry.description}</p>
+                       <p className={`text-neutral-300 ${entry.isSummary ? 'text-blue-400 font-semibold' : ''}`}>
+                         {entry.isSummary ? '📊 ' : ''}{entry.description}
+                       </p>
                        <p className="text-xs text-neutral-500 font-mono">{entry.date}</p>
                      </div>
-                     <span className={`font-mono font-bold ${entry.amount >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                     <span className={`font-mono font-bold ${entry.isSummary ? 'text-blue-400' : (entry.amount >= 0 ? 'text-green-400' : 'text-red-400')}`}>
                        {entry.amount > 0 ? '+' : ''}{entry.amount.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })}
                      </span>
                    </div>
