@@ -110,7 +110,7 @@ export interface FightMatchup {
   rounds: number; // 3 or 5
   result?: FightResult;
   tournamentId?: string;
-  tournamentRound?: 'semifinal' | 'final';
+  tournamentRound?: TournamentRound;
   tournamentFightSlotId?: string;
 }
 
@@ -205,6 +205,8 @@ export interface FightArchiveItem {
   time: string;
   isTitleFight: boolean;
   titleFightType?: 'undisputed' | 'interim' | 'vacant_undisputed' | 'unification';
+  tournamentId?: string;
+  tournamentRound?: TournamentRound;
   performanceRating: number;
   scorecards?: string[];
   roundStats?: RoundStats[];
@@ -455,7 +457,10 @@ export type TournamentStatus =
   | 'completed'
   | 'cancelled';
 
+export type TournamentFormat = 'four_man' | 'eight_man';
+
 export type TournamentRound =
+  | 'quarterfinal'
   | 'semifinal'
   | 'final';
 
@@ -484,6 +489,7 @@ export interface GrandPrixTournament {
   shortName: string;
   weightClass: WeightClass;
   status: TournamentStatus;
+  format: TournamentFormat;
   createdDate: string;
   startDate?: string;
   completedDate?: string;
@@ -500,4 +506,9 @@ export interface GrandPrixTournament {
   delayedFighterId?: string | null;
   semifinalCompletedDate?: string | null;
   recommendedFinalDate?: string | null;
+  roundDelayReason?: string | null;
+  delayedRound?: TournamentRound | null;
+  earliestRoundDate?: string | null;
+  quarterfinalCompletedDate?: string | null;
+  recommendedSemifinalDate?: string | null;
 }

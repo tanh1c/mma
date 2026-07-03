@@ -489,7 +489,8 @@ function generateAutoEvent(state: GameState, dateStr: string): Event | null {
       marketing,
       state.promotion,
       state.storylines,
-      state.titles
+      state.titles,
+      state.tournaments
     );
 
     // Evaluate financial safety

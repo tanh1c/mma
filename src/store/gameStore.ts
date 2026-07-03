@@ -9,8 +9,8 @@ import { createNewGame, saveGameLocally, loadGameLocally, exportGameToJSON, impo
 
 import { autoBookEventsAndContracts, maintainDeals } from '../lib/game/autobooker';
 import { quickSimulateEvent } from '../lib/engine';
-import { createGrandPrixTournament, scheduleSemifinals, scheduleFinal, cancelTournament, runAutopilotTournaments } from '../lib/game/tournament';
-import { WeightClass } from '../types/game';
+import { createGrandPrixTournament, scheduleQuarterfinals, scheduleSemifinals, scheduleFinal, cancelTournament, runAutopilotTournaments } from '../lib/game/tournament';
+import { WeightClass, TournamentFormat } from '../types/game';
 
 export interface ActiveSimulation {
   eventId: string | null;
@@ -51,7 +51,8 @@ interface GameStore extends GameState {
   finalizeCurrentEvent: () => void;
   exportGame: () => void;
   importGame: (jsonData: string) => void;
-  createTournament: (options: { weightClass: WeightClass, name: string, titleShotPromised: boolean, participantIds?: string[], reserveIds?: string[] }) => void;
+  createTournament: (options: { weightClass: WeightClass, name: string, titleShotPromised: boolean, format?: TournamentFormat, participantIds?: string[], reserveIds?: string[] }) => void;
+  scheduleQuarterfinals: (tournamentId: string, eventId: string) => void;
   scheduleSemifinals: (tournamentId: string, eventId: string) => void;
   scheduleFinal: (tournamentId: string, eventId: string) => void;
   cancelTournament: (tournamentId: string) => void;
@@ -668,6 +669,19 @@ export const useGameStore = create<GameStore>((set, get) => ({
     set((state) => {
       try {
         const nextState = createGrandPrixTournament(state, options);
+        return nextState;
+      } catch (err: any) {
+        alert(err.message);
+        return state;
+      }
+    });
+  },
+  
+  scheduleQuarterfinals: (tournamentId, eventId) => {
+    set((state) => {
+      try {
+        const nextState = scheduleQuarterfinals(state, tournamentId, eventId);
+        alert("Quarterfinals scheduled successfully!");
         return nextState;
       } catch (err: any) {
         alert(err.message);

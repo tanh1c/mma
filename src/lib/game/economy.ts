@@ -22,7 +22,8 @@ export function calculateEventProjections(
   marketingSpend: number,
   promotion: Promotion,
   storylines: Storyline[] = [],
-  titles?: Record<string, import('../../types/game').WeightClassTitleState>
+  titles?: Record<string, import('../../types/game').WeightClassTitleState>,
+  tournaments?: Record<string, import('../../types/game').GrandPrixTournament>
 ): EventProjections {
   const warnings: string[] = [];
   
@@ -96,24 +97,36 @@ export function calculateEventProjections(
   if (mainEvent.isTitleFight) eventHype += 5;
   if (fights.length > 1 && fights[1].isTitleFight) eventHype += 2;
   // Tournament GP Hype Boosts
+  let hasQuarters = false;
   let hasSemis = false;
   let hasFinal = false;
+  let hasEightManFinal = false;
   fights.forEach(f => {
     if ('tournamentId' in f && (f as any).tournamentId) {
-      if ((f as any).tournamentRound === 'semifinal') {
-        eventHype += 4;
+      const tId = (f as any).tournamentId;
+      const tourney = tournaments?.[tId];
+      const isEightMan = tourney ? tourney.format === 'eight_man' : false;
+      
+      if ((f as any).tournamentRound === 'quarterfinal') {
+        eventHype += 3;
+        hasQuarters = true;
+      } else if ((f as any).tournamentRound === 'semifinal') {
+        eventHype += isEightMan ? 6 : 4;
         hasSemis = true;
       } else if ((f as any).tournamentRound === 'final') {
-        eventHype += 12;
+        eventHype += isEightMan ? 18 : 12;
         hasFinal = true;
+        if (isEightMan) hasEightManFinal = true;
       }
     }
   });
 
   if (hasFinal) {
-    warnings.push("Grand Prix final boosted fan interest");
+    warnings.push(hasEightManFinal ? "8-Man Grand Prix final boosted fan interest" : "Grand Prix final boosted fan interest");
   } else if (hasSemis) {
     warnings.push("Grand Prix semifinal card");
+  } else if (hasQuarters) {
+    warnings.push("Grand Prix quarterfinal card");
   }
   // Storyline effects
   fights.forEach(f => {
@@ -251,7 +264,8 @@ export function calculateEventFinancials(
   marketingSpend: number,
   promotion: Promotion,
   storylines: Storyline[] = [],
-  titles?: Record<string, import('../../types/game').WeightClassTitleState>
+  titles?: Record<string, import('../../types/game').WeightClassTitleState>,
+  tournaments?: Record<string, import('../../types/game').GrandPrixTournament>
 ): { results: EventResults, reputationChange: number } {
   // First, get the projections as a baseline
   const proj = calculateEventProjections(
@@ -262,7 +276,8 @@ export function calculateEventFinancials(
     marketingSpend,
     promotion,
     storylines,
-    titles
+    titles,
+    tournaments
   );
 
   // Random variance for actual attendance

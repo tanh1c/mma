@@ -146,7 +146,15 @@ function validateAndMigrateState(parsed: any): GameState | null {
   if (!state.sponsorDeals) state.sponsorDeals = [];
   if (!state.mediaDeals) state.mediaDeals = [];
   if (!state.financeLedger) state.financeLedger = [];
-  if (!state.tournaments) state.tournaments = {};
+  if (!state.tournaments) {
+    state.tournaments = {};
+  } else {
+    for (const id in state.tournaments) {
+      if (!state.tournaments[id].format) {
+        state.tournaments[id].format = 'four_man';
+      }
+    }
+  }
   
   // Migrate ledger entries missing isSummary/affectsCash
   if (state.financeLedger.length > 0) {

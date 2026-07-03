@@ -52,9 +52,10 @@ export default function Dashboard() {
       nextEvent.marketingSpend,
       promotion,
       storylines,
-      titles
+      titles,
+      tournaments
     );
-  }, [nextEvent, fighters, venues, promotion, storylines, titles]);
+  }, [nextEvent, fighters, venues, promotion, storylines, titles, tournaments]);
 
   const alerts: { id: string; type: 'danger' | 'warning' | 'info'; message: string; action?: { label: string; onClick: () => void } }[] = [];
 

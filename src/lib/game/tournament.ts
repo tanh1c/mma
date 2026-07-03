@@ -1,4 +1,4 @@
-import { GameState, GrandPrixTournament, TournamentParticipant, TournamentFightSlot, WeightClass, Fighter, FightMatchup, FightResult } from '../../types/game';
+import { GameState, GrandPrixTournament, TournamentParticipant, TournamentFightSlot, WeightClass, Fighter, FightMatchup, FightResult, TournamentFormat, TournamentRound } from '../../types/game';
 import { v4 as uuidv4 } from 'uuid';
 import { addDays } from 'date-fns';
 
@@ -8,14 +8,27 @@ export function createGrandPrixTournament(
     weightClass: WeightClass;
     name: string;
     titleShotPromised: boolean;
+    format?: TournamentFormat;
     participantIds?: string[];
     reserveIds?: string[];
   }
 ): GameState {
-  const { weightClass, name, titleShotPromised, participantIds = [], reserveIds = [] } = options;
+  const { weightClass, name, titleShotPromised, format = 'four_man', participantIds = [], reserveIds = [] } = options;
   
-  if (participantIds.length !== 4) {
-    throw new Error("A Grand Prix must have exactly 4 participants.");
+  if (format === 'four_man') {
+    if (participantIds.length !== 4) {
+      throw new Error("A 4-Man Grand Prix must have exactly 4 participants.");
+    }
+    if (reserveIds.length > 2) {
+      throw new Error("A 4-Man Grand Prix cannot have more than 2 reserves.");
+    }
+  } else {
+    if (participantIds.length !== 8) {
+      throw new Error("An 8-Man Grand Prix must have exactly 8 participants.");
+    }
+    if (reserveIds.length > 3) {
+      throw new Error("An 8-Man Grand Prix cannot have more than 3 reserves.");
+    }
   }
   
   const allIds = [...participantIds, ...reserveIds];
@@ -54,7 +67,14 @@ export function createGrandPrixTournament(
     const scoreA = a.rankingScore || 0;
     const scoreB = b.rankingScore || 0;
     if (scoreB !== scoreA) return scoreB - scoreA;
-    return b.popularity - a.popularity;
+    
+    const popA = a.popularity || 0;
+    const popB = b.popularity || 0;
+    if (popB !== popA) return popB - popA;
+    
+    const potA = a.potential || 0;
+    const potB = b.potential || 0;
+    return potB - potA;
   });
   
   const participants: TournamentParticipant[] = sortedParticipants.map((f, index) => ({
@@ -62,32 +82,74 @@ export function createGrandPrixTournament(
     seed: index + 1
   }));
   
-  const p1 = participants[0].fighterId;
-  const p2 = participants[1].fighterId;
-  const p3 = participants[2].fighterId;
-  const p4 = participants[3].fighterId;
-  
-  const semifinal1Slot: TournamentFightSlot = {
-    id: uuidv4(),
-    round: 'semifinal',
-    redFighterId: p1,
-    blueFighterId: p4,
-    isCompleted: false
-  };
-  
-  const semifinal2Slot: TournamentFightSlot = {
-    id: uuidv4(),
-    round: 'semifinal',
-    redFighterId: p2,
-    blueFighterId: p3,
-    isCompleted: false
-  };
-  
-  const finalSlot: TournamentFightSlot = {
-    id: uuidv4(),
-    round: 'final',
-    isCompleted: false
-  };
+  let fights: TournamentFightSlot[] = [];
+  if (format === 'four_man') {
+    const semifinal1Slot: TournamentFightSlot = {
+      id: uuidv4(),
+      round: 'semifinal',
+      redFighterId: participants[0].fighterId,
+      blueFighterId: participants[3].fighterId,
+      isCompleted: false
+    };
+    const semifinal2Slot: TournamentFightSlot = {
+      id: uuidv4(),
+      round: 'semifinal',
+      redFighterId: participants[1].fighterId,
+      blueFighterId: participants[2].fighterId,
+      isCompleted: false
+    };
+    const finalSlot: TournamentFightSlot = {
+      id: uuidv4(),
+      round: 'final',
+      isCompleted: false
+    };
+    fights = [semifinal1Slot, semifinal2Slot, finalSlot];
+  } else {
+    const qf1Slot: TournamentFightSlot = {
+      id: uuidv4(),
+      round: 'quarterfinal',
+      redFighterId: participants[0].fighterId,
+      blueFighterId: participants[7].fighterId,
+      isCompleted: false
+    };
+    const qf2Slot: TournamentFightSlot = {
+      id: uuidv4(),
+      round: 'quarterfinal',
+      redFighterId: participants[3].fighterId,
+      blueFighterId: participants[4].fighterId,
+      isCompleted: false
+    };
+    const qf3Slot: TournamentFightSlot = {
+      id: uuidv4(),
+      round: 'quarterfinal',
+      redFighterId: participants[1].fighterId,
+      blueFighterId: participants[6].fighterId,
+      isCompleted: false
+    };
+    const qf4Slot: TournamentFightSlot = {
+      id: uuidv4(),
+      round: 'quarterfinal',
+      redFighterId: participants[2].fighterId,
+      blueFighterId: participants[5].fighterId,
+      isCompleted: false
+    };
+    const semifinal1Slot: TournamentFightSlot = {
+      id: uuidv4(),
+      round: 'semifinal',
+      isCompleted: false
+    };
+    const semifinal2Slot: TournamentFightSlot = {
+      id: uuidv4(),
+      round: 'semifinal',
+      isCompleted: false
+    };
+    const finalSlot: TournamentFightSlot = {
+      id: uuidv4(),
+      round: 'final',
+      isCompleted: false
+    };
+    fights = [qf1Slot, qf2Slot, qf3Slot, qf4Slot, semifinal1Slot, semifinal2Slot, finalSlot];
+  }
   
   const newTourney: GrandPrixTournament = {
     id: uuidv4(),
@@ -100,13 +162,14 @@ export function createGrandPrixTournament(
                name.includes("Heavyweight") ? "Heavyweight GP" : "Grand Prix",
     weightClass,
     status: 'planned',
+    format,
     createdDate: state.currentDate,
     participants,
     reserveFighterIds: reserveIds,
-    fights: [semifinal1Slot, semifinal2Slot, finalSlot],
+    fights,
     titleShotPromised,
-    prestige: 70,
-    notes: [`Planned on ${state.currentDate} with seeds: 1. ${sortedParticipants[0].lastName}, 2. ${sortedParticipants[1].lastName}, 3. ${sortedParticipants[2].lastName}, 4. ${sortedParticipants[3].lastName}`]
+    prestige: format === 'eight_man' ? 85 : 70,
+    notes: [`Planned on ${state.currentDate} with format: ${format}. Seeds: ${sortedParticipants.map((f, idx) => `${idx + 1}. ${f.lastName}`).join(', ')}`]
   };
   
   const newState = {
@@ -130,102 +193,52 @@ export function createGrandPrixTournament(
   return newState;
 }
 
-export function scheduleSemifinals(state: GameState, tournamentId: string, eventId: string): GameState {
+export function scheduleTournamentRound(
+  state: GameState,
+  tournamentId: string,
+  round: 'quarterfinal' | 'semifinal' | 'final',
+  eventId: string
+): GameState {
   const tourney = state.tournaments[tournamentId];
   if (!tourney) throw new Error("Tournament not found");
-  if (tourney.status !== 'planned') {
-    throw new Error("Semifinals can only be scheduled for a planned tournament.");
-  }
   
   const event = state.events[eventId];
   if (!event || event.isCompleted) {
     throw new Error("Invalid or completed event selected.");
   }
-  
-  const newState = { ...state, tournaments: { ...state.tournaments }, events: { ...state.events } };
-  const updatedTourney = { ...tourney, fights: [...tourney.fights], status: 'active' as const, startDate: state.currentDate };
-  const updatedEvent = { ...event, fights: [...event.fights] };
-  
-  const semifinalSlots = updatedTourney.fights.filter(f => f.round === 'semifinal');
-  
-  semifinalSlots.forEach(slot => {
-    if (!slot.redFighterId || !slot.blueFighterId) {
-      throw new Error("Semifinal slots are missing participants.");
-    }
-    
-    const fightId = uuidv4();
-    const matchup: FightMatchup = {
-      id: fightId,
-      redCornerId: slot.redFighterId,
-      blueCornerId: slot.blueFighterId,
-      weightClass: updatedTourney.weightClass,
-      isTitleFight: false,
-      rounds: 3,
-      tournamentId: updatedTourney.id,
-      tournamentRound: 'semifinal',
-      tournamentFightSlotId: slot.id
-    };
-    
-    updatedEvent.fights.push(matchup);
-    
-    const slotIdx = updatedTourney.fights.findIndex(f => f.id === slot.id);
-    updatedTourney.fights[slotIdx] = {
-      ...slot,
-      eventId: event.id,
-      fightId: fightId
-    };
-  });
-  
-  updatedTourney.notes = [...(updatedTourney.notes || []), `Semifinals scheduled on Event: ${event.name} on ${state.currentDate}`];
-  
-  newState.tournaments[tournamentId] = updatedTourney;
-  newState.events[eventId] = updatedEvent;
-  
-  newState.news = [
-    {
-      id: uuidv4(),
-      date: state.currentDate,
-      type: 'event' as const,
-      title: `${updatedTourney.name} Semifinals Scheduled!`,
-      content: `The semifinals of the ${updatedTourney.name} have been scheduled for ${event.name} on ${event.date}.`
-    },
-    ...newState.news
-  ];
-  
-  return newState;
-}
 
-export function scheduleFinal(state: GameState, tournamentId: string, eventId: string): GameState {
-  const tourney = state.tournaments[tournamentId];
-  if (!tourney) throw new Error("Tournament not found");
-  
-  if (tourney.status !== 'active') {
-    throw new Error("Tournament must be active to schedule the final.");
+  // Spacing and validation checks
+  if (round === 'quarterfinal') {
+    if (tourney.status !== 'planned') {
+      throw new Error("Quarterfinals can only be scheduled for a planned tournament.");
+    }
+  } else if (round === 'semifinal') {
+    if (tourney.format === 'eight_man') {
+      const qfSlots = tourney.fights.filter(f => f.round === 'quarterfinal');
+      if (qfSlots.some(s => !s.isCompleted)) {
+        throw new Error("Quarterfinals must be completed to schedule semifinals.");
+      }
+    } else {
+      if (tourney.status !== 'planned') {
+        throw new Error("Semifinals can only be scheduled for a planned tournament.");
+      }
+    }
+  } else if (round === 'final') {
+    if (tourney.status !== 'active') {
+      throw new Error("Tournament must be active to schedule the final.");
+    }
+    const sfSlots = tourney.fights.filter(f => f.round === 'semifinal');
+    if (sfSlots.some(s => !s.isCompleted)) {
+      throw new Error("Semifinals must be completed to schedule the final.");
+    }
   }
-  
-  const semifinalSlots = tourney.fights.filter(f => f.round === 'semifinal');
-  if (semifinalSlots.some(s => !s.isCompleted)) {
-    throw new Error("Semifinals are not completed yet.");
+
+  const slots = tourney.fights.filter(f => f.round === round);
+  const alreadyScheduled = slots.some(s => s.eventId || s.isCompleted);
+  if (alreadyScheduled) {
+    throw new Error(`Round ${round} is already scheduled or completed.`);
   }
-  
-  const finalSlotIdx = tourney.fights.findIndex(f => f.round === 'final');
-  const finalSlot = tourney.fights[finalSlotIdx];
-  if (finalSlot.isCompleted || finalSlot.eventId) {
-    throw new Error("Final is already scheduled or completed.");
-  }
-  
-  const w1 = semifinalSlots[0].winnerId;
-  const w2 = semifinalSlots[1].winnerId;
-  
-  if (!w1 || !w2) {
-    throw new Error("Semifinal winners are missing.");
-  }
-  
-  const event = state.events[eventId];
-  if (!event || event.isCompleted) {
-    throw new Error("Invalid or completed event selected.");
-  }
-  
+
   const newState = { 
     ...state, 
     tournaments: { ...state.tournaments }, 
@@ -236,9 +249,6 @@ export function scheduleFinal(state: GameState, tournamentId: string, eventId: s
   
   const updatedTourney = { ...tourney, fights: [...tourney.fights] };
   const updatedEvent = { ...event, fights: [...event.fights] };
-  
-  let finalist1 = w1;
-  let finalist2 = w2;
   
   let delayReason: string | null = null;
   let delayFighterId: string | null = null;
@@ -258,10 +268,17 @@ export function scheduleFinal(state: GameState, tournamentId: string, eventId: s
     const isSuspendedShort = fighter.medicalSuspension && fighter.medicalSuspension.daysRemaining <= 35 && fighter.medicalSuspension.daysRemaining > 0;
     const isFatigued = fighter.fatigue > 75;
     
-    if (isSuspendedShort) {
-      delayReason = `${fighter.lastName} is medically suspended for ${fighter.medicalSuspension?.daysRemaining} days.`;
+    const isBookedElsewhere = Object.values(newState.events).some(e => 
+      !e.isCompleted && e.id !== eventId && e.fights.some(f => f.redCornerId === fighterId || f.blueCornerId === fighterId)
+    );
+    
+    if (isSuspendedShort || isBookedElsewhere) {
+      delayReason = isSuspendedShort 
+        ? `${fighter.lastName} is medically suspended for ${fighter.medicalSuspension?.daysRemaining} days.`
+        : `${fighter.lastName} is already booked in another event.`;
       delayFighterId = fighter.id;
-      delayEarliestDate = addDaysStr(newState.currentDate, fighter.medicalSuspension!.daysRemaining);
+      const delayDays = isSuspendedShort ? fighter.medicalSuspension!.daysRemaining : 28;
+      delayEarliestDate = addDaysStr(newState.currentDate, delayDays);
       return fighterId;
     }
     
@@ -269,13 +286,14 @@ export function scheduleFinal(state: GameState, tournamentId: string, eventId: s
       const unusedReserveId = updatedTourney.reserveFighterIds.find(resId => {
         const reserveFighter = newState.fighters[resId];
         const hasNoContract = !reserveFighter || !reserveFighter.contract;
-        const isInjured = reserveFighter?.injuryStatus;
-        const isSuspended = reserveFighter?.medicalSuspension && reserveFighter.medicalSuspension.daysRemaining > 0;
-        const isFatigued = reserveFighter?.fatigue > 75;
-        const isBooked = Object.values(newState.events).some(e => !e.isCompleted && e.fights.some(f => f.redCornerId === resId || f.blueCornerId === resId));
+        const resInjured = reserveFighter?.injuryStatus;
+        const resSuspended = reserveFighter?.medicalSuspension && reserveFighter.medicalSuspension.daysRemaining > 0;
+        const resFatigued = reserveFighter?.fatigue > 75;
+        const resBooked = Object.values(newState.events).some(e => !e.isCompleted && e.fights.some(f => f.redCornerId === resId || f.blueCornerId === resId));
         
-        const reserveUnavailable = hasNoContract || isInjured || isSuspended || isFatigued || isBooked;
-        return !reserveUnavailable && resId !== finalist1 && resId !== finalist2;
+        const reserveUnavailable = hasNoContract || resInjured || resSuspended || resFatigued || resBooked;
+        const inActiveSlots = slots.some(s => s.redFighterId === resId || s.blueFighterId === resId);
+        return !reserveUnavailable && !inActiveSlots;
       });
       
       if (unusedReserveId) {
@@ -290,15 +308,15 @@ export function scheduleFinal(state: GameState, tournamentId: string, eventId: s
         
         const origF = newState.fighters[originalFighterId];
         const newF = newState.fighters[unusedReserveId];
-        updatedTourney.notes = [...(updatedTourney.notes || []), `Replacement: ${newF.lastName} replaced unavailable finalist ${origF.lastName} on ${state.currentDate}.`];
+        updatedTourney.notes = [...(updatedTourney.notes || []), `Replacement: ${newF.lastName} replaced unavailable fighter ${origF.lastName} on ${state.currentDate} for round ${round}.`];
         
         newState.news = [
           {
             id: uuidv4(),
             date: state.currentDate,
             type: 'general' as const,
-            title: `Grand Prix Replacement: ${newF.lastName} enters final!`,
-            content: `Due to long-term injury/suspension, ${origF.firstName} ${origF.lastName} is unable to compete. Reserve fighter ${newF.firstName} ${newF.lastName} steps in to face the other finalist.`
+            title: `Grand Prix Replacement: ${newF.lastName} enters ${round}!`,
+            content: `Due to long-term injury/suspension/fatigue, ${origF.firstName} ${origF.lastName} is unable to compete. Reserve fighter ${newF.firstName} ${newF.lastName} steps in for the ${round} round.`
           },
           ...newState.news
         ];
@@ -317,83 +335,130 @@ export function scheduleFinal(state: GameState, tournamentId: string, eventId: s
     }
     return fighterId;
   };
-  
-  finalist1 = checkReplacement(w1, w1);
-  if (!delayReason) {
-    finalist2 = checkReplacement(w2, w2);
-  }
-  
-  if (delayReason) {
-    updatedTourney.finalDelayReason = delayReason;
-    updatedTourney.earliestFinalDate = delayEarliestDate;
-    updatedTourney.delayedFighterId = delayFighterId;
-    updatedTourney.notes = [...(updatedTourney.notes || []), `Final delayed: ${delayReason}`];
+
+  const updatedSlots = [...slots];
+  for (let i = 0; i < updatedSlots.length; i++) {
+    const slot = updatedSlots[i];
+    if (!slot.redFighterId || !slot.blueFighterId) {
+      throw new Error(`Round ${round} slot is missing participants.`);
+    }
+    const f1 = checkReplacement(slot.redFighterId, slot.redFighterId);
+    if (delayReason) break;
+    const f2 = checkReplacement(slot.blueFighterId, slot.blueFighterId);
+    if (delayReason) break;
     
-    const isNewDelay = tourney.finalDelayReason !== delayReason || tourney.earliestFinalDate !== delayEarliestDate;
+    updatedSlots[i] = {
+      ...slot,
+      redFighterId: f1,
+      blueFighterId: f2
+    };
+  }
+
+  if (delayReason) {
+    updatedTourney.roundDelayReason = delayReason;
+    updatedTourney.delayedRound = round;
+    updatedTourney.earliestRoundDate = delayEarliestDate;
+    updatedTourney.delayedFighterId = delayFighterId;
+    
+    if (round === 'final') {
+      updatedTourney.finalDelayReason = delayReason;
+      updatedTourney.earliestFinalDate = delayEarliestDate;
+      updatedTourney.delayedFighterId = delayFighterId;
+    }
+    
+    updatedTourney.notes = [...(updatedTourney.notes || []), `Round ${round} delayed: ${delayReason}`];
+    
+    const isNewDelay = tourney.roundDelayReason !== delayReason || tourney.earliestRoundDate !== delayEarliestDate;
     if (isNewDelay) {
       newState.news = [
         {
           id: uuidv4(),
           date: state.currentDate,
           type: 'general' as const,
-          title: `Grand Prix Final Delayed`,
-          content: `The final of the ${updatedTourney.name} has been delayed. Reason: ${delayReason}. Earliest expected reschedule: ${delayEarliestDate}.`
+          title: `${updatedTourney.name} ${round} Delayed`,
+          content: `The ${round} of the ${updatedTourney.name} has been delayed. Reason: ${delayReason}. Earliest expected reschedule: ${delayEarliestDate}.`
         },
         ...newState.news
       ];
     }
-    
     newState.tournaments[tournamentId] = updatedTourney;
     return newState;
   }
-  
-  updatedTourney.finalDelayReason = null;
-  updatedTourney.earliestFinalDate = null;
+
+  updatedTourney.roundDelayReason = null;
+  updatedTourney.delayedRound = null;
+  updatedTourney.earliestRoundDate = null;
   updatedTourney.delayedFighterId = null;
+  if (round === 'final') {
+    updatedTourney.finalDelayReason = null;
+    updatedTourney.earliestFinalDate = null;
+    updatedTourney.delayedFighterId = null;
+  }
+
+  const updatedFightsInTourney = updatedTourney.fights.map(f => {
+    if (f.round === round) {
+      const matchingSlot = updatedSlots.find(s => s.id === f.id)!;
+      const fightId = uuidv4();
+      const matchup: FightMatchup = {
+        id: fightId,
+        redCornerId: matchingSlot.redFighterId!,
+        blueCornerId: matchingSlot.blueFighterId!,
+        weightClass: updatedTourney.weightClass,
+        isTitleFight: false,
+        rounds: round === 'final' ? 5 : 3,
+        tournamentId: updatedTourney.id,
+        tournamentRound: round,
+        tournamentFightSlotId: f.id
+      };
+      updatedEvent.fights.push(matchup);
+      return {
+        ...matchingSlot,
+        eventId: updatedEvent.id,
+        fightId: fightId
+      };
+    }
+    return f;
+  });
+
+  updatedTourney.fights = updatedFightsInTourney;
   
-  const fightId = uuidv4();
-  const matchup: FightMatchup = {
-    id: fightId,
-    redCornerId: finalist1,
-    blueCornerId: finalist2,
-    weightClass: updatedTourney.weightClass,
-    isTitleFight: false,
-    rounds: 5,
-    tournamentId: updatedTourney.id,
-    tournamentRound: 'final',
-    tournamentFightSlotId: finalSlot.id
-  };
-  
-  updatedEvent.fights.push(matchup);
-  
-  updatedTourney.fights[finalSlotIdx] = {
-    ...finalSlot,
-    redFighterId: finalist1,
-    blueFighterId: finalist2,
-    eventId: event.id,
-    fightId: fightId
-  };
-  
-  updatedTourney.notes = [...(updatedTourney.notes || []), `Final scheduled on Event: ${event.name} on ${state.currentDate}`];
+  if (round === 'quarterfinal' || (round === 'semifinal' && updatedTourney.format === 'four_man')) {
+    updatedTourney.status = 'active';
+    updatedTourney.startDate = updatedEvent.date;
+  }
+
+  updatedTourney.notes = [...(updatedTourney.notes || []), `Round ${round} scheduled on Event: ${updatedEvent.name} on ${state.currentDate}`];
   
   newState.tournaments[tournamentId] = updatedTourney;
   newState.events[eventId] = updatedEvent;
   
-  const f1Fighter = newState.fighters[finalist1];
-  const f2Fighter = newState.fighters[finalist2];
+  const f1Fighter = newState.fighters[updatedSlots[0].redFighterId!];
+  const f2Fighter = newState.fighters[updatedSlots[0].blueFighterId!];
   
   newState.news = [
     {
       id: uuidv4(),
       date: state.currentDate,
       type: 'event' as const,
-      title: `${updatedTourney.name} Final Match Scheduled!`,
-      content: `The Grand Prix Final has been scheduled. ${f1Fighter.firstName} ${f1Fighter.lastName} will face ${f2Fighter.firstName} ${f2Fighter.lastName} at ${event.name} on ${event.date}!`
+      title: `${updatedTourney.name} ${round} Scheduled!`,
+      content: `The ${round} matches have been scheduled for ${updatedEvent.name} on ${updatedEvent.date}!`
     },
     ...newState.news
   ];
-  
+
   return newState;
+}
+
+export function scheduleQuarterfinals(state: GameState, tournamentId: string, eventId: string): GameState {
+  return scheduleTournamentRound(state, tournamentId, 'quarterfinal', eventId);
+}
+
+export function scheduleSemifinals(state: GameState, tournamentId: string, eventId: string): GameState {
+  return scheduleTournamentRound(state, tournamentId, 'semifinal', eventId);
+}
+
+export function scheduleFinal(state: GameState, tournamentId: string, eventId: string): GameState {
+  return scheduleTournamentRound(state, tournamentId, 'final', eventId);
 }
 
 export function cancelTournament(state: GameState, tournamentId: string): GameState {
@@ -440,12 +505,13 @@ export function maintainTournamentRosterDepth(state: GameState, weightClass: Wei
   let newState = { ...state, fighters: { ...state.fighters }, news: [...state.news] };
   let currentEligibleCount = eligible.length;
   
-  if (currentEligibleCount < 6 && newState.promotion.money > 150000) {
+  const targetCount = state.promotion.reputation >= 55 ? 11 : 6;
+  if (currentEligibleCount < targetCount && newState.promotion.money > 150000) {
     const freeAgents = Object.values(newState.fighters)
       .filter(f => !f.contract && f.weightClass === weightClass)
       .sort((a, b) => b.popularity - a.popularity || b.potential - a.potential);
       
-    const needed = 6 - currentEligibleCount;
+    const needed = targetCount - currentEligibleCount;
     const toSignList = freeAgents.slice(0, needed);
     
     toSignList.forEach(toSign => {
@@ -502,7 +568,51 @@ export function applyTournamentProgression(
     isCompleted: true
   };
   
-  if (slot.round === 'semifinal') {
+  if (slot.round === 'quarterfinal') {
+    const qfSlots = updatedTourney.fights.filter(f => f.round === 'quarterfinal');
+    const allQfsDone = qfSlots.every(s => s.isCompleted);
+    
+    if (allQfsDone) {
+      const w1 = qfSlots[0].winnerId;
+      const w2 = qfSlots[1].winnerId;
+      const w3 = qfSlots[2].winnerId;
+      const w4 = qfSlots[3].winnerId;
+      
+      const sfSlots = updatedTourney.fights.filter(f => f.round === 'semifinal');
+      if (sfSlots.length >= 2) {
+        const sf1Idx = updatedTourney.fights.findIndex(f => f.id === sfSlots[0].id);
+        const sf2Idx = updatedTourney.fights.findIndex(f => f.id === sfSlots[1].id);
+        
+        updatedTourney.fights[sf1Idx] = {
+          ...sfSlots[0],
+          redFighterId: w1 || undefined,
+          blueFighterId: w2 || undefined
+        };
+        updatedTourney.fights[sf2Idx] = {
+          ...sfSlots[1],
+          redFighterId: w3 || undefined,
+          blueFighterId: w4 || undefined
+        };
+      }
+      
+      updatedTourney.quarterfinalCompletedDate = state.currentDate;
+      const d = addDays(new Date(state.currentDate), 28);
+      updatedTourney.recommendedSemifinalDate = d.toISOString().split('T')[0];
+      
+      updatedTourney.notes = [...(updatedTourney.notes || []), `Quarterfinals completed. Semifinalists set.`];
+      
+      newState.news = [
+        {
+          id: uuidv4(),
+          date: state.currentDate,
+          type: 'general' as const,
+          title: `${updatedTourney.name} Semifinalists Decided!`,
+          content: `The quarterfinal round of the ${updatedTourney.name} is complete. Semifinal matches are set!`
+        },
+        ...newState.news
+      ];
+    }
+  } else if (slot.round === 'semifinal') {
     const semifinalSlots = updatedTourney.fights.filter(f => f.round === 'semifinal');
     const allSemisDone = semifinalSlots.every(s => s.isCompleted);
     
@@ -550,15 +660,22 @@ export function applyTournamentProgression(
     
     updatedTourney.notes = [...(updatedTourney.notes || []), `Grand Prix Winner: ${champName} on ${state.currentDate}`];
     
+    const isEightMan = updatedTourney.format === 'eight_man';
+    const winBonus = isEightMan ? 120 : 80;
+    const winPop = isEightMan ? 20 : 15;
+    const winMom = isEightMan ? 30 : 25;
+    const runnerBonus = isEightMan ? 50 : 30;
+    const runnerPop = isEightMan ? 10 : 5;
+    
     if (champ) {
       const updatedChamp = { ...champ };
       if (updatedTourney.titleShotPromised) {
         updatedChamp.titleShotPromised = true;
       }
       
-      updatedChamp.rankingScore = (updatedChamp.rankingScore || 1000) + 80;
-      updatedChamp.popularity = Math.min(100, updatedChamp.popularity + 15);
-      updatedChamp.momentum = Math.min(100, updatedChamp.momentum + 25);
+      updatedChamp.rankingScore = (updatedChamp.rankingScore || 1000) + winBonus;
+      updatedChamp.popularity = Math.min(100, updatedChamp.popularity + winPop);
+      updatedChamp.momentum = Math.min(100, updatedChamp.momentum + winMom);
       updatedChamp.history = [`Won Grand Prix vs ${loserId ? newState.fighters[loserId]?.lastName : 'Unknown'}`, ...updatedChamp.history].slice(0, 5);
       
       newState.fighters[champ.id] = updatedChamp;
@@ -568,8 +685,8 @@ export function applyTournamentProgression(
       const runnerUp = newState.fighters[loserId];
       if (runnerUp) {
         const updatedRunner = { ...runnerUp };
-        updatedRunner.rankingScore = (updatedRunner.rankingScore || 1000) + 30;
-        updatedRunner.popularity = Math.min(100, updatedRunner.popularity + 5);
+        updatedRunner.rankingScore = (updatedRunner.rankingScore || 1000) + runnerBonus;
+        updatedRunner.popularity = Math.min(100, updatedRunner.popularity + runnerPop);
         newState.fighters[loserId] = updatedRunner;
       }
     }
@@ -597,22 +714,59 @@ export function runAutopilotTournaments(state: GameState): GameState {
   
   if (activeTourney) {
     if (activeTourney.status === 'planned') {
+      if (activeTourney.earliestRoundDate && newState.currentDate < activeTourney.earliestRoundDate) {
+         return newState;
+      }
       const upcomingEvent = Object.values(newState.events).find(e => !e.isCompleted && e.date >= state.currentDate);
       if (upcomingEvent) {
          try {
-           newState = scheduleSemifinals(newState, activeTourney.id, upcomingEvent.id);
+           if (activeTourney.format === 'eight_man') {
+             newState = scheduleQuarterfinals(newState, activeTourney.id, upcomingEvent.id);
+           } else {
+             newState = scheduleSemifinals(newState, activeTourney.id, upcomingEvent.id);
+           }
          } catch (e) {
            // Skip if scheduling fails
          }
       }
     } else if (activeTourney.status === 'active') {
+      if (activeTourney.earliestRoundDate && newState.currentDate < activeTourney.earliestRoundDate) {
+         return newState;
+      }
+      
+      const isEightMan = activeTourney.format === 'eight_man';
+      
+      // Schedule Semifinals if 8-man and quarterfinals are done
+      if (isEightMan) {
+        const quarterfinalsDone = activeTourney.fights.filter(f => f.round === 'quarterfinal').every(q => q.isCompleted);
+        const semifinalSlots = activeTourney.fights.filter(f => f.round === 'semifinal');
+        const semifinalsScheduled = semifinalSlots.some(s => s.eventId);
+        
+        if (quarterfinalsDone && !semifinalsScheduled) {
+           const minDate = activeTourney.quarterfinalCompletedDate 
+             ? addDays(new Date(activeTourney.quarterfinalCompletedDate), 21).toISOString().split('T')[0]
+             : state.currentDate;
+
+           const upcomingEvent = Object.values(newState.events).find(e => 
+              !e.isCompleted && 
+              e.date >= state.currentDate &&
+              e.date >= minDate
+           );
+           
+           if (upcomingEvent) {
+              try {
+                newState = scheduleSemifinals(newState, activeTourney.id, upcomingEvent.id);
+              } catch (e) {
+                // Ignore
+              }
+           }
+        }
+      }
+      
+      // Schedule final
       const semifinalsDone = activeTourney.fights.filter(f => f.round === 'semifinal').every(s => s.isCompleted);
       const finalSlot = activeTourney.fights.find(f => f.round === 'final');
       if (semifinalsDone && finalSlot && !finalSlot.eventId) {
-         if (activeTourney.earliestFinalDate && newState.currentDate < activeTourney.earliestFinalDate) {
-            return newState;
-         }
-         
          const minDate = activeTourney.semifinalCompletedDate 
            ? addDays(new Date(activeTourney.semifinalCompletedDate), 21).toISOString().split('T')[0]
            : state.currentDate;
@@ -639,18 +793,12 @@ export function runAutopilotTournaments(state: GameState): GameState {
     return newState;
   }
 
-  const weightClasses: WeightClass[] = ['Bantamweight', 'Featherweight', 'Lightweight', 'Welterweight', 'Middleweight', 'Heavyweight'];
-
-  // Maintain roster depth for tournament potential across all weight classes
-  const signedWcsInThisTick = new Set<WeightClass>();
-  weightClasses.forEach(wc => {
-    const prevSignedCount = Object.values(state.fighters).filter(f => f.weightClass === wc && f.contract).length;
-    newState = maintainTournamentRosterDepth(newState, wc);
-    const currSignedCount = Object.values(newState.fighters).filter(f => f.weightClass === wc && f.contract).length;
-    if (currSignedCount > prevSignedCount) {
-      signedWcsInThisTick.add(wc);
-    }
-  });
+  // Avoid creating new GP if there are urgent title shot debts pending
+  const debts = getPendingTitleShotDebts(newState);
+  const urgentDebts = debts.filter(d => d.status === 'pending' || d.daysPending > 120);
+  if (urgentDebts.length > 0) {
+    return newState;
+  }
   
   const completedTourneys = Object.values(newState.tournaments).filter(t => t.status === 'completed');
   if (completedTourneys.length > 0) {
@@ -667,6 +815,27 @@ export function runAutopilotTournaments(state: GameState): GameState {
     return newState;
   }
   
+  const weightClasses: WeightClass[] = ['Bantamweight', 'Featherweight', 'Lightweight', 'Welterweight', 'Middleweight', 'Heavyweight'];
+
+  // Maintain roster depth for tournament potential across all weight classes
+  const signedWcsInThisTick = new Set<WeightClass>();
+  weightClasses.forEach(wc => {
+    const prevSignedCount = Object.values(state.fighters).filter(f => f.weightClass === wc && f.contract).length;
+    newState = maintainTournamentRosterDepth(newState, wc);
+    const currSignedCount = Object.values(newState.fighters).filter(f => f.weightClass === wc && f.contract).length;
+    if (currSignedCount > prevSignedCount) {
+      signedWcsInThisTick.add(wc);
+    }
+  });
+
+  const canRunEightMan = newState.promotion.reputation >= 55 && newState.promotion.money >= 250000;
+  let format: TournamentFormat = 'four_man';
+  if (canRunEightMan) {
+    format = Math.random() < 0.25 ? 'eight_man' : 'four_man';
+  }
+  
+  const targetRequiredFighters = format === 'eight_man' ? 11 : 6;
+
   const candidates = weightClasses.map(wc => {
     const title = newState.titles[wc];
     const wcFighters = Object.values(newState.fighters).filter(f => 
@@ -694,18 +863,28 @@ export function runAutopilotTournaments(state: GameState): GameState {
   if (!bestCandidate) return newState;
   
   const wc = bestCandidate.wc;
+  
+  // Settle on format based on actual candidate count
+  if (format === 'eight_man' && bestCandidate.fighters.length < 11) {
+    format = 'four_man';
+  }
+  
+  const finalRequiredCount = format === 'eight_man' ? 11 : 6;
   const sortedFighters = bestCandidate.fighters.sort((a, b) => (b.rankingScore || 0) - (a.rankingScore || 0));
+  const slicedFighters = sortedFighters.slice(0, finalRequiredCount);
   
-  const participantIds = sortedFighters.slice(0, 4).map(f => f.id);
-  const reserveIds = sortedFighters.slice(4, 6).map(f => f.id);
+  const participantCount = format === 'eight_man' ? 8 : 4;
+  const participantIds = slicedFighters.slice(0, participantCount).map(f => f.id);
+  const reserveIds = slicedFighters.slice(participantCount).map(f => f.id);
   
-  const name = `${wc} Grand Prix`;
+  const name = `${wc} ${format === 'eight_man' ? '8-Man' : '4-Man'} Grand Prix`;
   
   try {
     newState = createGrandPrixTournament(newState, {
       weightClass: wc,
       name,
       titleShotPromised: true,
+      format,
       participantIds,
       reserveIds
     });

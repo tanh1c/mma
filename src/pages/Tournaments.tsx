@@ -11,6 +11,7 @@ export default function Tournaments() {
     events, 
     currentDate,
     createTournament, 
+    scheduleQuarterfinals,
     scheduleSemifinals, 
     scheduleFinal, 
     cancelTournament, 
@@ -26,11 +27,12 @@ export default function Tournaments() {
   const [name, setName] = useState('');
   const [weightClass, setWeightClass] = useState<WeightClass>('Lightweight');
   const [titleShotPromised, setTitleShotPromised] = useState(true);
+  const [format, setFormat] = useState<'four_man' | 'eight_man'>('four_man');
   const [selectedParticipants, setSelectedParticipants] = useState<string[]>([]);
   const [selectedReserves, setSelectedReserves] = useState<string[]>([]);
 
   // Scheduling State
-  const [schedulingSlot, setSchedulingSlot] = useState<{ tourneyId: string, round: 'semifinal' | 'final' } | null>(null);
+  const [schedulingSlot, setSchedulingSlot] = useState<{ tourneyId: string, round: 'quarterfinal' | 'semifinal' | 'final' } | null>(null);
   const [selectedEventId, setSelectedEventId] = useState<string>('');
 
   const activeTourneyList = Object.values(tournaments).filter(t => {
@@ -52,10 +54,11 @@ export default function Tournaments() {
   ).sort((a, b) => (b.rankingScore || 0) - (a.rankingScore || 0));
 
   const handleToggleParticipant = (id: string) => {
+    const limit = format === 'eight_man' ? 8 : 4;
     if (selectedParticipants.includes(id)) {
       setSelectedParticipants(selectedParticipants.filter(pId => pId !== id));
     } else {
-      if (selectedParticipants.length < 4) {
+      if (selectedParticipants.length < limit) {
         setSelectedParticipants([...selectedParticipants, id]);
         setSelectedReserves(selectedReserves.filter(rId => rId !== id)); // cannot be both
       }
@@ -63,10 +66,11 @@ export default function Tournaments() {
   };
 
   const handleToggleReserve = (id: string) => {
+    const limit = format === 'eight_man' ? 3 : 2;
     if (selectedReserves.includes(id)) {
       setSelectedReserves(selectedReserves.filter(rId => rId !== id));
     } else {
-      if (selectedReserves.length < 2) {
+      if (selectedReserves.length < limit) {
         setSelectedReserves([...selectedReserves, id]);
         setSelectedParticipants(selectedParticipants.filter(pId => pId !== id)); // cannot be both
       }
@@ -75,16 +79,18 @@ export default function Tournaments() {
 
   const handleCreate = (e: React.FormEvent) => {
     e.preventDefault();
-    if (selectedParticipants.length !== 4) {
-      alert("Please select exactly 4 participants.");
+    const required = format === 'eight_man' ? 8 : 4;
+    if (selectedParticipants.length !== required) {
+      alert(`Please select exactly ${required} participants.`);
       return;
     }
     
-    const gpName = name.trim() || `${weightClass} Grand Prix`;
+    const gpName = name.trim() || `${weightClass} ${format === 'eight_man' ? '8-Man' : '4-Man'} Grand Prix`;
     createTournament({
       weightClass,
       name: gpName,
       titleShotPromised,
+      format,
       participantIds: selectedParticipants,
       reserveIds: selectedReserves
     });
@@ -99,7 +105,9 @@ export default function Tournaments() {
   const handleScheduleSubmit = () => {
     if (!selectedEventId || !schedulingSlot) return;
     
-    if (schedulingSlot.round === 'semifinal') {
+    if (schedulingSlot.round === 'quarterfinal') {
+      scheduleQuarterfinals(schedulingSlot.tourneyId, selectedEventId);
+    } else if (schedulingSlot.round === 'semifinal') {
       scheduleSemifinals(schedulingSlot.tourneyId, selectedEventId);
     } else {
       scheduleFinal(schedulingSlot.tourneyId, selectedEventId);
@@ -147,7 +155,7 @@ export default function Tournaments() {
           </div>
 
           <form onSubmit={handleCreate} className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
               <div className="space-y-1">
                 <label className="text-xs text-neutral-400 uppercase font-bold">Tournament Name</label>
                 <input 
@@ -176,6 +184,22 @@ export default function Tournaments() {
                 </select>
               </div>
 
+              <div className="space-y-1">
+                <label className="text-xs text-neutral-400 uppercase font-bold">Format</label>
+                <select 
+                  value={format}
+                  onChange={e => {
+                    setFormat(e.target.value as 'four_man' | 'eight_man');
+                    setSelectedParticipants([]);
+                    setSelectedReserves([]);
+                  }}
+                  className="w-full bg-neutral-950 border border-neutral-800 rounded p-2 text-white text-sm font-semibold text-purple-400"
+                >
+                  <option value="four_man">4-Man Grand Prix</option>
+                  <option value="eight_man">8-Man Grand Prix</option>
+                </select>
+              </div>
+
               <div className="flex items-center gap-2 pt-6">
                 <input 
                   type="checkbox" 
@@ -185,16 +209,16 @@ export default function Tournaments() {
                   className="w-4 h-4 accent-purple-600 rounded bg-neutral-950 border-neutral-800"
                 />
                 <label htmlFor="titleShot" className="text-sm font-semibold text-neutral-300">
-                  Promise Undisputed Title Shot to Winner
+                  Promise Undisputed Title Shot
                 </label>
               </div>
             </div>
 
             <div className="border-t border-neutral-800 pt-4">
               <div className="flex justify-between items-center mb-2">
-                <h3 className="text-sm font-bold text-white uppercase tracking-wider">Select 4 Participants</h3>
-                <span className="text-xs font-semibold text-purple-400 bg-purple-900/30 px-2 py-0.5 rounded">
-                  {selectedParticipants.length} / 4 Selected
+                <h3 className="text-sm font-bold text-white uppercase tracking-wider">Select {format === 'eight_man' ? 8 : 4} Participants</h3>
+                <span className="text-xs font-semibold text-purple-400 bg-purple-900/30 px-2 py-0.5 rounded animate-pulse">
+                  {selectedParticipants.length} / {format === 'eight_man' ? 8 : 4} Selected
                 </span>
               </div>
               <p className="text-xs text-neutral-500 mb-4">Only signed, healthy, unbooked fighters in this division are eligible. Seeded by ELO ranking score.</p>
@@ -208,6 +232,8 @@ export default function Tournaments() {
                   {eligibleFighters.map(f => {
                     const isPart = selectedParticipants.includes(f.id);
                     const isRes = selectedReserves.includes(f.id);
+                    const partLimit = format === 'eight_man' ? 8 : 4;
+                    const resLimit = format === 'eight_man' ? 3 : 2;
                     return (
                       <div 
                         key={f.id} 
@@ -225,7 +251,7 @@ export default function Tournaments() {
                           <button 
                             type="button"
                             onClick={() => handleToggleParticipant(f.id)}
-                            disabled={!isPart && selectedParticipants.length >= 4}
+                            disabled={!isPart && selectedParticipants.length >= partLimit}
                             className={`px-2 py-1 rounded text-xs font-bold ${
                               isPart ? 'bg-purple-600 text-white' : 'bg-neutral-800 text-neutral-400 hover:bg-neutral-700 hover:text-white disabled:opacity-50'
                             }`}
@@ -235,12 +261,12 @@ export default function Tournaments() {
                           <button 
                             type="button"
                             onClick={() => handleToggleReserve(f.id)}
-                            disabled={!isRes && selectedReserves.length >= 2}
+                            disabled={!isRes && selectedReserves.length >= resLimit}
                             className={`px-2 py-1 rounded text-xs font-bold ${
                               isRes ? 'bg-yellow-600 text-white' : 'bg-neutral-800 text-neutral-400 hover:bg-neutral-700 hover:text-white disabled:opacity-50'
                             }`}
                           >
-                            Reserve
+                            Reserve ({selectedReserves.length}/{resLimit})
                           </button>
                         </div>
                       </div>
@@ -260,7 +286,7 @@ export default function Tournaments() {
               </button>
               <button 
                 type="submit"
-                disabled={selectedParticipants.length !== 4}
+                disabled={selectedParticipants.length !== (format === 'eight_man' ? 8 : 4)}
                 className="bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white px-4 py-2 rounded text-sm font-bold"
               >
                 Create Tournament
@@ -334,33 +360,58 @@ export default function Tournaments() {
           {/* Tournament Details / Bracket */}
           <div className="lg:col-span-2 space-y-4">
             <h2 className="text-sm font-bold text-neutral-400 uppercase tracking-wider">Bracket & Details</h2>
-            
             {selectedTourney ? (
               <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-6 space-y-6">
                 <div className="flex justify-between items-start border-b border-neutral-800 pb-4">
                   <div>
-                    <h2 className="text-xl font-bold text-white">{selectedTourney.name}</h2>
+                    <div className="flex items-center gap-2">
+                      <h2 className="text-xl font-bold text-white">{selectedTourney.name}</h2>
+                      <span className="text-[10px] bg-purple-900/40 text-purple-400 font-bold px-2 py-0.5 rounded">
+                        {selectedTourney.format === 'eight_man' ? '8-Man GP' : '4-Man GP'}
+                      </span>
+                    </div>
                     <p className="text-xs text-neutral-400 font-mono mt-1">
                       Status: <span className="text-white uppercase font-bold">{selectedTourney.status}</span> • Division: <span className="text-white font-semibold">{selectedTourney.weightClass}</span>
                     </p>
                   </div>
                   <div className="flex gap-2">
                     {selectedTourney.status === 'planned' && (
-                      <button 
-                        onClick={() => setSchedulingSlot({ tourneyId: selectedTourney.id, round: 'semifinal' })}
-                        className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-1.5 px-3 rounded text-xs transition-colors"
-                      >
-                        Schedule Semifinals
-                      </button>
+                      selectedTourney.format === 'eight_man' ? (
+                        <button 
+                          onClick={() => setSchedulingSlot({ tourneyId: selectedTourney.id, round: 'quarterfinal' })}
+                          className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-1.5 px-3 rounded text-xs transition-colors"
+                        >
+                          Schedule Quarterfinals
+                        </button>
+                      ) : (
+                        <button 
+                          onClick={() => setSchedulingSlot({ tourneyId: selectedTourney.id, round: 'semifinal' })}
+                          className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-1.5 px-3 rounded text-xs transition-colors"
+                        >
+                          Schedule Semifinals
+                        </button>
+                      )
                     )}
-                    {selectedTourney.status === 'active' && !selectedTourney.fights.find(f => f.round === 'final')?.eventId && (
-                      <button 
-                        disabled={selectedTourney.fights.filter(f => f.round === 'semifinal').some(s => !s.isCompleted)}
-                        onClick={() => setSchedulingSlot({ tourneyId: selectedTourney.id, round: 'final' })}
-                        className="bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white font-bold py-1.5 px-3 rounded text-xs transition-colors"
-                      >
-                        Schedule Final
-                      </button>
+                    {selectedTourney.status === 'active' && 
+                      selectedTourney.format === 'eight_man' && 
+                      selectedTourney.fights.filter(f => f.round === 'quarterfinal').every(q => q.isCompleted) && 
+                      !selectedTourney.fights.find(f => f.round === 'semifinal')?.eventId && (
+                        <button 
+                          onClick={() => setSchedulingSlot({ tourneyId: selectedTourney.id, round: 'semifinal' })}
+                          className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-1.5 px-3 rounded text-xs transition-colors"
+                        >
+                          Schedule Semifinals
+                        </button>
+                    )}
+                    {selectedTourney.status === 'active' && 
+                      selectedTourney.fights.filter(f => f.round === 'semifinal').every(s => s.isCompleted) && 
+                      !selectedTourney.fights.find(f => f.round === 'final')?.eventId && (
+                        <button 
+                          onClick={() => setSchedulingSlot({ tourneyId: selectedTourney.id, round: 'final' })}
+                          className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-1.5 px-3 rounded text-xs transition-colors"
+                        >
+                          Schedule Final
+                        </button>
                     )}
                     {!selectedTourney.fights.some(f => f.isCompleted) && selectedTourney.status !== 'cancelled' && (
                       <button 
@@ -379,147 +430,191 @@ export default function Tournaments() {
                 </div>
 
                 {/* Bracket Graphical Representation */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center bg-neutral-950/50 p-6 rounded-lg border border-neutral-800">
-                  {/* Semifinals */}
-                  <div className="space-y-6">
-                    <h3 className="text-xs font-bold text-neutral-500 uppercase tracking-widest border-b border-neutral-800 pb-1">Semifinals</h3>
-                    
-                    {selectedTourney.fights.filter(f => f.round === 'semifinal').map((slot, idx) => {
-                      const redF = slot.redFighterId ? fighters[slot.redFighterId] : null;
-                      const blueF = slot.blueFighterId ? fighters[slot.blueFighterId] : null;
-                      const redSeed = selectedTourney.participants.find(p => p.fighterId === slot.redFighterId)?.seed;
-                      const blueSeed = selectedTourney.participants.find(p => p.fighterId === slot.blueFighterId)?.seed;
-                      
+                {(() => {
+                  const renderFightStatsLink = (slot: any) => {
+                    if (!slot.isCompleted) return null;
+                    const manualId = `archive_${slot.eventId}_${slot.redFighterId}_${slot.blueFighterId}`;
+                    const archiveId = slot.fightArchiveId || manualId;
+                    const isAvailable = fightArchive[archiveId] !== undefined || fightArchive[manualId] !== undefined;
+                    if (isAvailable) {
+                      const finalId = fightArchive[archiveId] ? archiveId : manualId;
                       return (
-                        <div key={slot.id} className="bg-neutral-900 border border-neutral-800 rounded p-3 space-y-2">
-                          <p className="text-[10px] text-neutral-500 uppercase font-mono flex justify-between">
-                            <span>Semifinal Match {idx + 1}</span>
-                            {slot.eventId && <span className="text-purple-400 cursor-pointer" onClick={() => setView('event-builder', { eventId: slot.eventId })}>Linked Event</span>}
-                          </p>
-                          <div className="space-y-1">
-                            <div className={`flex justify-between items-center text-sm p-1 rounded ${slot.winnerId === slot.redFighterId ? 'bg-green-500/10 font-bold text-green-400' : ''}`}>
-                              <span>({redSeed}) {redF ? `${redF.firstName} ${redF.lastName}` : 'TBD'}</span>
-                              {slot.winnerId === slot.redFighterId && <Check size={14} />}
-                            </div>
-                            <div className={`flex justify-between items-center text-sm p-1 rounded ${slot.winnerId === slot.blueFighterId ? 'bg-green-500/10 font-bold text-green-400' : ''}`}>
-                              <span>({blueSeed}) {blueF ? `${blueF.firstName} ${blueF.lastName}` : 'TBD'}</span>
-                              {slot.winnerId === slot.blueFighterId && <Check size={14} />}
-                            </div>
-                          </div>
-                          {(() => {
-                            if (!slot.isCompleted) return null;
-                            const manualId = `archive_${slot.eventId}_${slot.redFighterId}_${slot.blueFighterId}`;
-                            const archiveId = slot.fightArchiveId || manualId;
-                            const isAvailable = fightArchive[archiveId] !== undefined || fightArchive[manualId] !== undefined;
-                            if (isAvailable) {
-                              const finalId = fightArchive[archiveId] ? archiveId : manualId;
-                              return (
-                                <button 
-                                  onClick={() => setView('fight-detail', { fightArchiveId: finalId })}
-                                  className="text-[10px] text-purple-400 underline hover:text-purple-300 block mt-1 font-bold text-left"
-                                >
-                                  View Fight Stats →
-                                </button>
-                              );
-                            }
-                            return (
-                              <p className="text-[10px] text-neutral-500 italic mt-1">
-                                Fight stats available after event finalization.
-                              </p>
-                            );
-                          })()}
-                        </div>
+                        <button 
+                          onClick={() => setView('fight-detail', { fightArchiveId: finalId })}
+                          className="text-[10px] text-purple-400 underline hover:text-purple-300 block mt-1 font-bold text-left"
+                        >
+                          View Fight Stats →
+                        </button>
                       );
-                    })}
-                  </div>
+                    }
+                    return (
+                      <p className="text-[10px] text-neutral-500 italic mt-1 font-sans">
+                        Stats available after event.
+                      </p>
+                    );
+                  };
 
-                  {/* Final */}
-                  <div className="space-y-6">
-                    <h3 className="text-xs font-bold text-neutral-500 uppercase tracking-widest border-b border-neutral-800 pb-1">Final</h3>
-                    
-                    {(() => {
-                      const slot = selectedTourney.fights.find(f => f.round === 'final');
-                      if (!slot) return null;
-                      const redF = slot.redFighterId ? fighters[slot.redFighterId] : null;
-                      const blueF = slot.blueFighterId ? fighters[slot.blueFighterId] : null;
-                      
-                      const part1 = selectedTourney.participants.find(p => p.fighterId === slot.redFighterId);
-                      const part2 = selectedTourney.participants.find(p => p.fighterId === slot.blueFighterId);
-                      
-                      return (
-                        <div className="bg-neutral-900 border border-purple-900/30 rounded p-4 space-y-3 relative overflow-hidden">
-                          <div className="absolute top-0 right-0 bg-purple-900/20 text-purple-400 text-[8px] font-black uppercase tracking-widest px-2 py-0.5">Grand Prix Final</div>
-                          
-                          <p className="text-[10px] text-neutral-500 uppercase font-mono flex justify-between">
-                            <span>Championship Final</span>
-                            {slot.eventId && <span className="text-purple-400 cursor-pointer" onClick={() => setView('event-builder', { eventId: slot.eventId })}>Linked Event</span>}
-                          </p>
-                          <div className="space-y-1">
-                            <div className={`flex justify-between items-center text-sm p-1 rounded ${slot.winnerId === slot.redFighterId ? 'bg-green-500/10 font-bold text-green-400' : ''}`}>
-                              <span>
-                                {redF ? `${redF.firstName} ${redF.lastName}` : 'TBD'}
-                                {part1?.replacementForFighterId && <span className="text-[9px] text-yellow-500 ml-1 font-mono">(Reserve)</span>}
-                              </span>
-                              {slot.winnerId === slot.redFighterId && <Check size={14} />}
-                            </div>
-                            <div className={`flex justify-between items-center text-sm p-1 rounded ${slot.winnerId === slot.blueFighterId ? 'bg-green-500/10 font-bold text-green-400' : ''}`}>
-                              <span>
-                                {blueF ? `${blueF.firstName} ${blueF.lastName}` : 'TBD'}
-                                {part2?.replacementForFighterId && <span className="text-[9px] text-yellow-500 ml-1 font-mono">(Reserve)</span>}
-                              </span>
-                              {slot.winnerId === slot.blueFighterId && <Check size={14} />}
-                            </div>
-                          </div>
-                          {selectedTourney.finalDelayReason && (
-                            <div className="bg-red-950/25 border border-red-900/40 p-3 rounded text-xs text-red-300 space-y-1.5 mt-2 text-left">
-                              <p className="font-bold flex items-center gap-1 text-red-400">
-                                <AlertTriangle size={14} />
-                                Grand Prix Final Delayed
-                              </p>
-                              <p>{selectedTourney.finalDelayReason}</p>
-                              <p className="text-[10px] text-neutral-400 font-mono">
-                                Earliest reschedule date: <span className="text-neutral-200 font-semibold">{selectedTourney.earliestFinalDate}</span>
-                              </p>
-                              {currentDate >= (selectedTourney.earliestFinalDate || '') && (
-                                <button
-                                  onClick={() => setSchedulingSlot({ tourneyId: selectedTourney.id, round: 'final' })}
-                                  className="mt-2 bg-purple-600 hover:bg-purple-500 text-white font-bold py-1 px-2.5 rounded text-[10px] uppercase transition-colors"
-                                >
-                                  Retry Scheduling Final
-                                </button>
-                              )}
-                            </div>
-                          )}
-                          {(() => {
-                            if (!slot.isCompleted) return null;
-                            const manualId = `archive_${slot.eventId}_${slot.redFighterId}_${slot.blueFighterId}`;
-                            const archiveId = slot.fightArchiveId || manualId;
-                            const isAvailable = fightArchive[archiveId] !== undefined || fightArchive[manualId] !== undefined;
-                            if (isAvailable) {
-                              const finalId = fightArchive[archiveId] ? archiveId : manualId;
-                              return (
-                                <button 
-                                  onClick={() => setView('fight-detail', { fightArchiveId: finalId })}
-                                  className="text-[10px] text-purple-400 underline hover:text-purple-300 block mt-1 font-bold text-left"
-                                >
-                                  View Final Stats →
-                                </button>
-                              );
-                            }
+                  const isEight = selectedTourney.format === 'eight_man';
+
+                  return (
+                    <div className={`grid grid-cols-1 ${isEight ? 'md:grid-cols-3' : 'md:grid-cols-2'} gap-8 items-center bg-neutral-950/50 p-6 rounded-lg border border-neutral-800`}>
+                      {/* Quarterfinals (8-Man only) */}
+                      {isEight && (
+                        <div className="space-y-6">
+                          <h3 className="text-xs font-bold text-neutral-500 uppercase tracking-widest border-b border-neutral-800 pb-1">Quarterfinals</h3>
+                          {selectedTourney.fights.filter(f => f.round === 'quarterfinal').map((slot, idx) => {
+                            const redF = slot.redFighterId ? fighters[slot.redFighterId] : null;
+                            const blueF = slot.blueFighterId ? fighters[slot.blueFighterId] : null;
+                            const redSeed = selectedTourney.participants.find(p => p.fighterId === slot.redFighterId)?.seed;
+                            const blueSeed = selectedTourney.participants.find(p => p.fighterId === slot.blueFighterId)?.seed;
+                            
                             return (
-                              <p className="text-[10px] text-neutral-500 italic mt-1">
-                                Fight stats available after event finalization.
-                              </p>
+                              <div key={slot.id} className="bg-neutral-900 border border-neutral-800 rounded p-3 space-y-2 text-left">
+                                <p className="text-[10px] text-neutral-500 uppercase font-mono flex justify-between">
+                                  <span>Quarterfinal {idx + 1}</span>
+                                  {slot.eventId && (
+                                    <span 
+                                      className="text-purple-400 cursor-pointer hover:underline" 
+                                      onClick={() => setView('event-builder', { eventId: slot.eventId })}
+                                    >
+                                      Linked Event
+                                    </span>
+                                  )}
+                                </p>
+                                <div className="space-y-1">
+                                  <div className={`flex justify-between items-center text-sm p-1 rounded ${slot.winnerId === slot.redFighterId ? 'bg-green-500/10 font-bold text-green-400' : ''}`}>
+                                    <span>({redSeed}) {redF ? `${redF.firstName} ${redF.lastName}` : 'TBD'}</span>
+                                    {slot.winnerId === slot.redFighterId && <Check size={14} />}
+                                  </div>
+                                  <div className={`flex justify-between items-center text-sm p-1 rounded ${slot.winnerId === slot.blueFighterId ? 'bg-green-500/10 font-bold text-green-400' : ''}`}>
+                                    <span>({blueSeed}) {blueF ? `${blueF.firstName} ${blueF.lastName}` : 'TBD'}</span>
+                                    {slot.winnerId === slot.blueFighterId && <Check size={14} />}
+                                  </div>
+                                </div>
+                                {renderFightStatsLink(slot)}
+                              </div>
                             );
-                          })()}
+                          })}
                         </div>
-                      );
-                    })()}
-                  </div>
-                </div>
+                      )}
+
+                      {/* Semifinals */}
+                      <div className="space-y-6">
+                        <h3 className="text-xs font-bold text-neutral-500 uppercase tracking-widest border-b border-neutral-800 pb-1">Semifinals</h3>
+                        
+                        {selectedTourney.fights.filter(f => f.round === 'semifinal').map((slot, idx) => {
+                          const redF = slot.redFighterId ? fighters[slot.redFighterId] : null;
+                          const blueF = slot.blueFighterId ? fighters[slot.blueFighterId] : null;
+                          const redSeed = selectedTourney.participants.find(p => p.fighterId === slot.redFighterId)?.seed;
+                          const blueSeed = selectedTourney.participants.find(p => p.fighterId === slot.blueFighterId)?.seed;
+                          
+                          return (
+                            <div key={slot.id} className="bg-neutral-900 border border-neutral-800 rounded p-3 space-y-2 text-left">
+                              <p className="text-[10px] text-neutral-500 uppercase font-mono flex justify-between">
+                                <span>Semifinal Match {idx + 1}</span>
+                                {slot.eventId && (
+                                  <span 
+                                    className="text-purple-400 cursor-pointer hover:underline" 
+                                    onClick={() => setView('event-builder', { eventId: slot.eventId })}
+                                  >
+                                    Linked Event
+                                  </span>
+                                )}
+                              </p>
+                              <div className="space-y-1">
+                                <div className={`flex justify-between items-center text-sm p-1 rounded ${slot.winnerId === slot.redFighterId ? 'bg-green-500/10 font-bold text-green-400' : ''}`}>
+                                  <span>{redSeed ? `(${redSeed}) ` : ''}{redF ? `${redF.firstName} ${redF.lastName}` : 'TBD'}</span>
+                                  {slot.winnerId === slot.redFighterId && <Check size={14} />}
+                                </div>
+                                <div className={`flex justify-between items-center text-sm p-1 rounded ${slot.winnerId === slot.blueFighterId ? 'bg-green-500/10 font-bold text-green-400' : ''}`}>
+                                  <span>{blueSeed ? `(${blueSeed}) ` : ''}{blueF ? `${blueF.firstName} ${blueF.lastName}` : 'TBD'}</span>
+                                  {slot.winnerId === slot.blueFighterId && <Check size={14} />}
+                                </div>
+                              </div>
+                              {renderFightStatsLink(slot)}
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* Final */}
+                      <div className="space-y-6">
+                        <h3 className="text-xs font-bold text-neutral-500 uppercase tracking-widest border-b border-neutral-800 pb-1">Final</h3>
+                        
+                        {(() => {
+                          const slot = selectedTourney.fights.find(f => f.round === 'final');
+                          if (!slot) return null;
+                          const redF = slot.redFighterId ? fighters[slot.redFighterId] : null;
+                          const blueF = slot.blueFighterId ? fighters[slot.blueFighterId] : null;
+                          
+                          const part1 = selectedTourney.participants.find(p => p.fighterId === slot.redFighterId);
+                          const part2 = selectedTourney.participants.find(p => p.fighterId === slot.blueFighterId);
+                          
+                          return (
+                            <div className="bg-neutral-900 border border-purple-900/30 rounded p-4 space-y-3 relative overflow-hidden text-left">
+                              <div className="absolute top-0 right-0 bg-purple-900/20 text-purple-400 text-[8px] font-black uppercase tracking-widest px-2 py-0.5">Grand Prix Final</div>
+                              
+                              <p className="text-[10px] text-neutral-500 uppercase font-mono flex justify-between">
+                                <span>Championship Final</span>
+                                {slot.eventId && (
+                                  <span 
+                                    className="text-purple-400 cursor-pointer hover:underline" 
+                                    onClick={() => setView('event-builder', { eventId: slot.eventId })}
+                                  >
+                                    Linked Event
+                                  </span>
+                                )}
+                              </p>
+                              <div className="space-y-1">
+                                <div className={`flex justify-between items-center text-sm p-1 rounded ${slot.winnerId === slot.redFighterId ? 'bg-green-500/10 font-bold text-green-400' : ''}`}>
+                                  <span>
+                                    {redF ? `${redF.firstName} ${redF.lastName}` : 'TBD'}
+                                    {part1?.replacementForFighterId && <span className="text-[9px] text-yellow-500 ml-1 font-mono">(Reserve)</span>}
+                                  </span>
+                                  {slot.winnerId === slot.redFighterId && <Check size={14} />}
+                                </div>
+                                <div className={`flex justify-between items-center text-sm p-1 rounded ${slot.winnerId === slot.blueFighterId ? 'bg-green-500/10 font-bold text-green-400' : ''}`}>
+                                  <span>
+                                    {blueF ? `${blueF.firstName} ${blueF.lastName}` : 'TBD'}
+                                    {part2?.replacementForFighterId && <span className="text-[9px] text-yellow-500 ml-1 font-mono">(Reserve)</span>}
+                                  </span>
+                                  {slot.winnerId === slot.blueFighterId && <Check size={14} />}
+                                </div>
+                              </div>
+                              
+                              {/* Generalized Round Delay Alerts */}
+                              {selectedTourney.roundDelayReason && (
+                                <div className="bg-red-950/25 border border-red-900/40 p-3 rounded text-xs text-red-300 space-y-1.5 mt-2 text-left">
+                                  <p className="font-bold flex items-center gap-1 text-red-400">
+                                    <AlertTriangle size={14} />
+                                    Grand Prix Delayed ({selectedTourney.delayedRound})
+                                  </p>
+                                  <p>{selectedTourney.roundDelayReason}</p>
+                                  <p className="text-[10px] text-neutral-400 font-mono">
+                                    Earliest reschedule date: <span className="text-neutral-200 font-semibold">{selectedTourney.earliestRoundDate}</span>
+                                  </p>
+                                  {currentDate >= (selectedTourney.earliestRoundDate || '') && (
+                                    <button
+                                      onClick={() => setSchedulingSlot({ tourneyId: selectedTourney.id, round: selectedTourney.delayedRound! })}
+                                      className="mt-2 bg-purple-600 hover:bg-purple-500 text-white font-bold py-1 px-2.5 rounded text-[10px] uppercase transition-colors"
+                                    >
+                                      Retry Scheduling {selectedTourney.delayedRound}
+                                    </button>
+                                  )}
+                                </div>
+                              )}
+                              
+                              {renderFightStatsLink(slot)}
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {/* Additional Info */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-sm">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-sm text-left">
                   <div className="space-y-2">
                     <h3 className="font-bold text-white uppercase tracking-wider text-xs">Reserve Fighters</h3>
                     {selectedTourney.reserveFighterIds.length === 0 ? (

@@ -81,25 +81,26 @@ export default function HistoryStats() {
                            (t.fights.find(fight => fight.round === 'final')?.redFighterId === f.id || 
                             t.fights.find(fight => fight.round === 'final')?.blueFighterId === f.id);
         
+        const isEight = t.format === 'eight_man';
         if (isWinner) {
-          score += 50; 
+          score += isEight ? 75 : 50; 
           const heldTitle = titleHistory.some(th => th.fighterId === f.id && th.beltType === 'undisputed');
           if (heldTitle || f.isChampion) {
-            score += 30; 
+            score += isEight ? 45 : 30; 
           }
           if (t.titleShotPromised && t.titleShotUsed) {
-            score += 15;
+            score += isEight ? 22 : 15;
             const wonTitleAfterGp = titleHistory.some(th => 
               th.fighterId === f.id && 
               th.beltType === 'undisputed' && 
               th.dateWon >= dateEarned
             );
             if (wonTitleAfterGp) {
-              score += 25;
+              score += isEight ? 38 : 25;
             }
           }
         } else if (isFinalist) {
-          score += 20; 
+          score += isEight ? 30 : 20; 
         }
       }
     });
@@ -309,7 +310,14 @@ export default function HistoryStats() {
                     return (
                       <tr key={t.id} className="hover:bg-neutral-800/30">
                         <td className="py-3 text-neutral-400 font-mono text-xs">{t.completedDate || t.createdDate}</td>
-                        <td className="py-3 text-white font-bold">{t.name}</td>
+                        <td className="py-3">
+                          <div className="text-white font-bold">{t.name}</div>
+                          <span className={`text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded ${
+                            t.format === 'eight_man' ? 'bg-purple-900/40 text-purple-400' : 'bg-blue-900/40 text-blue-400'
+                          }`}>
+                            {t.format === 'eight_man' ? '8-Man Format' : '4-Man Format'}
+                          </span>
+                        </td>
                         <td className="py-3 text-neutral-400">{t.weightClass}</td>
                         <td className="py-3 text-neutral-300 font-mono">{t.prestige ?? 0}%</td>
                         <td className="py-3 text-neutral-400 font-mono text-xs">

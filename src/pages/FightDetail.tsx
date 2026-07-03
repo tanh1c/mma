@@ -63,6 +63,11 @@ export const FightDetail: React.FC = () => {
             <span className="text-xs text-neutral-500 uppercase tracking-widest mt-1 block">
               {archiveItem.isTitleFight && belt ? belt.shortName : archiveItem.weightClass}
             </span>
+            {archiveItem.tournamentRound && (
+              <span className="mt-2 inline-block px-2 py-0.5 bg-purple-900/30 text-purple-400 text-[10px] font-black uppercase tracking-wider rounded border border-purple-800/20">
+                {archiveItem.tournamentRound === 'quarterfinal' ? 'GP Quarterfinal' : archiveItem.tournamentRound === 'semifinal' ? 'GP Semifinal' : 'GP Final'}
+              </span>
+            )}
           </div>
 
           <div className="text-center w-5/12">

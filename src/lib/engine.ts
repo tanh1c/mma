@@ -56,7 +56,22 @@ function generateYearlyAwardsForYear(state: GameState, year: number): YearlyAwar
   const fighterWins: Record<string, number> = {};
   yearFights.forEach(f => {
     if (f.winnerId) {
-      fighterWins[f.winnerId] = (fighterWins[f.winnerId] || 0) + 1 + (f.isTitleFight ? 2 : 0);
+      let weight = 1;
+      if (f.isTitleFight) {
+        weight += 2;
+      }
+      if (f.tournamentRound) {
+        if (f.tournamentRound === 'quarterfinal') {
+          weight += 0.5;
+        } else if (f.tournamentRound === 'semifinal') {
+          weight += 1.0;
+        } else if (f.tournamentRound === 'final') {
+          const tourney = f.tournamentId ? state.tournaments?.[f.tournamentId] : null;
+          const isEight = tourney ? tourney.format === 'eight_man' : false;
+          weight += isEight ? 3.0 : 2.0;
+        }
+      }
+      fighterWins[f.winnerId] = (fighterWins[f.winnerId] || 0) + weight;
     }
   });
   const bestFighters = Object.keys(fighterWins).sort((a, b) => fighterWins[b] - fighterWins[a]);
@@ -680,13 +695,16 @@ export function finalizeEventFinancials(state: GameState, eventId: string): Game
     newEvent.marketingSpend,
     newState.promotion,
     newState.storylines,
-    newState.titles
+    newState.titles,
+    newState.tournaments
   );
 
   let gpFinalBonus = 0;
-  const hasGpFinal = newEvent.fights.some(f => (f as any).tournamentId && (f as any).tournamentRound === 'final');
-  if (hasGpFinal && results.fanReaction > 75) {
-    gpFinalBonus = 25000;
+  const gpFinalMatch = newEvent.fights.find(f => (f as any).tournamentId && (f as any).tournamentRound === 'final');
+  const hasEightManFinal = gpFinalMatch ? (newState.tournaments?.[(gpFinalMatch as any).tournamentId]?.format === 'eight_man') : false;
+
+  if (gpFinalMatch && results.fanReaction > 75) {
+    gpFinalBonus = hasEightManFinal ? 50000 : 25000;
   }
 
   results.broadcastRevenue += gpFinalBonus;
@@ -719,6 +737,12 @@ export function finalizeEventFinancials(state: GameState, eventId: string): Game
     });
   }
 
+  let extraCommercialBonus = 0;
+  if (hasEightManFinal) {
+    extraCommercialBonus = 15000;
+  }
+  dealBonusRevenue += extraCommercialBonus;
+
   // Inject deal bonuses into results
   results.broadcastRevenue += dealBonusRevenue;
   results.totalRevenue += dealBonusRevenue;
@@ -738,12 +762,15 @@ export function finalizeEventFinancials(state: GameState, eventId: string): Game
   });
 
   if (dealBonusRevenue > 0) {
+     const desc = extraCommercialBonus > 0
+       ? `Deal bonuses (incl. 8-Man GP Final Sponsor Boost) from ${newEvent.name}`
+       : `Deal bonuses from ${newEvent.name}`;
      newState.financeLedger.unshift({
         id: uuidv4(),
         date: newState.currentDate,
         type: 'sponsor_event_bonus', // generic label for this
         amount: dealBonusRevenue,
-        description: `Deal bonuses from ${newEvent.name}`,
+        description: desc,
         eventId: newEvent.id,
         affectsCash: true,
         isSummary: false
@@ -756,7 +783,9 @@ export function finalizeEventFinancials(state: GameState, eventId: string): Game
         date: newState.currentDate,
         type: 'sponsor_event_bonus',
         amount: gpFinalBonus,
-        description: `Grand Prix Final Commercial Bonus (${newEvent.name} - high rating)`,
+        description: hasEightManFinal
+          ? `8-Man Grand Prix Final Commercial Bonus (${newEvent.name} - high rating)`
+          : `4-Man Grand Prix Final Commercial Bonus (${newEvent.name} - high rating)`,
         eventId: newEvent.id,
         affectsCash: true,
         isSummary: false
@@ -872,6 +901,8 @@ export function finalizeEventFinancials(state: GameState, eventId: string): Game
         time: f.result.time,
         isTitleFight: f.isTitleFight,
         titleFightType: f.titleFightType,
+        tournamentId: f.tournamentId,
+        tournamentRound: f.tournamentRound,
         performanceRating: f.result.performanceRating || 50,
         scorecards: f.result.scorecards,
         roundStats: f.result.roundStats,

@@ -8,7 +8,7 @@ import { ArrowUp, ArrowDown, Trash2, AlertTriangle, Info } from 'lucide-react';
 import { Select } from '../components/Select';
 
 export default function EventBuilder() {
-  const { fighters, venues, promotion, currentDate, storylines, titles, belts, createEvent, updateEvent, setView, selectedEventId, events } = useGameStore();
+  const { fighters, venues, promotion, currentDate, storylines, titles, belts, createEvent, updateEvent, setView, selectedEventId, events, tournaments = {} } = useGameStore();
   
   const isEditing = Boolean(selectedEventId && events[selectedEventId] && !events[selectedEventId].isCompleted);
   const editingEvent = isEditing ? events[selectedEventId!] : null;
@@ -54,9 +54,10 @@ export default function EventBuilder() {
       marketingSpend,
       promotion,
       storylines,
-      titles
+      titles,
+      tournaments
     );
-  }, [fights, fighters, venueId, ticketPrice, marketingSpend, promotion, venues, storylines, titles]);
+  }, [fights, fighters, venues, venueId, ticketPrice, marketingSpend, promotion, storylines, titles, tournaments]);
 
   if (selectedEventId && events[selectedEventId] && events[selectedEventId].isCompleted) {
     return (
@@ -557,8 +558,8 @@ export default function EventBuilder() {
                               );
                             })()}
                             {(fight as any).tournamentId && (
-                              <span className="text-purple-400 ml-1 font-bold">
-                                🛡 {((fight as any).tournamentRound === 'semifinal') ? 'GP SEMIFINAL' : 'GP FINAL'}
+                              <span className="text-purple-400 ml-1 font-bold text-xs uppercase">
+                                🛡 {((fight as any).tournamentRound === 'quarterfinal') ? 'GP Quarterfinal' : ((fight as any).tournamentRound === 'semifinal') ? 'GP Semifinal' : 'GP Final'}
                               </span>
                             )}
                           </span>
