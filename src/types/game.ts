@@ -511,4 +511,6 @@ export interface GrandPrixTournament {
   earliestRoundDate?: string | null;
   quarterfinalCompletedDate?: string | null;
   recommendedSemifinalDate?: string | null;
+  usedReserveFighterIds?: string[];
 }
+

@@ -401,11 +401,13 @@ export function applyFightResult(state: GameState, eventId: string, fightIndex: 
      const checkAndClearShot = (f: Fighter, fId: string) => {
         if (f.titleShotPromised) {
            newState.fighters[fId] = { ...newState.fighters[fId], titleShotPromised: false };
-           const wcTourneys = Object.values(newState.tournaments).filter(t => t.weightClass === f.weightClass && t.winnerId === fId && t.status === 'completed');
-           if (wcTourneys.length > 0) {
-              const targetGp = wcTourneys[0];
-              newState.tournaments[targetGp.id] = { ...targetGp, titleShotUsed: true };
-           }
+            const wcTourneys = Object.values(newState.tournaments)
+              .filter(t => t.weightClass === f.weightClass && t.winnerId === fId && t.status === 'completed' && t.titleShotPromised && !t.titleShotUsed)
+              .sort((a, b) => new Date(a.createdDate).getTime() - new Date(b.createdDate).getTime());
+            if (wcTourneys.length > 0) {
+               const targetGp = wcTourneys[0];
+               newState.tournaments[targetGp.id] = { ...targetGp, titleShotUsed: true };
+            }
         }
      };
      

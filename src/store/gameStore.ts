@@ -9,7 +9,7 @@ import { createNewGame, saveGameLocally, loadGameLocally, exportGameToJSON, impo
 
 import { autoBookEventsAndContracts, maintainDeals } from '../lib/game/autobooker';
 import { quickSimulateEvent } from '../lib/engine';
-import { createGrandPrixTournament, scheduleQuarterfinals, scheduleSemifinals, scheduleFinal, cancelTournament, runAutopilotTournaments } from '../lib/game/tournament';
+import { createGrandPrixTournament, scheduleQuarterfinals, scheduleSemifinals, scheduleFinal, cancelTournament, runAutopilotTournaments, syncTournamentTitleShotFlags } from '../lib/game/tournament';
 import { WeightClass, TournamentFormat } from '../types/game';
 
 export interface ActiveSimulation {
@@ -191,6 +191,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
         // Advance 1 day
         gameState = advanceTime(gameState, 1);
         gameState = maintainDeals(gameState);
+        gameState = syncTournamentTitleShotFlags(gameState);
         daysSimulated++;
         
         Object.assign(newState, gameState);

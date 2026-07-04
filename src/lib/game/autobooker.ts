@@ -18,8 +18,20 @@ export function autoBookEventsAndContracts(state: GameState): GameState {
   let newState = { ...state };
 
   if (newState.autopilot.nextBookingAttemptDate && new Date(newState.currentDate).getTime() < new Date(newState.autopilot.nextBookingAttemptDate).getTime()) {
-    // Also maintain roster even if skipping event booking
-    return maintainRoster(newState);
+    // Cadence stall safeguard: if 90+ days without a completed event, force-clear delay
+    const completedEvents = Object.values(newState.events).filter(e => e.isCompleted);
+    const lastCompleted = completedEvents.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
+    const daysSinceCompleted = lastCompleted 
+      ? calculateDateDifference(newState.currentDate, lastCompleted.date)
+      : 999;
+    
+    if (daysSinceCompleted >= 90) {
+      // Force-clear booking delay to prevent indefinite stall
+      newState.autopilot = { ...newState.autopilot, nextBookingAttemptDate: null };
+    } else {
+      // Also maintain roster even if skipping event booking
+      return maintainRoster(newState);
+    }
   }
 
   // Check if we need a new event

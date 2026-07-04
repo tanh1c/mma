@@ -153,6 +153,9 @@ function validateAndMigrateState(parsed: any): GameState | null {
       if (!state.tournaments[id].format) {
         state.tournaments[id].format = 'four_man';
       }
+      if (!state.tournaments[id].usedReserveFighterIds) {
+        state.tournaments[id].usedReserveFighterIds = [];
+      }
     }
   }
   

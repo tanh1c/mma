@@ -210,7 +210,8 @@ export default function FighterDetail() {
           
           // Grand Prix Stats
           const tournamentsList = Object.values(state.tournaments || {});
-          const gpWins = tournamentsList.filter(t => t.winnerId === f.id && t.status === 'completed').length;
+          const gpWins4Man = tournamentsList.filter(t => t.winnerId === f.id && t.status === 'completed' && t.format === 'four_man').length;
+          const gpWins8Man = tournamentsList.filter(t => t.winnerId === f.id && t.status === 'completed' && t.format === 'eight_man').length;
           const gpFinals = tournamentsList.filter(t => t.status === 'completed' && t.fights.some(fight => fight.round === 'final' && (fight.redFighterId === f.id || fight.blueFighterId === f.id))).length;
           let gpRecordWins = 0;
           let gpRecordLosses = 0;
@@ -281,13 +282,17 @@ export default function FighterDetail() {
                    </div>
                 </div>
                  
-                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+                 <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mt-4">
                     <div className="bg-neutral-950 p-3 rounded border border-neutral-800 text-center">
-                       <div className="text-xs text-neutral-500 uppercase tracking-widest mb-1">Grand Prix Wins</div>
-                       <div className="text-xl font-bold text-purple-400">{gpWins}</div>
+                       <div className="text-xs text-neutral-500 uppercase tracking-widest mb-1">4-Man GP Wins</div>
+                       <div className="text-xl font-bold text-purple-400">{gpWins4Man}</div>
                     </div>
                     <div className="bg-neutral-950 p-3 rounded border border-neutral-800 text-center">
-                       <div className="text-xs text-neutral-500 uppercase tracking-widest mb-1">Grand Prix Finals</div>
+                       <div className="text-xs text-neutral-500 uppercase tracking-widest mb-1">8-Man GP Wins</div>
+                       <div className="text-xl font-bold text-fuchsia-400">{gpWins8Man}</div>
+                    </div>
+                    <div className="bg-neutral-950 p-3 rounded border border-neutral-800 text-center">
+                       <div className="text-xs text-neutral-500 uppercase tracking-widest mb-1">GP Finals</div>
                        <div className="text-xl font-bold text-blue-400">{gpFinals}</div>
                     </div>
                     <div className="bg-neutral-950 p-3 rounded border border-neutral-800 text-center">

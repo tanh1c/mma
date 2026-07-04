@@ -7,7 +7,7 @@ export default function HistoryStats() {
   const { eventArchive, fightArchive, titleHistory, fighters, setView, belts, yearlyAwards = {}, financeLedger, tournaments = {} } = useGameStore();
 
   const [expandedEventId, setExpandedEventId] = React.useState<string | null>(null);
-  const [gpFilter, setGpFilter] = React.useState<'All' | 'Active' | 'Completed' | 'Cancelled'>('All');
+  const [gpFilter, setGpFilter] = React.useState<'All' | 'Active' | 'Completed' | 'Cancelled' | '4-Man' | '8-Man'>('All');
 
   const events = Object.values(eventArchive).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   const fights = Object.values(fightArchive).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
@@ -237,7 +237,7 @@ export default function HistoryStats() {
             </h2>
             
             <div className="flex gap-1 bg-neutral-950 p-1 rounded border border-neutral-800">
-              {(['All', 'Active', 'Completed', 'Cancelled'] as const).map(f => (
+              {(['All', 'Active', 'Completed', 'Cancelled', '4-Man', '8-Man'] as const).map(f => (
                 <button
                   key={f}
                   onClick={() => setGpFilter(f)}
@@ -259,7 +259,7 @@ export default function HistoryStats() {
                   <th className="py-2.5">Tournament</th>
                   <th className="py-2.5">Weight Class</th>
                   <th className="py-2.5">Prestige</th>
-                  <th className="py-2.5">Reserve Used?</th>
+                  <th className="py-2.5">Reserves Used</th>
                   <th className="py-2.5">Winner</th>
                   <th className="py-2.5">Runner-Up</th>
                   <th className="py-2.5">Title Shot Status</th>
@@ -274,6 +274,8 @@ export default function HistoryStats() {
                     if (gpFilter === 'Active') return t.status === 'planned' || t.status === 'active';
                     if (gpFilter === 'Completed') return t.status === 'completed';
                     if (gpFilter === 'Cancelled') return t.status === 'cancelled';
+                    if (gpFilter === '4-Man') return t.format === 'four_man';
+                    if (gpFilter === '8-Man') return t.format === 'eight_man';
                     return true;
                   });
 
@@ -292,6 +294,11 @@ export default function HistoryStats() {
                     const runnerUp = runnerUpId ? fighters[runnerUpId] : null;
                     
                     const reserveUsed = t.participants.some(p => p.replacementForFighterId !== undefined && p.replacementForFighterId !== null);
+                    const usedReservesNames = (t.usedReserveFighterIds || [])
+                      .map(id => fighters[id])
+                      .filter(Boolean)
+                      .map(f => `${f.firstName[0]}. ${f.lastName}`)
+                      .join(', ');
                     
                     let titleShotStatus = 'N/A';
                     if (t.titleShotPromised) {
@@ -302,6 +309,12 @@ export default function HistoryStats() {
                       }
                     }
 
+                    const qfFights = t.fights.filter(f => f.round === 'quarterfinal');
+                    const q1Archive = qfFights[0]?.fightArchiveId;
+                    const q2Archive = qfFights[1]?.fightArchiveId;
+                    const q3Archive = qfFights[2]?.fightArchiveId;
+                    const q4Archive = qfFights[3]?.fightArchiveId;
+
                     const semiFights = t.fights.filter(f => f.round === 'semifinal');
                     const s1Archive = semiFights[0]?.fightArchiveId;
                     const s2Archive = semiFights[1]?.fightArchiveId;
@@ -311,18 +324,40 @@ export default function HistoryStats() {
                       <tr key={t.id} className="hover:bg-neutral-800/30">
                         <td className="py-3 text-neutral-400 font-mono text-xs">{t.completedDate || t.createdDate}</td>
                         <td className="py-3">
-                          <div className="text-white font-bold">{t.name}</div>
-                          <span className={`text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded ${
-                            t.format === 'eight_man' ? 'bg-purple-900/40 text-purple-400' : 'bg-blue-900/40 text-blue-400'
-                          }`}>
-                            {t.format === 'eight_man' ? '8-Man Format' : '4-Man Format'}
-                          </span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-white font-bold">{t.name}</span>
+                            {t.status === 'cancelled' && (
+                              <span className="text-[8px] bg-red-900/60 text-red-400 font-black uppercase px-1 rounded">Cancelled</span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-1.5 mt-0.5">
+                            <span className={`text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded ${
+                              t.format === 'eight_man' ? 'bg-purple-900/40 text-purple-400' : 'bg-blue-900/40 text-blue-400'
+                            }`}>
+                              {t.format === 'eight_man' ? '8-Man' : '4-Man'}
+                            </span>
+                            {t.notes && t.notes.length > 0 && (
+                              <span 
+                                className="text-[9px] text-yellow-500 font-medium cursor-help" 
+                                title={t.notes.join('\n')}
+                              >
+                                ⚠️ Notes ({t.notes.length})
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td className="py-3 text-neutral-400">{t.weightClass}</td>
                         <td className="py-3 text-neutral-300 font-mono">{t.prestige ?? 0}%</td>
                         <td className="py-3 text-neutral-400 font-mono text-xs">
                           {reserveUsed ? (
-                            <span className="text-yellow-500 font-bold bg-yellow-950/20 px-1 py-0.5 rounded">YES</span>
+                            <div className="space-y-0.5">
+                              <span className="text-yellow-500 font-bold bg-yellow-950/20 px-1 py-0.5 rounded text-[10px]">YES</span>
+                              {usedReservesNames && (
+                                <div className="text-[9px] text-neutral-500 truncate max-w-[120px]" title={usedReservesNames}>
+                                  {usedReservesNames}
+                                </div>
+                              )}
+                            </div>
                           ) : (
                             <span className="text-neutral-500">NO</span>
                           )}
@@ -358,18 +393,31 @@ export default function HistoryStats() {
                           {titleShotStatus === 'N/A' && <span className="text-neutral-500 text-xs">—</span>}
                         </td>
                         <td className="py-3">
-                          <div className="flex gap-1.5 text-[10px] font-bold font-mono">
-                            {s1Archive ? (
-                              <button onClick={() => setView('fight-detail', { fightArchiveId: s1Archive })} className="text-purple-400 hover:underline">SF1</button>
-                            ) : <span className="text-neutral-600">SF1</span>}
-                            <span className="text-neutral-700">|</span>
-                            {s2Archive ? (
-                              <button onClick={() => setView('fight-detail', { fightArchiveId: s2Archive })} className="text-purple-400 hover:underline">SF2</button>
-                            ) : <span className="text-neutral-600">SF2</span>}
-                            <span className="text-neutral-700">|</span>
-                            {finalArchive ? (
-                              <button onClick={() => setView('fight-detail', { fightArchiveId: finalArchive })} className="text-purple-400 hover:underline font-bold">FNL</button>
-                            ) : <span className="text-neutral-600">FNL</span>}
+                          <div className="flex flex-col gap-1 text-[10px] font-bold font-mono">
+                            {t.format === 'eight_man' && (
+                              <div className="flex gap-1 text-[9px] text-neutral-500">
+                                {q1Archive ? <button onClick={() => setView('fight-detail', { fightArchiveId: q1Archive })} className="text-purple-400 hover:underline">Q1</button> : <span className="text-neutral-600">Q1</span>}
+                                <span>•</span>
+                                {q2Archive ? <button onClick={() => setView('fight-detail', { fightArchiveId: q2Archive })} className="text-purple-400 hover:underline">Q2</button> : <span className="text-neutral-600">Q2</span>}
+                                <span>•</span>
+                                {q3Archive ? <button onClick={() => setView('fight-detail', { fightArchiveId: q3Archive })} className="text-purple-400 hover:underline">Q3</button> : <span className="text-neutral-600">Q3</span>}
+                                <span>•</span>
+                                {q4Archive ? <button onClick={() => setView('fight-detail', { fightArchiveId: q4Archive })} className="text-purple-400 hover:underline">Q4</button> : <span className="text-neutral-600">Q4</span>}
+                              </div>
+                            )}
+                            <div className="flex gap-1.5">
+                              {s1Archive ? (
+                                <button onClick={() => setView('fight-detail', { fightArchiveId: s1Archive })} className="text-purple-400 hover:underline">SF1</button>
+                              ) : <span className="text-neutral-600">SF1</span>}
+                              <span className="text-neutral-700">|</span>
+                              {s2Archive ? (
+                                <button onClick={() => setView('fight-detail', { fightArchiveId: s2Archive })} className="text-purple-400 hover:underline">SF2</button>
+                              ) : <span className="text-neutral-600">SF2</span>}
+                              <span className="text-neutral-700">|</span>
+                              {finalArchive ? (
+                                <button onClick={() => setView('fight-detail', { fightArchiveId: finalArchive })} className="text-purple-400 hover:underline font-bold">FNL</button>
+                              ) : <span className="text-neutral-600">FNL</span>}
+                            </div>
                           </div>
                         </td>
                         <td className="py-3 text-right">

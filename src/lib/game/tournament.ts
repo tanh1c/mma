@@ -166,12 +166,17 @@ export function createGrandPrixTournament(
     createdDate: state.currentDate,
     participants,
     reserveFighterIds: reserveIds,
+    usedReserveFighterIds: [],
     fights,
     titleShotPromised,
     prestige: format === 'eight_man' ? 85 : 70,
     notes: [`Planned on ${state.currentDate} with format: ${format}. Seeds: ${sortedParticipants.map((f, idx) => `${idx + 1}. ${f.lastName}`).join(', ')}`]
   };
   
+  const formatLabel = format === 'eight_man' ? '8-man' : '4-man';
+  const participantCount = format === 'eight_man' ? 8 : 4;
+  const titleShotText = titleShotPromised ? " The winner will earn a guaranteed title shot." : "";
+
   const newState = {
     ...state,
     tournaments: {
@@ -184,7 +189,7 @@ export function createGrandPrixTournament(
         date: state.currentDate,
         type: 'general' as const,
         title: `Tournament Announced: ${name}`,
-        content: `A new 4-man Grand Prix has been announced in the ${weightClass} division. Participants: ${sortedParticipants.map(f => `${f.firstName} ${f.lastName}`).join(', ')}.`
+        content: `A new ${formatLabel} Grand Prix has been announced in the ${weightClass} division, featuring ${participantCount} elite fighters.${titleShotText} Participants: ${sortedParticipants.map(f => `${f.firstName} ${f.lastName}`).join(', ')}.`
       },
       ...state.news
     ]
@@ -289,14 +294,33 @@ export function scheduleTournamentRound(
         const resInjured = reserveFighter?.injuryStatus;
         const resSuspended = reserveFighter?.medicalSuspension && reserveFighter.medicalSuspension.daysRemaining > 0;
         const resFatigued = reserveFighter?.fatigue > 75;
-        const resBooked = Object.values(newState.events).some(e => !e.isCompleted && e.fights.some(f => f.redCornerId === resId || f.blueCornerId === resId));
+        const resBooked = Object.values(newState.events).some(e => 
+          !e.isCompleted && e.fights.some(f => f.redCornerId === resId || f.blueCornerId === resId)
+        );
         
         const reserveUnavailable = hasNoContract || resInjured || resSuspended || resFatigued || resBooked;
-        const inActiveSlots = slots.some(s => s.redFighterId === resId || s.blueFighterId === resId);
-        return !reserveUnavailable && !inActiveSlots;
+        
+        // Reject if already in participants (current or replaced)
+        const isCurrentParticipant = updatedTourney.participants.some(p => p.fighterId === resId);
+        
+        // Reject if in any slot of the tournament (planned, active, completed)
+        const inAnySlot = updatedTourney.fights.some(s => s.redFighterId === resId || s.blueFighterId === resId);
+        
+        // Reject if already used as a replacement
+        const alreadyUsed = updatedTourney.usedReserveFighterIds?.includes(resId) || false;
+        
+        return !reserveUnavailable && !isCurrentParticipant && !inAnySlot && !alreadyUsed;
       });
       
       if (unusedReserveId) {
+        if (!updatedTourney.usedReserveFighterIds) {
+          updatedTourney.usedReserveFighterIds = [];
+        }
+        updatedTourney.usedReserveFighterIds.push(unusedReserveId);
+        
+        // Remove from available reserve list
+        updatedTourney.reserveFighterIds = updatedTourney.reserveFighterIds.filter(id => id !== unusedReserveId);
+
         const participantIdx = updatedTourney.participants.findIndex(p => p.fighterId === originalFighterId);
         if (participantIdx !== -1) {
           updatedTourney.participants[participantIdx] = {
@@ -505,13 +529,24 @@ export function maintainTournamentRosterDepth(state: GameState, weightClass: Wei
   let newState = { ...state, fighters: { ...state.fighters }, news: [...state.news] };
   let currentEligibleCount = eligible.length;
   
-  const targetCount = state.promotion.reputation >= 55 ? 11 : 6;
-  if (currentEligibleCount < targetCount && newState.promotion.money > 150000) {
+  // Scale target based on reputation level
+  let targetCount = 6; // Base for 4-man
+  if (state.promotion.reputation >= 60) {
+    targetCount = 11; // Enough for 8-man
+  } else if (state.promotion.reputation >= 40) {
+    targetCount = 8; // Comfortable for 4-man + reserves
+  }
+  
+  // Only sign if we have enough money and are under target
+  const minMoneyForSigning = 100000;
+  const maxSignPerTick = 2; // Don't sign too many at once
+  
+  if (currentEligibleCount < targetCount && newState.promotion.money > minMoneyForSigning) {
     const freeAgents = Object.values(newState.fighters)
       .filter(f => !f.contract && f.weightClass === weightClass)
       .sort((a, b) => b.popularity - a.popularity || b.potential - a.potential);
       
-    const needed = targetCount - currentEligibleCount;
+    const needed = Math.min(targetCount - currentEligibleCount, maxSignPerTick);
     const toSignList = freeAgents.slice(0, needed);
     
     toSignList.forEach(toSign => {
@@ -828,10 +863,17 @@ export function runAutopilotTournaments(state: GameState): GameState {
     }
   });
 
-  const canRunEightMan = newState.promotion.reputation >= 55 && newState.promotion.money >= 250000;
+  const canRunEightMan = newState.promotion.reputation >= 60 && newState.promotion.money >= 200000;
   let format: TournamentFormat = 'four_man';
   if (canRunEightMan) {
-    format = Math.random() < 0.25 ? 'eight_man' : 'four_man';
+    // Check if an 8-man has ever been created
+    const ever8man = Object.values(newState.tournaments).some(t => t.format === 'eight_man');
+    // Check if promotion has been at high rep for a while (use createdDate proxy)
+    const highRepBonus = newState.promotion.reputation >= 75 ? 0.10 : 0.0;
+    const neverHad8manBonus = !ever8man && newState.promotion.reputation >= 65 ? 0.10 : 0.0;
+    const moneyBonus = newState.promotion.money >= 500000 ? 0.05 : 0.0;
+    const eightManChance = 0.25 + highRepBonus + neverHad8manBonus + moneyBonus;
+    format = Math.random() < eightManChance ? 'eight_man' : 'four_man';
   }
   
   const targetRequiredFighters = format === 'eight_man' ? 11 : 6;
@@ -962,4 +1004,191 @@ export function getPendingTitleShotDebts(state: GameState): TitleShotDebt[] {
   });
   
   return debts;
+}
+
+export function validateTournamentState(state: GameState): string[] {
+  const errors: string[] = [];
+
+  const getDaysDiff = (d1: string, d2: string): number => {
+    return Math.round((new Date(d1).getTime() - new Date(d2).getTime()) / (1000 * 60 * 60 * 24));
+  };
+
+  Object.values(state.tournaments || {}).forEach(t => {
+    // 1. no duplicate participant fighter IDs
+    const participantIds = t.participants.map(p => p.fighterId);
+    const uniqueParticipantIds = new Set(participantIds);
+    if (uniqueParticipantIds.size !== participantIds.length) {
+      errors.push(`Tournament "${t.name}" (${t.id}) has duplicate participant fighter IDs: ${participantIds}`);
+    }
+
+    // 2. no duplicate reserve IDs
+    const reserveIds = t.reserveFighterIds;
+    const uniqueReserveIds = new Set(reserveIds);
+    if (uniqueReserveIds.size !== reserveIds.length) {
+      errors.push(`Tournament "${t.name}" (${t.id}) has duplicate reserve fighter IDs: ${reserveIds}`);
+    }
+
+    // 3. no overlap between participants and unused reserves unless reserve has officially replaced someone
+    const overlap = participantIds.filter(id => reserveIds.includes(id));
+    if (overlap.length > 0) {
+      errors.push(`Tournament "${t.name}" (${t.id}) has overlap between active participants and unused reserves: ${overlap.join(', ')}`);
+    }
+
+    // 4. no fighter appears twice in same scheduled round
+    const roundsToCheck: TournamentRound[] = ['quarterfinal', 'semifinal', 'final'];
+    roundsToCheck.forEach(round => {
+      const roundSlots = t.fights.filter(f => f.round === round);
+      const fightersInRound: string[] = [];
+      roundSlots.forEach(s => {
+        if (s.redFighterId) fightersInRound.push(s.redFighterId);
+        if (s.blueFighterId) fightersInRound.push(s.blueFighterId);
+      });
+      const uniqueFighters = new Set(fightersInRound);
+      if (uniqueFighters.size !== fightersInRound.length) {
+        errors.push(`Tournament "${t.name}" (${t.id}) has a fighter appearing twice in round "${round}".`);
+      }
+    });
+
+    // 5. no completed slot missing winner
+    t.fights.forEach(slot => {
+      if (slot.isCompleted && !slot.winnerId) {
+        errors.push(`Tournament "${t.name}" (${t.id}) has completed slot ${slot.id} in round "${slot.round}" but is missing winnerId.`);
+      }
+      
+      // 6. no completed slot missing fightArchiveId after event finalization
+      if (slot.isCompleted && slot.eventId) {
+        const event = state.events[slot.eventId];
+        if (event && event.isCompleted && !slot.fightArchiveId) {
+          errors.push(`Tournament "${t.name}" (${t.id}) slot ${slot.id} is completed on finalized event ${event.name} but missing fightArchiveId.`);
+        }
+      }
+
+      // 11. no injured/suspended fighter in upcoming tournament fight
+      if (slot.eventId && !slot.isCompleted) {
+        const event = state.events[slot.eventId];
+        if (event && !event.isCompleted) {
+          const daysUntilEvent = getDaysDiff(event.date, state.currentDate);
+          
+          const checkFighter = (fighterId?: string) => {
+            if (!fighterId) return;
+            const fighter = state.fighters[fighterId];
+            if (!fighter) return;
+            
+            if (fighter.injuryStatus) {
+              const injuryDays = fighter.injuryStatus.daysRemaining;
+              if (injuryDays > daysUntilEvent) {
+                errors.push(`Fighter ${fighter.firstName} ${fighter.lastName} is injured (${fighter.injuryStatus.type}, ${injuryDays}d left) but scheduled in upcoming fight on ${event.date} (${daysUntilEvent}d away) for tournament "${t.name}".`);
+              }
+            }
+            if (fighter.medicalSuspension && fighter.medicalSuspension.daysRemaining > 0) {
+              const msDays = fighter.medicalSuspension.daysRemaining;
+              if (msDays > daysUntilEvent) {
+                errors.push(`Fighter ${fighter.firstName} ${fighter.lastName} is suspended (${msDays}d left) but scheduled in upcoming fight on ${event.date} (${daysUntilEvent}d away) for tournament "${t.name}".`);
+              }
+            }
+          };
+          checkFighter(slot.redFighterId);
+          checkFighter(slot.blueFighterId);
+        }
+      }
+    });
+
+    // 7. 4-man cannot have quarterfinal slots
+    if (t.format === 'four_man') {
+      const qfSlots = t.fights.filter(f => f.round === 'quarterfinal');
+      if (qfSlots.length > 0) {
+        errors.push(`4-Man Tournament "${t.name}" (${t.id}) contains quarterfinal slots.`);
+      }
+    }
+
+    // 8. 8-man must have exactly 4 quarterfinals, 2 semifinals, 1 final
+    if (t.format === 'eight_man') {
+      const qfSlots = t.fights.filter(f => f.round === 'quarterfinal');
+      const sfSlots = t.fights.filter(f => f.round === 'semifinal');
+      const finalSlots = t.fights.filter(f => f.round === 'final');
+      if (qfSlots.length !== 4) {
+        errors.push(`8-Man Tournament "${t.name}" (${t.id}) does not have exactly 4 quarterfinals (found ${qfSlots.length}).`);
+      }
+      if (sfSlots.length !== 2) {
+        errors.push(`8-Man Tournament "${t.name}" (${t.id}) does not have exactly 2 semifinals (found ${sfSlots.length}).`);
+      }
+      if (finalSlots.length !== 1) {
+        errors.push(`8-Man Tournament "${t.name}" (${t.id}) does not have exactly 1 final (found ${finalSlots.length}).`);
+      }
+    }
+
+    // 9. completed tournament must have winnerId
+    if (t.status === 'completed' && !t.winnerId) {
+      errors.push(`Completed Tournament "${t.name}" (${t.id}) is missing winnerId.`);
+    }
+
+    // 10. cancelled tournament must not have future scheduled fights
+    if (t.status === 'cancelled') {
+      const scheduledFights = t.fights.filter(f => f.eventId);
+      scheduledFights.forEach(f => {
+        const event = state.events[f.eventId!];
+        if (event && !event.isCompleted) {
+          errors.push(`Cancelled Tournament "${t.name}" (${t.id}) still has a scheduled fight in future event "${event.name}" (${event.id}).`);
+        }
+      });
+    }
+
+    // 11. active/planned tournament should not have invalid scheduled fights
+    if (t.status === 'planned' || t.status === 'active') {
+      t.fights.forEach(f => {
+        if (f.eventId) {
+          const event = state.events[f.eventId];
+          if (!event) {
+            errors.push(`Tournament "${t.name}" (${t.id}) references non-existent eventId "${f.eventId}" in slot ${f.id}.`);
+          } else {
+            const hasMatch = event.fights.some(ef => ef.id === f.fightId);
+            if (!hasMatch && !f.isCompleted) {
+              errors.push(`Tournament "${t.name}" (${t.id}) references fightId "${f.fightId}" on event "${event.name}" but it is missing from event fights.`);
+            }
+          }
+        }
+      });
+    }
+
+    // 12. titleShotUsed tournament winner should not still have fighter.titleShotPromised
+    if (t.titleShotUsed && t.winnerId) {
+      const winner = state.fighters[t.winnerId];
+      if (winner && winner.titleShotPromised) {
+        errors.push(`Tournament "${t.name}" winner ${winner.firstName} ${winner.lastName} still has titleShotPromised: true after titleShotUsed is true.`);
+      }
+    }
+  });
+
+  return errors;
+}
+
+export function syncTournamentTitleShotFlags(state: GameState): GameState {
+  let newState = { ...state, tournaments: { ...state.tournaments }, fighters: { ...state.fighters } };
+
+  Object.values(newState.tournaments).forEach(t => {
+    if (t.status !== 'completed' || !t.titleShotPromised || !t.winnerId) return;
+
+    const winner = newState.fighters[t.winnerId];
+    if (!winner) return;
+
+    if (t.titleShotUsed) {
+      // If tournament has used the title shot, winner must NOT have titleShotPromised
+      if (winner.titleShotPromised) {
+        // Check if the fighter has any OTHER unused GP title shot promises
+        const otherUnused = Object.values(newState.tournaments).some(
+          ot => ot.id !== t.id && ot.status === 'completed' && ot.titleShotPromised && !ot.titleShotUsed && ot.winnerId === t.winnerId
+        );
+        if (!otherUnused) {
+          newState.fighters[t.winnerId] = { ...winner, titleShotPromised: false };
+        }
+      }
+    } else {
+      // If tournament has NOT used the title shot, winner SHOULD have titleShotPromised
+      if (!winner.titleShotPromised) {
+        newState.fighters[t.winnerId] = { ...newState.fighters[t.winnerId], titleShotPromised: true };
+      }
+    }
+  });
+
+  return newState;
 }

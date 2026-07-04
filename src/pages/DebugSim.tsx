@@ -5,7 +5,7 @@ import { PRNG } from '../lib/game/rng';
 import { Fighter, FightMatchup, FightResult } from '../types/game';
 import { v4 as uuidv4 } from 'uuid';
 import { useGameStore } from '../store/gameStore';
-import { createGrandPrixTournament, scheduleSemifinals, scheduleFinal } from '../lib/game/tournament';
+import { createGrandPrixTournament, scheduleSemifinals, scheduleFinal, validateTournamentState } from '../lib/game/tournament';
 import { applyFightResult } from '../lib/engine';
 
 const createFighter = (name: string, attrs: Partial<Fighter['attributes']>, age: number = 28): Fighter => {
@@ -908,7 +908,7 @@ function calculateReport(store: any, initialFights: number) {
    const delayedFinalsCount = tournamentsList.filter((t: any) => t.finalDelayReason).length;
    
    const tournamentWinners: string[] = [];
-   const invalidTournamentStates: string[] = [];
+   const invalidTournamentStates: string[] = [...validateTournamentState(state)];
    let missingResultsFightsCount = 0;
    
    let titleShotsPending = 0;
