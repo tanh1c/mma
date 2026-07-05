@@ -138,7 +138,10 @@ function validateAndMigrateState(parsed: any): GameState | null {
 
   // Migrate observer mode and archives
   if (!state.mode) state.mode = 'manager';
-  if (!state.autopilot) state.autopilot = { enabled: false, watchEvents: false };
+  if (!state.autopilot) state.autopilot = { enabled: false, watchEvents: false, targetTournamentWeightClass: null };
+  if (state.autopilot && state.autopilot.targetTournamentWeightClass === undefined) {
+    state.autopilot.targetTournamentWeightClass = null;
+  }
   if (!state.fightArchive) state.fightArchive = {};
   if (!state.eventArchive) state.eventArchive = {};
   if (!state.titleHistory) state.titleHistory = [];

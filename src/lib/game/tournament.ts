@@ -1,4 +1,4 @@
-import { GameState, GrandPrixTournament, TournamentParticipant, TournamentFightSlot, WeightClass, Fighter, FightMatchup, FightResult, TournamentFormat, TournamentRound } from '../../types/game';
+import { GameState, GrandPrixTournament, TournamentParticipant, TournamentFightSlot, WeightClass, Fighter, FightMatchup, FightResult, TournamentFormat, TournamentRound, TournamentStatus } from '../../types/game';
 import { v4 as uuidv4 } from 'uuid';
 import { addDays } from 'date-fns';
 
@@ -748,6 +748,92 @@ export function runAutopilotTournaments(state: GameState): GameState {
   const activeTourney = Object.values(newState.tournaments).find(t => t.status === 'planned' || t.status === 'active');
   
   if (activeTourney) {
+    const getDaysDiff = (d1: string, d2: string): number => {
+      return Math.round((new Date(d1).getTime() - new Date(d2).getTime()) / (1000 * 60 * 60 * 24));
+    };
+    
+    const ageDays = getDaysDiff(newState.currentDate, activeTourney.createdDate);
+    const isPlannedStuck = activeTourney.status === 'planned' && ageDays > 180;
+    const isActiveStuck = activeTourney.status === 'active' && ageDays > 365;
+    
+    // Recovery / stuck tournament mitigation
+    if (isPlannedStuck || isActiveStuck) {
+      // 1. Post non-spam warning news once every 90 days of delay
+      const lastDelayNews = newState.news.find(n => n.title?.includes("Grand Prix Delayed") && n.content?.includes(activeTourney.name));
+      const lastDelayNewsDate = lastDelayNews ? lastDelayNews.date : null;
+      const daysSinceLastNews = lastDelayNewsDate 
+        ? getDaysDiff(newState.currentDate, lastDelayNewsDate)
+        : 999;
+        
+      if (daysSinceLastNews >= 90) {
+        newState.news.unshift({
+          id: uuidv4(),
+          date: newState.currentDate,
+          title: `Grand Prix Delayed: ${activeTourney.name}`,
+          content: `The ${activeTourney.name} has been delayed for ${ageDays} days. Promotion officials are working on emergency options.`,
+          type: 'general'
+        });
+      }
+      
+      // 2. Cancellation recovery if planned and impossible
+      if (activeTourney.status === 'planned') {
+        const signedCount = Object.values(newState.fighters).filter(
+          f => f.weightClass === activeTourney.weightClass && f.contract && !f.injuryStatus
+        ).length;
+        const totalFA = Object.values(newState.fighters).filter(f => !f.contract && f.weightClass === activeTourney.weightClass).length;
+        const required = activeTourney.format === 'eight_man' ? 11 : 6;
+        
+        // If we don't have enough fighters and cannot sign (broke or no FA available)
+        if (signedCount + totalFA < required || (newState.promotion.money < 50000 && signedCount < required)) {
+          try {
+            newState = cancelTournament(newState, activeTourney.id);
+            // Clear target class
+            newState.autopilot.targetTournamentWeightClass = null;
+            newState.news.unshift({
+              id: uuidv4(),
+              date: newState.currentDate,
+              title: `Grand Prix Cancelled: ${activeTourney.name}`,
+              content: `The ${activeTourney.name} has been cancelled due to permanent participant roster depletion and financial constraints.`,
+              type: 'general'
+            });
+            return newState;
+          } catch (err) {
+            // Ignore
+          }
+        }
+      }
+      
+      // 3. Reserve emergency signing recovery if active and out of reserves
+      if (activeTourney.status === 'active' && (!activeTourney.reserveFighterIds || activeTourney.reserveFighterIds.length === 0)) {
+        const freeAgents = Object.values(newState.fighters)
+          .filter(f => !f.contract && f.weightClass === activeTourney.weightClass && !f.injuryStatus)
+          .sort((a, b) => b.popularity - a.popularity || b.potential - a.potential);
+          
+        if (freeAgents.length > 0 && newState.promotion.money > 30000) {
+          const candidate = freeAgents[0];
+          const pay = 5000 + (candidate.popularity * 100);
+          newState.fighters[candidate.id] = {
+            ...candidate,
+            contract: { payPerFight: pay, winBonus: pay, fightsRemaining: 4, exclusivity: true }
+          };
+          
+          const updated = { ...newState.tournaments[activeTourney.id] };
+          updated.reserveFighterIds = [...(updated.reserveFighterIds || []), candidate.id];
+          updated.notes = [...(updated.notes || []), `Emergency Reserve Signing: Signed ${candidate.lastName} on ${newState.currentDate}.`];
+          newState.tournaments[activeTourney.id] = updated;
+          
+          newState.news.unshift({
+            id: uuidv4(),
+            date: newState.currentDate,
+            title: `Emergency Tournament Signing: ${candidate.lastName}`,
+            content: `Cage Dynasty has signed free agent ${candidate.firstName} ${candidate.lastName} as an emergency reserve for the stalled ${activeTourney.name}.`,
+            type: 'contract'
+          });
+        }
+      }
+    }
+
+    // Normal tournament round progression scheduling
     if (activeTourney.status === 'planned') {
       if (activeTourney.earliestRoundDate && newState.currentDate < activeTourney.earliestRoundDate) {
          return newState;
@@ -830,7 +916,7 @@ export function runAutopilotTournaments(state: GameState): GameState {
 
   // Avoid creating new GP if there are urgent title shot debts pending
   const debts = getPendingTitleShotDebts(newState);
-  const urgentDebts = debts.filter(d => d.status === 'pending' || d.daysPending > 120);
+  const urgentDebts = debts.filter(d => d.status === 'pending');
   if (urgentDebts.length > 0) {
     return newState;
   }
@@ -840,98 +926,151 @@ export function runAutopilotTournaments(state: GameState): GameState {
     const lastCompleted = completedTourneys.sort((a, b) => new Date(b.completedDate || '').getTime() - new Date(a.completedDate || '').getTime())[0];
     if (lastCompleted && lastCompleted.completedDate) {
       const diffDays = Math.abs(new Date(newState.currentDate).getTime() - new Date(lastCompleted.completedDate).getTime()) / (1000 * 60 * 60 * 24);
-      if (diffDays < 270) {
+      const requiredCooldown = lastCompleted.format === 'eight_man' ? 540 : 270;
+      if (diffDays < requiredCooldown) {
         return newState;
       }
     }
   }
-  
-  if (Math.random() > 0.05) { 
-    return newState;
+
+  // 1. Dynamically target a single division and maintain depth
+  let targetWc = newState.autopilot.targetTournamentWeightClass;
+  if (targetWc) {
+    const hasActiveOrPlanned = Object.values(newState.tournaments).some(
+      t => t.weightClass === targetWc && (t.status === 'active' || t.status === 'planned')
+    );
+    const title = newState.titles[targetWc];
+    const hasCrisis = title && title.status === 'unification_needed';
+    if (hasActiveOrPlanned || hasCrisis) {
+      targetWc = null;
+    }
   }
   
   const weightClasses: WeightClass[] = ['Bantamweight', 'Featherweight', 'Lightweight', 'Welterweight', 'Middleweight', 'Heavyweight'];
-
-  // Maintain roster depth for tournament potential across all weight classes
-  const signedWcsInThisTick = new Set<WeightClass>();
-  weightClasses.forEach(wc => {
-    const prevSignedCount = Object.values(state.fighters).filter(f => f.weightClass === wc && f.contract).length;
-    newState = maintainTournamentRosterDepth(newState, wc);
-    const currSignedCount = Object.values(newState.fighters).filter(f => f.weightClass === wc && f.contract).length;
-    if (currSignedCount > prevSignedCount) {
-      signedWcsInThisTick.add(wc);
+  if (!targetWc) {
+    // Pick the best target class that does not have active/planned GP and is not in crisis
+    const availableWcs = weightClasses.filter(wc => {
+      const hasActiveOrPlanned = Object.values(newState.tournaments).some(t => t.weightClass === wc && (t.status === 'active' || t.status === 'planned'));
+      if (hasActiveOrPlanned) return false;
+      
+      const title = newState.titles[wc];
+      if (title && title.status === 'unification_needed') return false;
+      
+      return true;
+    });
+    
+    if (availableWcs.length > 0) {
+      const scoredWcs = availableWcs.map(wc => {
+        const title = newState.titles[wc];
+        const freeAgentsCount = Object.values(newState.fighters).filter(f => !f.contract && f.weightClass === wc).length;
+        const wcFighters = Object.values(newState.fighters).filter(f => 
+          f.weightClass === wc && 
+          f.contract && 
+          !f.injuryStatus && 
+          (!f.medicalSuspension || f.medicalSuspension.daysRemaining <= 0) &&
+          !f.isChampion
+        );
+        
+        const isVacant = title ? title.status === 'vacant' : true;
+        const isInactive = title ? title.status === 'inactive_champion' : false;
+        
+        let score = 0;
+        if (isVacant) score += 100;
+        if (isInactive) score += 50;
+        
+        score += freeAgentsCount * 10;
+        score += wcFighters.length * 5;
+        
+        if (title && title.undisputedChampionId) {
+          const champ = newState.fighters[title.undisputedChampionId];
+          if (champ && champ.lastFightDate) {
+            const daysSinceFight = Math.floor(Math.abs(new Date(newState.currentDate).getTime() - new Date(champ.lastFightDate).getTime()) / (1000 * 3600 * 24));
+            if (daysSinceFight > 180) {
+              score += 30; // Stale title picture
+            }
+          }
+        }
+        
+        return { wc, score };
+      });
+      
+      const best = scoredWcs.sort((a, b) => b.score - a.score)[0];
+      if (best) {
+        targetWc = best.wc;
+      }
     }
-  });
+    newState.autopilot = { ...newState.autopilot, targetTournamentWeightClass: targetWc };
+  }
 
+  // 2. Concentrate depth building ONLY in the target division
+  const signedWcsInThisTick = new Set<WeightClass>();
+  if (targetWc) {
+    const prevSignedCount = Object.values(newState.fighters).filter(f => f.weightClass === targetWc && f.contract).length;
+    newState = maintainTournamentRosterDepth(newState, targetWc);
+    const currSignedCount = Object.values(newState.fighters).filter(f => f.weightClass === targetWc && f.contract).length;
+    if (currSignedCount > prevSignedCount) {
+      signedWcsInThisTick.add(targetWc);
+    }
+  }
+
+  // Cooldown / rare check to actually trigger the creation
+  if (Math.random() > 0.05) { 
+    return newState;
+  }
+
+  if (!targetWc) return newState;
+  
+  // Decide format for target division
   const canRunEightMan = newState.promotion.reputation >= 60 && newState.promotion.money >= 200000;
   let format: TournamentFormat = 'four_man';
   if (canRunEightMan) {
-    // Check if an 8-man has ever been created
-    const ever8man = Object.values(newState.tournaments).some(t => t.format === 'eight_man');
-    // Check if promotion has been at high rep for a while (use createdDate proxy)
-    const highRepBonus = newState.promotion.reputation >= 75 ? 0.10 : 0.0;
-    const neverHad8manBonus = !ever8man && newState.promotion.reputation >= 65 ? 0.10 : 0.0;
-    const moneyBonus = newState.promotion.money >= 500000 ? 0.05 : 0.0;
+    const everCompleted8man = Object.values(newState.tournaments).some(t => t.format === 'eight_man' && t.status === 'completed');
+    const highRepBonus = newState.promotion.reputation >= 75 ? 0.20 : 0.0;
+    const neverHad8manBonus = !everCompleted8man && newState.promotion.reputation >= 75 && newState.promotion.money >= 500000 ? 0.30 : 0.0;
+    const moneyBonus = newState.promotion.money >= 500000 ? 0.10 : 0.0;
     const eightManChance = 0.25 + highRepBonus + neverHad8manBonus + moneyBonus;
     format = Math.random() < eightManChance ? 'eight_man' : 'four_man';
   }
-  
-  const targetRequiredFighters = format === 'eight_man' ? 11 : 6;
 
-  const candidates = weightClasses.map(wc => {
-    const title = newState.titles[wc];
-    const wcFighters = Object.values(newState.fighters).filter(f => 
-      f.weightClass === wc && 
-      f.contract && 
-      !f.injuryStatus && 
-      (!f.medicalSuspension || f.medicalSuspension.daysRemaining <= 0) &&
-      !f.isChampion
-    );
-    
-    const isVacant = title ? title.status === 'vacant' : true;
-    const isInactive = title ? title.status === 'inactive_champion' : false;
-    
-    let score = 0;
-    if (isVacant) score += 50;
-    if (isInactive) score += 30;
-    score += wcFighters.length;
-    
-    return { wc, fighters: wcFighters, score };
-  }).filter(c => c.fighters.length >= 6 && !signedWcsInThisTick.has(c.wc));
+  const wcFighters = Object.values(newState.fighters).filter(f => 
+    f.weightClass === targetWc && 
+    f.contract && 
+    !f.injuryStatus && 
+    (!f.medicalSuspension || f.medicalSuspension.daysRemaining <= 0) &&
+    !f.isChampion
+  );
   
-  if (candidates.length === 0) return newState;
-  
-  const bestCandidate = candidates.sort((a, b) => b.score - a.score)[0];
-  if (!bestCandidate) return newState;
-  
-  const wc = bestCandidate.wc;
-  
-  // Settle on format based on actual candidate count
-  if (format === 'eight_man' && bestCandidate.fighters.length < 11) {
+  if (format === 'eight_man' && wcFighters.length < 11) {
     format = 'four_man';
   }
   
   const finalRequiredCount = format === 'eight_man' ? 11 : 6;
-  const sortedFighters = bestCandidate.fighters.sort((a, b) => (b.rankingScore || 0) - (a.rankingScore || 0));
+  if (wcFighters.length < finalRequiredCount) {
+    return newState; // Not enough depth yet, keep building
+  }
+
+  const sortedFighters = wcFighters.sort((a, b) => (b.rankingScore || 0) - (a.rankingScore || 0));
   const slicedFighters = sortedFighters.slice(0, finalRequiredCount);
   
   const participantCount = format === 'eight_man' ? 8 : 4;
   const participantIds = slicedFighters.slice(0, participantCount).map(f => f.id);
   const reserveIds = slicedFighters.slice(participantCount).map(f => f.id);
   
-  const name = `${wc} ${format === 'eight_man' ? '8-Man' : '4-Man'} Grand Prix`;
+  const name = `${targetWc} ${format === 'eight_man' ? '8-Man' : '4-Man'} Grand Prix`;
   
   try {
     newState = createGrandPrixTournament(newState, {
-      weightClass: wc,
+      weightClass: targetWc,
       name,
       titleShotPromised: true,
       format,
       participantIds,
       reserveIds
     });
-  } catch (e) {
-    // Ignore errors
+    // Clear target so next tournament targets a different division
+    newState.autopilot.targetTournamentWeightClass = null;
+  } catch (e: any) {
+    console.log(`Tournament creation failed: ${e?.message}`);
   }
   
   return newState;
@@ -947,7 +1086,7 @@ export interface TitleShotDebt {
   status: 'pending' | 'champion_unavailable' | 'fighter_unavailable' | 'scheduled' | 'used' | 'blocked_by_unification' | 'blocked_by_interim';
 }
 
-export function getPendingTitleShotDebts(state: GameState): TitleShotDebt[] {
+export function getTitleShotDebts(state: GameState): TitleShotDebt[] {
   const debts: TitleShotDebt[] = [];
   
   Object.values(state.tournaments || {}).forEach(t => {
@@ -1004,6 +1143,78 @@ export function getPendingTitleShotDebts(state: GameState): TitleShotDebt[] {
   });
   
   return debts;
+}
+
+export function getPendingTitleShotDebts(state: GameState): TitleShotDebt[] {
+  return getTitleShotDebts(state).filter(d => d.status !== 'used');
+}
+
+export function validateTitleShotDebtState(state: GameState): string[] {
+  const errors: string[] = [];
+  const debts = getTitleShotDebts(state);
+  const pendingDebts = getPendingTitleShotDebts(state);
+
+  // 1. used title shot debts should not be returned by getPendingTitleShotDebts
+  const usedInPending = pendingDebts.some(d => d.status === 'used');
+  if (usedInPending) {
+    errors.push("Invariant Error: getPendingTitleShotDebts returned a debt with status 'used'");
+  }
+
+  // Track unused completed tournaments for each fighter
+  const unusedGpPromisesByFighter: Record<string, number> = {};
+  Object.values(state.tournaments || {}).forEach(t => {
+    if (t.status === 'completed' && t.titleShotPromised && !t.titleShotUsed && t.winnerId) {
+      unusedGpPromisesByFighter[t.winnerId] = (unusedGpPromisesByFighter[t.winnerId] || 0) + 1;
+    }
+  });
+
+  // Check each fighter's titleShotPromised flag
+  Object.values(state.fighters).forEach(f => {
+    const unusedCount = unusedGpPromisesByFighter[f.id] || 0;
+    
+    // 2. pending title shot debts should correspond to fighter.titleShotPromised === true
+    const hasPendingDebt = pendingDebts.some(d => d.fighterId === f.id);
+    if (hasPendingDebt && !f.titleShotPromised) {
+      errors.push(`Invariant Error: Fighter ${f.firstName} ${f.lastName} has a pending title shot debt but titleShotPromised is false`);
+    }
+
+    // 3. no fighter should have titleShotPromised true without at least one unused completed GP promise
+    if (f.titleShotPromised && unusedCount === 0) {
+      errors.push(`Invariant Error: Fighter ${f.firstName} ${f.lastName} has titleShotPromised === true but 0 unused completed GP promises`);
+    }
+  });
+
+  // Check each tournament's titleShotUsed flag
+  Object.values(state.tournaments || {}).forEach(t => {
+    if (t.status === 'completed' && t.titleShotPromised && t.winnerId) {
+      const winner = state.fighters[t.winnerId];
+      if (winner) {
+        // 4. if tournament.titleShotUsed === true, winner fighter should not have titleShotPromised, unless another unused tournament promise exists for the same fighter
+        if (t.titleShotUsed) {
+          const unusedCount = unusedGpPromisesByFighter[t.winnerId] || 0;
+          if (winner.titleShotPromised && unusedCount === 0) {
+            errors.push(`Invariant Error: Tournament ${t.name} titleShotUsed is true, but winner ${winner.firstName} ${winner.lastName} has titleShotPromised === true with no other unused GP promises`);
+          }
+        }
+      }
+    }
+  });
+
+  // 5. if a title shot is scheduled, debt status should be scheduled
+  debts.forEach(d => {
+    const isScheduled = Object.values(state.events).some(e => 
+      !e.isCompleted && 
+      e.fights.some(f => 
+        f.isTitleFight && 
+        (f.redCornerId === d.fighterId || f.blueCornerId === d.fighterId)
+      )
+    );
+    if (isScheduled && d.status !== 'scheduled' && d.status !== 'used') {
+      errors.push(`Invariant Error: Title shot for fighterId ${d.fighterId} is scheduled in an event, but debt status is ${d.status} instead of 'scheduled'`);
+    }
+  });
+
+  return errors;
 }
 
 export function validateTournamentState(state: GameState): string[] {
@@ -1159,6 +1370,7 @@ export function validateTournamentState(state: GameState): string[] {
     }
   });
 
+  errors.push(...validateTitleShotDebtState(state));
   return errors;
 }
 
@@ -1191,4 +1403,117 @@ export function syncTournamentTitleShotFlags(state: GameState): GameState {
   });
 
   return newState;
+}
+
+export interface TournamentDiagnosis {
+  tournamentId: string;
+  name: string;
+  status: TournamentStatus;
+  format: TournamentFormat;
+  ageDays: number;
+  currentRoundNeeded: 'quarterfinal' | 'semifinal' | 'final' | 'none';
+  scheduledRound: 'quarterfinal' | 'semifinal' | 'final' | 'none';
+  completedSlots: number;
+  missingWinners: number;
+  roundDelayReason: string | null;
+  earliestRoundDate: string | null;
+  hasUpcomingTournamentFights: boolean;
+  canScheduleNow: boolean;
+  reasonCannotSchedule: string | null;
+}
+
+export function diagnoseActiveTournaments(state: GameState): TournamentDiagnosis[] {
+  const diagnostics: TournamentDiagnosis[] = [];
+
+  const getDaysDiff = (d1: string, d2: string): number => {
+    return Math.round((new Date(d1).getTime() - new Date(d2).getTime()) / (1000 * 60 * 60 * 24));
+  };
+
+  Object.values(state.tournaments || {}).forEach(t => {
+    if (t.status === 'planned' || t.status === 'active') {
+      const ageDays = getDaysDiff(state.currentDate, t.createdDate);
+      const completedSlots = t.fights.filter(f => f.isCompleted).length;
+      const missingWinners = t.fights.filter(f => f.isCompleted && !f.winnerId).length;
+
+      let currentRoundNeeded: TournamentDiagnosis['currentRoundNeeded'] = 'none';
+      if (t.format === 'eight_man') {
+        if (t.fights.filter(f => f.round === 'quarterfinal').some(f => !f.isCompleted)) {
+          currentRoundNeeded = 'quarterfinal';
+        } else if (t.fights.filter(f => f.round === 'semifinal').some(f => !f.isCompleted)) {
+          currentRoundNeeded = 'semifinal';
+        } else if (t.fights.filter(f => f.round === 'final').some(f => !f.isCompleted)) {
+          currentRoundNeeded = 'final';
+        }
+      } else {
+        if (t.fights.filter(f => f.round === 'semifinal').some(f => !f.isCompleted)) {
+          currentRoundNeeded = 'semifinal';
+        } else if (t.fights.filter(f => f.round === 'final').some(f => !f.isCompleted)) {
+          currentRoundNeeded = 'final';
+        }
+      }
+
+      let scheduledRound: TournamentDiagnosis['scheduledRound'] = 'none';
+      if (t.fights.some(f => f.round === 'final' && f.eventId)) {
+        scheduledRound = 'final';
+      } else if (t.fights.some(f => f.round === 'semifinal' && f.eventId)) {
+        scheduledRound = 'semifinal';
+      } else if (t.fights.some(f => f.round === 'quarterfinal' && f.eventId)) {
+        scheduledRound = 'quarterfinal';
+      }
+
+      const hasUpcomingTournamentFights = t.fights.some(f => {
+        if (!f.eventId || f.isCompleted) return false;
+        const event = state.events[f.eventId];
+        return event && !event.isCompleted && event.date >= state.currentDate;
+      });
+
+      const roundDelayReason = t.roundDelayReason || t.finalDelayReason || null;
+      const earliestRoundDate = t.earliestRoundDate || t.earliestFinalDate || null;
+
+      let canScheduleNow = true;
+      let reasonCannotSchedule: string | null = null;
+
+      if (hasUpcomingTournamentFights) {
+        canScheduleNow = false;
+        reasonCannotSchedule = "Fights already scheduled for upcoming event";
+      } else if (earliestRoundDate && state.currentDate < earliestRoundDate) {
+        canScheduleNow = false;
+        reasonCannotSchedule = `Delayed until ${earliestRoundDate} (Reason: ${roundDelayReason || 'Fighter unavailable'})`;
+      } else {
+        // Check if previous round not completed
+        if (currentRoundNeeded === 'semifinal' && t.format === 'eight_man') {
+          const qfsDone = t.fights.filter(f => f.round === 'quarterfinal').every(f => f.isCompleted);
+          if (!qfsDone) {
+            canScheduleNow = false;
+            reasonCannotSchedule = "Quarterfinals not completed";
+          }
+        } else if (currentRoundNeeded === 'final') {
+          const sfsDone = t.fights.filter(f => f.round === 'semifinal').every(f => f.isCompleted);
+          if (!sfsDone) {
+            canScheduleNow = false;
+            reasonCannotSchedule = "Semifinals not completed";
+          }
+        }
+      }
+
+      diagnostics.push({
+        tournamentId: t.id,
+        name: t.name,
+        status: t.status,
+        format: t.format,
+        ageDays,
+        currentRoundNeeded,
+        scheduledRound,
+        completedSlots,
+        missingWinners,
+        roundDelayReason,
+        earliestRoundDate,
+        hasUpcomingTournamentFights,
+        canScheduleNow,
+        reasonCannotSchedule
+      });
+    }
+  });
+
+  return diagnostics;
 }

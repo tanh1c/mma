@@ -37,6 +37,15 @@ export function autoBookEventsAndContracts(state: GameState): GameState {
   // Check if we need a new event
   const upcomingEvents = Object.values(newState.events).filter(e => !e.isCompleted);
   
+  // Track last completed event date to check for stall
+  const completedEvents = Object.values(newState.events).filter(e => e.isCompleted);
+  const lastCompleted = completedEvents.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
+  const daysSinceCompleted = lastCompleted 
+    ? calculateDateDifference(newState.currentDate, lastCompleted.date)
+    : 999;
+  
+  const isRecovery = daysSinceCompleted >= 90;
+  
   if (upcomingEvents.length === 0) {
     const lastEvent = Object.values(newState.events).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
     let nextDateStr = newState.currentDate;
@@ -48,7 +57,7 @@ export function autoBookEventsAndContracts(state: GameState): GameState {
       }
     } else {
        nextDateStr = addDays(newState.currentDate, EVENT_INTERVAL_DAYS);
-    }
+     }
     
     // Emergency funding check
     if (newState.promotion.money < -100000) {
@@ -80,8 +89,34 @@ export function autoBookEventsAndContracts(state: GameState): GameState {
       }
     }
     
+    // Emergency roster signing under recovery mode
+    if (isRecovery) {
+      const healthySigned = Object.values(newState.fighters).filter(f => f.contract && !f.injuryStatus && (!f.medicalSuspension || f.medicalSuspension.daysRemaining <= 0) && f.fatigue < 50);
+      if (healthySigned.length < 6) {
+        const freeAgents = Object.values(newState.fighters)
+          .filter(f => !f.contract)
+          .sort((a, b) => a.popularity - b.popularity); // Cheapest/lowest popularity first to save money
+        const neededCount = 6 - healthySigned.length;
+        const toSign = freeAgents.slice(0, neededCount);
+        toSign.forEach(fa => {
+          const pay = 5000;
+          newState.fighters[fa.id] = {
+            ...fa,
+            contract: { payPerFight: pay, winBonus: pay, fightsRemaining: 4, exclusivity: true }
+          };
+          newState.news.unshift({
+            id: uuidv4(),
+            date: newState.currentDate,
+            title: `Emergency Signing: ${fa.lastName}`,
+            content: `${fa.firstName} ${fa.lastName} has signed a short-term contract to resolve roster depletion.`,
+            type: 'contract'
+          });
+        });
+      }
+    }
+    
     // Create new event
-    const newEvent = generateAutoEvent(newState, nextDateStr);
+    const newEvent = generateAutoEvent(newState, nextDateStr, isRecovery);
     if (newEvent) {
       newState.events = { ...newState.events, [newEvent.id]: newEvent };
       newState.autopilot.nextBookingAttemptDate = null;
@@ -96,16 +131,29 @@ export function autoBookEventsAndContracts(state: GameState): GameState {
       // Delay by 14 days if no safe card could be booked, but do NOT mutate currentDate
       newState.autopilot.nextBookingAttemptDate = addDays(newState.currentDate, 14);
       
-      // Only generate the news if we haven't flooded the news with it
-      const recentNews = newState.news.slice(0, 3);
-      if (!recentNews.some(n => n.title === 'Event Delayed')) {
-        newState.news = [{
-          id: uuidv4(),
-          date: newState.currentDate,
-          title: `Event Delayed`,
-          content: `Cage Dynasty has delayed their next event to build up finances and find the right venue.`,
-          type: 'general'
-        }, ...newState.news];
+      if (isRecovery) {
+        const lastStallNews = newState.news.find(n => n.title === 'Event Cadence Stalled');
+        if (!lastStallNews || calculateDateDifference(newState.currentDate, lastStallNews.date) >= 30) {
+          newState.news.unshift({
+            id: uuidv4(),
+            date: newState.currentDate,
+            title: 'Event Cadence Stalled',
+            content: `Cage Dynasty has temporarily stalled due to extreme roster depletion or financial distress.`,
+            type: 'general'
+          });
+        }
+      } else {
+        // Only generate the news if we haven't flooded the news with it
+        const recentNews = newState.news.slice(0, 3);
+        if (!recentNews.some(n => n.title === 'Event Delayed')) {
+          newState.news = [{
+            id: uuidv4(),
+            date: newState.currentDate,
+            title: `Event Delayed`,
+            content: `Cage Dynasty has delayed their next event to build up finances and find the right venue.`,
+            type: 'general'
+          }, ...newState.news];
+        }
       }
       
       if (newState.lastAutopilotSummary) {
@@ -247,13 +295,25 @@ export function maintainDeals(state: GameState): GameState {
   return newState;
 }
 
-function generateAutoEvent(state: GameState, dateStr: string): Event | null {
+function generateAutoEvent(state: GameState, dateStr: string, isRecovery?: boolean): Event | null {
   const eventName = `Cage Dynasty ${Object.keys(state.events).length + 1}`;
   
   const fights: Omit<FightMatchup, 'id' | 'result'>[] = [];
   const bookedFighters = new Set<string>();
 
-  const signedFighters = Object.values(state.fighters).filter(f => f.contract && !f.injuryStatus && !f.medicalSuspension && f.fatigue < 50);
+  const signedFighters = Object.values(state.fighters).filter(f => {
+    const isTargetWc = state.autopilot?.targetTournamentWeightClass === f.weightClass;
+    const hasGPActive = Object.values(state.tournaments || {}).some(t => t.weightClass === f.weightClass && (t.status === 'active' || t.status === 'planned'));
+    if (isTargetWc && !hasGPActive) {
+      // Allow if champion (so we can book title fights), but block normal contenders
+      const title = state.titles[f.weightClass];
+      const isChamp = title?.undisputedChampionId === f.id || title?.interimChampionId === f.id;
+      if (!isChamp) {
+        return false;
+      }
+    }
+    return f.contract && !f.injuryStatus && !f.medicalSuspension && f.fatigue < 50;
+  });
 
   // Group by wc
   const wcGroups: Record<string, Fighter[]> = {};
@@ -266,7 +326,8 @@ function generateAutoEvent(state: GameState, dateStr: string): Event | null {
   const weightClasses = Object.keys(wcGroups) as WeightClass[];
   
   let fightsTarget = 6;
-  if (state.promotion.reputation > 50) fightsTarget = 8;
+  if (isRecovery) fightsTarget = 3; // Minimum card size under recovery
+  else if (state.promotion.reputation > 50) fightsTarget = 8;
 
   let newNews: any[] = [];
   
@@ -485,51 +546,72 @@ function generateAutoEvent(state: GameState, dateStr: string): Event | null {
   
   const isEmergency = state.promotion.money <= 0;
 
-  for (const v of venues) {
-    if (!isEmergency && v.cost > state.promotion.money * 0.7) continue;
-    if (isEmergency && v.capacity > 3000) continue; // Only small venues in emergency
-    
-    // adjust marketing based on money
-    const marketing = isEmergency ? 500 : Math.min(25000, Math.max(1000, Math.floor(state.promotion.money * 0.1)));
-    const tPrice = Math.floor(v.capacity * 0.05) + 20;
-
-    const proj = calculateEventProjections(
-      fightsWithIds,
-      state.fighters,
-      v,
-      tPrice,
-      marketing,
-      state.promotion,
-      state.storylines,
-      state.titles,
-      state.tournaments
-    );
-
-    // Evaluate financial safety
-    if (proj.expectedAttendance < v.capacity * 0.4) {
-       // Only accept sub 40% if no other option
-       if (!bestVenue && venues.length > 0) {
-         bestVenue = v;
-         bestProj = proj;
-         bestMarketing = marketing;
-         bestTicketPrice = tPrice;
-       }
-       continue;
+  if (isRecovery) {
+    // Pick the cheapest venue with reputation requirement = 0 or lowest cost
+    const cheapestVenue = Object.values(state.venues).sort((a, b) => a.cost - b.cost)[0];
+    if (cheapestVenue) {
+      bestVenue = cheapestVenue;
+      bestProj = calculateEventProjections(
+        fightsWithIds,
+        state.fighters,
+        cheapestVenue,
+        15, // Cheap ticket price
+        500, // Cheap marketing
+        state.promotion,
+        state.storylines,
+        state.titles,
+        state.tournaments
+      );
+      bestMarketing = 500;
+      bestTicketPrice = 15;
     }
+  } else {
+    for (const v of venues) {
+      if (!isEmergency && v.cost > state.promotion.money * 0.7) continue;
+      if (isEmergency && v.capacity > 3000) continue; // Only small venues in emergency
+      
+      // adjust marketing based on money
+      const marketing = isEmergency ? 500 : Math.min(25000, Math.max(1000, Math.floor(state.promotion.money * 0.1)));
+      const tPrice = Math.floor(v.capacity * 0.05) + 20;
 
-    if (proj.expectedProfit < 0 && !isEmergency) {
-      const maxLoss = Math.max(5000, state.promotion.money * 0.35);
-      if (Math.abs(proj.expectedProfit) > maxLoss) {
-        continue; // Too risky
+      const proj = calculateEventProjections(
+        fightsWithIds,
+        state.fighters,
+        v,
+        tPrice,
+        marketing,
+        state.promotion,
+        state.storylines,
+        state.titles,
+        state.tournaments
+      );
+
+      // Evaluate financial safety
+      if (proj.expectedAttendance < v.capacity * 0.4) {
+         // Only accept sub 40% if no other option
+         if (!bestVenue && venues.length > 0) {
+           bestVenue = v;
+           bestProj = proj;
+           bestMarketing = marketing;
+           bestTicketPrice = tPrice;
+         }
+         continue;
       }
-    }
 
-    // Prefer higher profit
-    if (!bestProj || proj.expectedProfit > bestProj.expectedProfit) {
-      bestVenue = v;
-      bestProj = proj;
-      bestMarketing = marketing;
-      bestTicketPrice = tPrice;
+      if (proj.expectedProfit < 0 && !isEmergency) {
+        const maxLoss = Math.max(5000, state.promotion.money * 0.35);
+        if (Math.abs(proj.expectedProfit) > maxLoss) {
+          continue; // Too risky
+        }
+      }
+
+      // Prefer higher profit
+      if (!bestProj || proj.expectedProfit > bestProj.expectedProfit) {
+        bestVenue = v;
+        bestProj = proj;
+        bestMarketing = marketing;
+        bestTicketPrice = tPrice;
+      }
     }
   }
 
@@ -607,10 +689,11 @@ function maintainRoster(state: GameState): GameState {
     }
   });
 
-  // Auto-renew expiring champions
-  signedFighters.forEach(f => {
-    if (f.contract && f.contract.fightsRemaining <= 1) {
-      if (f.isChampion || f.popularity > 60) {
+  // Auto-renew or sign back champions with expired/expiring contracts
+  Object.values(newState.fighters).forEach(f => {
+    const isChamp = f.isChampion || Object.values(newState.titles || {}).some(t => t.undisputedChampionId === f.id || t.interimChampionId === f.id);
+    if (isChamp) {
+      if (!f.contract || f.contract.fightsRemaining <= 1) {
         const pay = 10000 + (f.popularity * 200);
         newState.fighters[f.id] = {
           ...f,
@@ -618,10 +701,22 @@ function maintainRoster(state: GameState): GameState {
         };
         newState.news.unshift({
           id: uuidv4(), date: newState.currentDate, type: 'contract',
-          title: `Contract Renewed: ${f.lastName}`,
-          content: `${f.firstName} ${f.lastName} has signed a new 4-fight extension.`
+          title: `Champion extension: ${f.lastName}`,
+          content: `${f.firstName} ${f.lastName} has secured a new 4-fight contract to defend their title.`
         });
       }
+    } else if (f.contract && f.contract.fightsRemaining <= 1 && f.popularity > 60) {
+      // Renew other popular fighters
+      const pay = 10000 + (f.popularity * 200);
+      newState.fighters[f.id] = {
+        ...f,
+        contract: { payPerFight: pay, winBonus: pay, fightsRemaining: 4, exclusivity: true }
+      };
+      newState.news.unshift({
+        id: uuidv4(), date: newState.currentDate, type: 'contract',
+        title: `Contract Renewed: ${f.lastName}`,
+        content: `${f.firstName} ${f.lastName} has signed a new 4-fight extension.`
+      });
     }
   });
 

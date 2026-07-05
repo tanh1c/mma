@@ -5,7 +5,7 @@ import { PRNG } from '../lib/game/rng';
 import { Fighter, FightMatchup, FightResult } from '../types/game';
 import { v4 as uuidv4 } from 'uuid';
 import { useGameStore } from '../store/gameStore';
-import { createGrandPrixTournament, scheduleSemifinals, scheduleFinal, validateTournamentState } from '../lib/game/tournament';
+import { createGrandPrixTournament, scheduleSemifinals, scheduleFinal, validateTournamentState, validateTitleShotDebtState, diagnoseActiveTournaments } from '../lib/game/tournament';
 import { applyFightResult } from '../lib/engine';
 
 const createFighter = (name: string, attrs: Partial<Fighter['attributes']>, age: number = 28): Fighter => {
@@ -716,16 +716,16 @@ export default function DebugSim() {
                   <p className="text-lg font-bold text-purple-400">{report.activeTournamentsCount}</p>
                 </div>
                 <div className="bg-neutral-950 p-3 border border-neutral-800 rounded text-center">
-                  <p className="text-[10px] text-neutral-500 uppercase">Completed</p>
-                  <p className="text-lg font-bold text-green-400">{report.completedTournamentsCount}</p>
+                  <p className="text-[10px] text-neutral-500 uppercase">Completed 4-Man / 8-Man</p>
+                  <p className="text-lg font-bold text-green-400">{report.completed4ManCount} / {report.completed8ManCount}</p>
                 </div>
                 <div className="bg-neutral-950 p-3 border border-neutral-800 rounded text-center">
                   <p className="text-[10px] text-neutral-500 uppercase">Cancelled</p>
                   <p className="text-lg font-bold text-neutral-500">{report.cancelledTournamentsCount}</p>
                 </div>
                 <div className="bg-neutral-950 p-3 border border-neutral-800 rounded text-center">
-                  <p className="text-[10px] text-neutral-500 uppercase">Delayed Finals</p>
-                  <p className="text-lg font-bold text-yellow-500">{report.delayedFinalsCount}</p>
+                  <p className="text-[10px] text-neutral-500 uppercase">Stuck Tournaments</p>
+                  <p className={`text-lg font-bold ${report.stuckTournamentsCount > 0 ? 'text-red-400' : 'text-green-400'}`}>{report.stuckTournamentsCount}</p>
                 </div>
               </div>
 
@@ -747,6 +747,35 @@ export default function DebugSim() {
                   <p className="text-base font-bold text-red-400">{report.missingFightArchiveIdCount}</p>
                 </div>
               </div>
+
+              {/* Event Cadence Safeguard Block */}
+              <div className="bg-neutral-950 p-3 border border-neutral-800 rounded flex justify-between items-center text-xs">
+                <div>
+                  <span className="text-neutral-500 uppercase font-bold tracking-wider text-[10px]">Event Cadence Status:</span>
+                  <span className={`ml-2 font-bold ${report.eventCadenceStalled ? 'text-red-400' : 'text-green-400'}`}>
+                    {report.eventCadenceStalled ? 'STALLED' : 'HEALTHY'}
+                  </span>
+                </div>
+                <div className="text-neutral-400">
+                  Last Completed Event: <span className="font-bold text-white">{report.daysSinceLastEvent}</span> days ago
+                </div>
+                <div className="text-neutral-400">
+                  Stall News Posted: <span className="font-bold text-white">{report.cadenceStalledNewsCount}</span>
+                </div>
+              </div>
+
+              {report.stuckTournaments.length > 0 && (
+                <div className="bg-red-950/20 p-3 border border-red-900/50 rounded text-xs space-y-1">
+                  <p className="font-bold text-red-400 uppercase">Stuck/Delayed Tournaments Detail:</p>
+                  <ul className="list-disc pl-4 space-y-1 text-neutral-300">
+                    {report.stuckTournaments.map((d: any) => (
+                      <li key={d.tournamentId}>
+                        <span className="font-bold">{d.name}</span> ({d.format}) - Age: <span className="font-bold text-white">{d.ageDays}d</span> | Needed: <span className="text-blue-300">{d.currentRoundNeeded}</span> | Status: <span className="italic text-yellow-500">{d.reasonCannotSchedule || 'Waiting to schedule'}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
 
             {/* General Invariants Checks Block */}
@@ -788,6 +817,17 @@ export default function DebugSim() {
                 <h4 className="font-bold text-red-400 mb-2">Tournament Invariant Errors</h4>
                 <ul className="text-sm text-red-300 space-y-1">
                   {report.invalidTournamentStates.map((err: string, idx: number) => (
+                    <li key={idx}>• {err}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {report.titleShotDebtInvariantErrors.length > 0 && (
+              <div className="bg-red-950 p-4 border border-red-800 rounded">
+                <h4 className="font-bold text-red-400 mb-2">Title Shot Debt Invariant Errors</h4>
+                <ul className="text-sm text-red-300 space-y-1">
+                  {report.titleShotDebtInvariantErrors.map((err: string, idx: number) => (
                     <li key={idx}>• {err}</li>
                   ))}
                 </ul>
@@ -906,6 +946,25 @@ function calculateReport(store: any, initialFights: number) {
    const completedTournamentsCount = tournamentsList.filter((t: any) => t.status === 'completed').length;
    const cancelledTournamentsCount = tournamentsList.filter((t: any) => t.status === 'cancelled').length;
    const delayedFinalsCount = tournamentsList.filter((t: any) => t.finalDelayReason).length;
+
+   const completed4ManCount = tournamentsList.filter((t: any) => t.status === 'completed' && t.format === 'four_man').length;
+   const completed8ManCount = tournamentsList.filter((t: any) => t.status === 'completed' && t.format === 'eight_man').length;
+
+   const diagnoses = diagnoseActiveTournaments(state);
+   const stuckTournaments = diagnoses.filter(d => (d.status === 'planned' && d.ageDays > 180) || (d.status === 'active' && d.ageDays > 365));
+   const stuckTournamentsCount = stuckTournaments.length;
+
+   const titleShotDebtInvariantErrors = validateTitleShotDebtState(state);
+   const ever8ManCreated = tournamentsList.some((t: any) => t.format === 'eight_man');
+   const ever8ManCompleted = completed8ManCount > 0;
+
+   const completedEvents = Object.values(state.events).filter((e: any) => e.isCompleted);
+   const lastCompletedEvent = completedEvents.sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime())[0] as any;
+   const daysSinceLastEvent = lastCompletedEvent 
+     ? Math.round(Math.abs(new Date(state.currentDate).getTime() - new Date(lastCompletedEvent.date).getTime()) / (1000 * 3600 * 24))
+     : 999;
+   const eventCadenceStalled = daysSinceLastEvent >= 90;
+   const cadenceStalledNewsCount = state.news.filter((n: any) => n.title === 'Event Cadence Stalled').length;
    
    const tournamentWinners: string[] = [];
    const invalidTournamentStates: string[] = [...validateTournamentState(state)];
@@ -1035,6 +1094,16 @@ function calculateReport(store: any, initialFights: number) {
       completedTournamentsCount,
       cancelledTournamentsCount,
       delayedFinalsCount,
+      completed4ManCount,
+      completed8ManCount,
+      stuckTournamentsCount,
+      stuckTournaments,
+      titleShotDebtInvariantErrors,
+      ever8ManCreated,
+      ever8ManCompleted,
+      daysSinceLastEvent,
+      eventCadenceStalled,
+      cadenceStalledNewsCount,
       tournamentWinners,
       invalidTournamentStates,
       missingResultsFightsCount,

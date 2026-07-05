@@ -439,6 +439,7 @@ export interface GameState {
     enabled: boolean;
     watchEvents: boolean;
     nextBookingAttemptDate?: string | null;
+    targetTournamentWeightClass?: WeightClass | null;
   };
   lastAutopilotSummary?: AutopilotSummary | null;
   fightArchive: Record<string, FightArchiveItem>;
