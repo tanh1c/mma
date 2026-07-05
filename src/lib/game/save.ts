@@ -3,7 +3,7 @@ import { generateInitialWorld } from './generator';
 import { syncChampionFlags } from '../engine';
 
 const SAVE_KEY = 'cage-dynasty-save';
-export const CURRENT_SAVE_VERSION = 5;
+export const CURRENT_SAVE_VERSION = 6;
 
 export function createNewGame(): GameState {
   const state = generateInitialWorld();
@@ -77,7 +77,8 @@ function extractSaveState(state: GameState): Partial<GameState> {
     sponsorDeals: state.sponsorDeals,
     mediaDeals: state.mediaDeals,
     financeLedger: state.financeLedger,
-    tournaments: state.tournaments || {}
+    tournaments: state.tournaments || {},
+    seasonPlans: state.seasonPlans || {}
   };
 }
 
@@ -217,6 +218,10 @@ function validateAndMigrateState(parsed: any): GameState | null {
         t.status = 'vacant';
       }
     }
+  }
+  
+  if (!state.seasonPlans) {
+    state.seasonPlans = {};
   }
   
   state.saveVersion = CURRENT_SAVE_VERSION;

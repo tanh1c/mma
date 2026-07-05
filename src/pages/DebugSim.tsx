@@ -764,6 +764,46 @@ export default function DebugSim() {
                 </div>
               </div>
 
+              {/* Calendar Planning Metrics Block */}
+              <div className="bg-neutral-950 p-4 border border-neutral-800 rounded space-y-3">
+                <p className="text-[10px] text-neutral-500 uppercase font-black tracking-wider">Annual Calendar & Season Planning Metrics</p>
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-center text-xs">
+                  <div className="bg-neutral-900 p-2 rounded">
+                    <p className="text-neutral-500 text-[9px] uppercase">Total Slots</p>
+                    <p className="text-sm font-bold text-white mt-0.5">{report.calendarSlotsCount}</p>
+                  </div>
+                  <div className="bg-neutral-900 p-2 rounded">
+                    <p className="text-neutral-500 text-[9px] uppercase">Planned</p>
+                    <p className="text-sm font-bold text-blue-400 mt-0.5">{report.calendarPlannedCount}</p>
+                  </div>
+                  <div className="bg-neutral-900 p-2 rounded">
+                    <p className="text-neutral-500 text-[9px] uppercase">Scheduled</p>
+                    <p className="text-sm font-bold text-purple-400 mt-0.5">{report.calendarScheduledCount}</p>
+                  </div>
+                  <div className="bg-neutral-900 p-2 rounded">
+                    <p className="text-neutral-500 text-[9px] uppercase">Completed</p>
+                    <p className="text-sm font-bold text-green-400 mt-0.5">{report.calendarCompletedCount}</p>
+                  </div>
+                  <div className="bg-neutral-900 p-2 rounded">
+                    <p className="text-neutral-500 text-[9px] uppercase">Missed/Cancelled</p>
+                    <p className="text-sm font-bold text-red-400 mt-0.5">
+                      {report.calendarMissedCount} / {report.calendarCancelledCount}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex gap-4 text-[11px] text-neutral-400">
+                  <div>
+                    GP Slots: <span className="font-bold text-white">{report.calendarGPCount}</span>
+                  </div>
+                  <div>
+                    Title Defenses: <span className="font-bold text-white">{report.calendarTitleFightCount}</span>
+                  </div>
+                  <div>
+                    Tentpoles: <span className="font-bold text-white">{report.calendarTentpoleCount}</span>
+                  </div>
+                </div>
+              </div>
+
               {report.stuckTournaments.length > 0 && (
                 <div className="bg-red-950/20 p-3 border border-red-900/50 rounded text-xs space-y-1">
                   <p className="font-bold text-red-400 uppercase">Stuck/Delayed Tournaments Detail:</p>
@@ -1062,11 +1102,35 @@ function calculateReport(store: any, initialFights: number) {
    let ledgerInconsistencies = 0;
    ledger.forEach((entry: any) => {
       if (entry.amount === undefined || isNaN(entry.amount)) {
-         ledgerInconsistencies++;
+   ledgerInconsistencies++;
       }
    });
 
+   const currentYear = new Date(state.currentDate).getFullYear();
+   const plan = state.seasonPlans?.[currentYear];
+   const slots = plan?.slots || [];
+   
+   const calendarSlotsCount = slots.length;
+   const calendarCompletedCount = slots.filter((s: any) => s.status === 'completed').length;
+   const calendarScheduledCount = slots.filter((s: any) => s.status === 'scheduled').length;
+   const calendarPlannedCount = slots.filter((s: any) => s.status === 'planned').length;
+   const calendarMissedCount = slots.filter((s: any) => s.status === 'missed').length;
+   const calendarCancelledCount = slots.filter((s: any) => s.status === 'cancelled').length;
+   
+   const calendarGPCount = slots.filter((s: any) => s.type === 'grand_prix_round').length;
+   const calendarTitleFightCount = slots.filter((s: any) => s.type === 'title_fight_card').length;
+   const calendarTentpoleCount = slots.filter((s: any) => s.type === 'tentpole_event').length;
+
    return {
+      calendarSlotsCount,
+      calendarCompletedCount,
+      calendarScheduledCount,
+      calendarPlannedCount,
+      calendarMissedCount,
+      calendarCancelledCount,
+      calendarGPCount,
+      calendarTitleFightCount,
+      calendarTentpoleCount,
       tenEightCount,
       totalRoundsScored, 
       tenEightRate: totalRoundsScored > 0 ? (tenEightCount / totalRoundsScored) * 100 : 0,

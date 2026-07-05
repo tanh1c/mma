@@ -56,10 +56,14 @@ function generateYearlyAwardsForYear(state: GameState, year: number): YearlyAwar
   const fighterWins: Record<string, number> = {};
   yearFights.forEach(f => {
     if (f.winnerId) {
-      let weight = 1;
+      let weight = 1.0;
+      
+      // Title fight boost
       if (f.isTitleFight) {
-        weight += 2;
+        weight += 2.0;
       }
+      
+      // GP round boost
       if (f.tournamentRound) {
         if (f.tournamentRound === 'quarterfinal') {
           weight += 0.5;
@@ -68,9 +72,23 @@ function generateYearlyAwardsForYear(state: GameState, year: number): YearlyAwar
         } else if (f.tournamentRound === 'final') {
           const tourney = f.tournamentId ? state.tournaments?.[f.tournamentId] : null;
           const isEight = tourney ? tourney.format === 'eight_man' : false;
-          weight += isEight ? 3.0 : 2.0;
+          // GP final wins slightly boosted (4.0 for 8-man, 2.5 for 4-man)
+          weight += isEight ? 4.0 : 2.5;
         }
       }
+      
+      // Tentpole win boost
+      const eventObj = state.events[f.eventId || ''] || state.eventArchive[f.eventId || ''];
+      const isTentpole = eventObj && (eventObj.name.includes("Mega Showdown") || ('marketingSpend' in eventObj ? eventObj.marketingSpend : (eventObj as any).marketingCost || 0) >= 20000);
+      if (isTentpole) {
+        weight += 0.5;
+      }
+      
+      // High performance (Fight of the Night) boost
+      if (f.performanceRating && f.performanceRating > 80) {
+        weight += 0.5;
+      }
+      
       fighterWins[f.winnerId] = (fighterWins[f.winnerId] || 0) + weight;
     }
   });

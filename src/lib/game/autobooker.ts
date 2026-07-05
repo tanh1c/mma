@@ -1,6 +1,8 @@
-import { GameState, Event, FightMatchup, WeightClass, Fighter } from '../../types/game';
+import { GameState, Event, FightMatchup, WeightClass, Fighter, CalendarSlotType, CalendarSlotStatus, SeasonCalendarSlot, SeasonPlan, TournamentRound } from '../../types/game';
 import { v4 as uuidv4 } from 'uuid';
 import { calculateEventProjections } from './economy';
+import { generateSeasonPlan, syncCalendarSlots } from './season';
+import { scheduleTournamentRound, getPendingTitleShotDebts } from './tournament';
 
 const EVENT_INTERVAL_DAYS = 28;
 
@@ -17,6 +19,107 @@ function addDays(dateStr: string, days: number) {
 export function autoBookEventsAndContracts(state: GameState): GameState {
   let newState = { ...state };
 
+  // 1. Initialize & sync season plan for current year
+  const currentYear = new Date(newState.currentDate).getFullYear();
+  if (!newState.seasonPlans) {
+    newState.seasonPlans = {};
+  }
+  if (!newState.seasonPlans[currentYear]) {
+    newState.seasonPlans[currentYear] = generateSeasonPlan(newState, currentYear);
+  }
+  
+  // Sync slot completions/misses
+  newState = syncCalendarSlots(newState);
+  const plan = newState.seasonPlans[currentYear];
+
+  // 1.5. Plan title-shot debts into calendar slots
+  const debts = getPendingTitleShotDebts(newState);
+  debts.forEach(d => {
+    const winner = newState.fighters[d.fighterId];
+    if (!winner) return;
+
+    const alreadyPlanned = plan.slots.some(s => 
+      s.targetWeightClass === d.weightClass && 
+      (s.type === 'title_fight_card' || s.type === 'tentpole_event') && 
+      (s.status === 'planned' || s.status === 'scheduled')
+    );
+
+    if (!alreadyPlanned) {
+      const nextSlot = plan.slots.find(s => 
+        (s.type === 'title_fight_card' || s.type === 'tentpole_event') && 
+        s.status === 'planned' && 
+        !s.targetWeightClass
+      );
+
+      if (nextSlot) {
+        nextSlot.targetWeightClass = d.weightClass;
+        nextSlot.notes = [...(nextSlot.notes || []), `Reserved for ${winner.lastName} Title Shot`];
+      } else if (d.daysPending > 180) {
+        const insertDate = addDays(newState.currentDate, 28);
+        const newSlot: SeasonCalendarSlot = {
+          id: uuidv4(),
+          year: currentYear,
+          date: insertDate,
+          type: 'title_fight_card',
+          status: 'planned',
+          targetWeightClass: d.weightClass,
+          priority: 4,
+          notes: [`Emergency high-priority title fight slot created for ${winner.lastName} (Pending: ${d.daysPending} days)`]
+        };
+        
+        plan.slots.push(newSlot);
+        plan.slots.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      }
+    }
+    
+    const title = newState.titles[d.weightClass];
+    if (title && title.undisputedChampionId) {
+      const champ = newState.fighters[title.undisputedChampionId];
+      if (champ && (champ.injuryStatus || (champ.medicalSuspension && champ.medicalSuspension.daysRemaining > 0))) {
+        const reservedSlot = plan.slots.find(s => 
+          s.targetWeightClass === d.weightClass && 
+          (s.status === 'planned' || s.status === 'scheduled')
+        );
+        if (reservedSlot) {
+          const delayReason = champ.injuryStatus 
+            ? `Champ ${champ.lastName} injured: ${champ.injuryStatus.type}` 
+            : `Champ ${champ.lastName} suspended: ${champ.medicalSuspension?.daysRemaining} days`;
+          const noteText = `Champion Unavailable: ${delayReason}`;
+          if (!reservedSlot.notes) reservedSlot.notes = [];
+          if (!reservedSlot.notes.includes(noteText)) {
+            reservedSlot.notes.push(noteText);
+          }
+        }
+      }
+    }
+  });
+
+  // March safeguard: If current date is March or later and no completed events this year, force a planned slot now
+  const currMonth = new Date(newState.currentDate).getMonth();
+  if (currMonth >= 2) {
+    const completedThisYear = plan.slots.filter(s => s.status === 'completed').length;
+    if (completedThisYear === 0) {
+      const firstPlanned = plan.slots.find(s => s.status === 'planned');
+      if (firstPlanned) {
+        firstPlanned.date = newState.currentDate;
+        firstPlanned.type = 'regular_event';
+        if (!firstPlanned.notes) firstPlanned.notes = [];
+        if (!firstPlanned.notes.includes("Forced March safeguard event.")) {
+          firstPlanned.notes.push("Forced March safeguard event.");
+        }
+      }
+    }
+  }
+
+  // Pre-generate next year's plan in December so we don't have gaps
+  if (currMonth === 11) {
+    const nextYear = currentYear + 1;
+    if (!newState.seasonPlans[nextYear]) {
+      newState.seasonPlans[nextYear] = generateSeasonPlan(newState, nextYear);
+    }
+  }
+
+  // Check if we need to wait for a scheduled next booking attempt date
   if (newState.autopilot.nextBookingAttemptDate && new Date(newState.currentDate).getTime() < new Date(newState.autopilot.nextBookingAttemptDate).getTime()) {
     // Cadence stall safeguard: if 90+ days without a completed event, force-clear delay
     const completedEvents = Object.values(newState.events).filter(e => e.isCompleted);
@@ -26,18 +129,13 @@ export function autoBookEventsAndContracts(state: GameState): GameState {
       : 999;
     
     if (daysSinceCompleted >= 90) {
-      // Force-clear booking delay to prevent indefinite stall
       newState.autopilot = { ...newState.autopilot, nextBookingAttemptDate: null };
     } else {
-      // Also maintain roster even if skipping event booking
       return maintainRoster(newState);
     }
   }
 
-  // Check if we need a new event
-  const upcomingEvents = Object.values(newState.events).filter(e => !e.isCompleted);
-  
-  // Track last completed event date to check for stall
+  // Track last completed event date to check for recovery mode
   const completedEvents = Object.values(newState.events).filter(e => e.isCompleted);
   const lastCompleted = completedEvents.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
   const daysSinceCompleted = lastCompleted 
@@ -45,20 +143,32 @@ export function autoBookEventsAndContracts(state: GameState): GameState {
     : 999;
   
   const isRecovery = daysSinceCompleted >= 90;
+
+  // Find approaching planned slots (within 28 days or overdue)
+  const plannedSlots = plan.slots.filter(s => s.status === 'planned');
+  plannedSlots.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
   
-  if (upcomingEvents.length === 0) {
-    const lastEvent = Object.values(newState.events).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
-    let nextDateStr = newState.currentDate;
-    
-    if (lastEvent) {
-      const daysSince = calculateDateDifference(lastEvent.date, newState.currentDate);
-      if (daysSince < EVENT_INTERVAL_DAYS) {
-        nextDateStr = addDays(lastEvent.date, EVENT_INTERVAL_DAYS);
+  const approachingSlot = plannedSlots.find(s => s.date <= addDays(newState.currentDate, 28));
+
+  if (approachingSlot) {
+    if (approachingSlot.type === 'recovery_gap') {
+      // Just mark it completed once the date is reached/passed
+      if (newState.currentDate >= approachingSlot.date) {
+        approachingSlot.status = 'completed';
+        approachingSlot.notes = [...(approachingSlot.notes || []), `Rest month completed on ${newState.currentDate}.`];
       }
-    } else {
-       nextDateStr = addDays(newState.currentDate, EVENT_INTERVAL_DAYS);
-     }
-    
+      return maintainRoster(newState);
+    }
+
+    // Check if an event is already scheduled on this slot's date
+    const existingEvent = Object.values(newState.events).find(e => e.date === approachingSlot.date && !e.isCompleted);
+    if (existingEvent) {
+      approachingSlot.eventId = existingEvent.id;
+      approachingSlot.status = 'scheduled';
+      return maintainRoster(newState);
+    }
+
+    // Otherwise, let's schedule a new event!
     // Emergency funding check
     if (newState.promotion.money < -100000) {
       newState.promotion.money += 100000;
@@ -82,20 +192,19 @@ export function autoBookEventsAndContracts(state: GameState): GameState {
          isSummary: false
       });
       
-      // Update summary if exists
       if (newState.lastAutopilotSummary) {
         newState.lastAutopilotSummary.ownerCashInjections += 1;
         newState.lastAutopilotSummary.emergencyModeTriggered += 1;
       }
     }
-    
+
     // Emergency roster signing under recovery mode
     if (isRecovery) {
       const healthySigned = Object.values(newState.fighters).filter(f => f.contract && !f.injuryStatus && (!f.medicalSuspension || f.medicalSuspension.daysRemaining <= 0) && f.fatigue < 50);
       if (healthySigned.length < 6) {
         const freeAgents = Object.values(newState.fighters)
           .filter(f => !f.contract)
-          .sort((a, b) => a.popularity - b.popularity); // Cheapest/lowest popularity first to save money
+          .sort((a, b) => a.popularity - b.popularity);
         const neededCount = 6 - healthySigned.length;
         const toSign = freeAgents.slice(0, neededCount);
         toSign.forEach(fa => {
@@ -114,12 +223,26 @@ export function autoBookEventsAndContracts(state: GameState): GameState {
         });
       }
     }
-    
-    // Create new event
-    const newEvent = generateAutoEvent(newState, nextDateStr, isRecovery);
+
+    // Create the event for this slot
+    const newEvent = generateAutoEvent(
+      newState,
+      approachingSlot.date,
+      isRecovery,
+      approachingSlot.type,
+      approachingSlot.targetWeightClass,
+      approachingSlot.tournamentId,
+      approachingSlot.tournamentRound
+    );
+
     if (newEvent) {
       newState.events = { ...newState.events, [newEvent.id]: newEvent };
       newState.autopilot.nextBookingAttemptDate = null;
+      
+      // Update slot status
+      approachingSlot.eventId = newEvent.id;
+      approachingSlot.status = 'scheduled';
+      
       newState.news = [{
         id: uuidv4(),
         date: newState.currentDate,
@@ -127,9 +250,25 @@ export function autoBookEventsAndContracts(state: GameState): GameState {
         content: `Cage Dynasty has announced its next event, scheduled for ${newEvent.date}.`,
         type: 'general'
       }, ...newState.news];
+
+      // If it is a GP round, execute scheduleTournamentRound to add matchups
+      if (approachingSlot.type === 'grand_prix_round' && approachingSlot.tournamentId && approachingSlot.tournamentRound) {
+        try {
+          newState = scheduleTournamentRound(
+            newState,
+            approachingSlot.tournamentId,
+            approachingSlot.tournamentRound,
+            newEvent.id
+          );
+        } catch (e) {
+          // If scheduling failed, write note
+          approachingSlot.notes = [...(approachingSlot.notes || []), `GP scheduling failed: ${(e as Error).message}`];
+        }
+      }
     } else {
-      // Delay by 14 days if no safe card could be booked, but do NOT mutate currentDate
+      // Delay by 14 days and record reason
       newState.autopilot.nextBookingAttemptDate = addDays(newState.currentDate, 14);
+      approachingSlot.notes = [...(approachingSlot.notes || []), `Booking attempt failed on ${newState.currentDate} due to roster/finance limitations.`];
       
       if (isRecovery) {
         const lastStallNews = newState.news.find(n => n.title === 'Event Cadence Stalled');
@@ -142,22 +281,6 @@ export function autoBookEventsAndContracts(state: GameState): GameState {
             type: 'general'
           });
         }
-      } else {
-        // Only generate the news if we haven't flooded the news with it
-        const recentNews = newState.news.slice(0, 3);
-        if (!recentNews.some(n => n.title === 'Event Delayed')) {
-          newState.news = [{
-            id: uuidv4(),
-            date: newState.currentDate,
-            title: `Event Delayed`,
-            content: `Cage Dynasty has delayed their next event to build up finances and find the right venue.`,
-            type: 'general'
-          }, ...newState.news];
-        }
-      }
-      
-      if (newState.lastAutopilotSummary) {
-        newState.lastAutopilotSummary.bookingDelays += 1;
       }
     }
   }
@@ -295,9 +418,25 @@ export function maintainDeals(state: GameState): GameState {
   return newState;
 }
 
-function generateAutoEvent(state: GameState, dateStr: string, isRecovery?: boolean): Event | null {
-  const eventName = `Cage Dynasty ${Object.keys(state.events).length + 1}`;
-  
+function generateAutoEvent(
+  state: GameState, 
+  dateStr: string, 
+  isRecovery?: boolean,
+  slotType?: CalendarSlotType,
+  targetWeightClass?: WeightClass,
+  tournamentId?: string,
+  tournamentRound?: TournamentRound
+): Event | null {
+  let eventName = `Cage Dynasty ${Object.keys(state.events).length + 1}`;
+  if (slotType === 'tentpole_event') {
+    eventName = `CD Mega Showdown ${Object.keys(state.events).length + 1}`;
+  } else if (slotType === 'title_fight_card') {
+    eventName = `CD Championship Special ${Object.keys(state.events).length + 1}`;
+  } else if (slotType === 'grand_prix_round') {
+    const roundLabel = tournamentRound ? tournamentRound.charAt(0).toUpperCase() + tournamentRound.slice(1) : '';
+    eventName = `CD GP ${roundLabel} ${Object.keys(state.events).length + 1}`;
+  }
+
   const fights: Omit<FightMatchup, 'id' | 'result'>[] = [];
   const bookedFighters = new Set<string>();
 
@@ -326,8 +465,25 @@ function generateAutoEvent(state: GameState, dateStr: string, isRecovery?: boole
   const weightClasses = Object.keys(wcGroups) as WeightClass[];
   
   let fightsTarget = 6;
-  if (isRecovery) fightsTarget = 3; // Minimum card size under recovery
+  if (isRecovery) fightsTarget = 3;
+  else if (slotType === 'tentpole_event') fightsTarget = 8;
   else if (state.promotion.reputation > 50) fightsTarget = 8;
+
+  // If this is a GP round, adjust targets and book GP fighters
+  let gpFightsCount = 0;
+  if (slotType === 'grand_prix_round' && tournamentId) {
+    const tourney = state.tournaments[tournamentId];
+    if (tourney) {
+      tourney.participants.forEach(p => bookedFighters.add(p.fighterId));
+      tourney.reserveFighterIds.forEach(id => bookedFighters.add(id));
+      
+      if (tournamentRound === 'quarterfinal') gpFightsCount = 4;
+      else if (tournamentRound === 'semifinal') gpFightsCount = 2;
+      else if (tournamentRound === 'final') gpFightsCount = 1;
+      
+      fightsTarget = Math.max(3, fightsTarget - gpFightsCount);
+    }
+  }
 
   let newNews: any[] = [];
   
@@ -341,14 +497,15 @@ function generateAutoEvent(state: GameState, dateStr: string, isRecovery?: boole
     });
   }
 
-  let titleFightBooked = false;
+  const maxTitleFights = slotType === 'title_fight_card' ? 3 : 1;
+  let titleFightsBookedCount = 0;
 
   // Helper to check if a fighter is available
   const isAvailable = (id: string | null | undefined) => id && !bookedFighters.has(id);
 
   // Priority 1: Unification Fights
   for (const wc of weightClasses) {
-    if (titleFightBooked) break;
+    if (titleFightsBookedCount >= maxTitleFights) break;
     const titleState = state.titles[wc as WeightClass];
     if (titleState?.status === 'unification_needed' && titleState.undisputedChampionId && titleState.interimChampionId) {
       const champ = wcGroups[wc].find(f => f.id === titleState.undisputedChampionId);
@@ -366,15 +523,15 @@ function generateAutoEvent(state: GameState, dateStr: string, isRecovery?: boole
         bookedFighters.add(champ.id);
         bookedFighters.add(interimChamp.id);
         newNews.push({ id: uuidv4(), date: dateStr, title: `Unification Title Fight Booked`, content: `${champ.lastName} and ${interimChamp.lastName} will fight to unify the ${wc} championship.`, type: 'general' });
-        titleFightBooked = true;
+        titleFightsBookedCount++;
       }
     }
   }
 
   // Priority 1.5: Grand Prix Winner Promised Title Shot
-  if (!titleFightBooked) {
+  if (titleFightsBookedCount < maxTitleFights) {
     for (const wc of weightClasses) {
-      if (titleFightBooked) break;
+      if (titleFightsBookedCount >= maxTitleFights) break;
       const gpWinner = (wcGroups[wc] || []).find(f => f.titleShotPromised && isAvailable(f.id));
       if (gpWinner) {
         const titleState = state.titles[wc as WeightClass];
@@ -398,7 +555,7 @@ function generateAutoEvent(state: GameState, dateStr: string, isRecovery?: boole
               content: `Grand Prix winner ${gpWinner.lastName} will challenge champion ${champ.lastName} for the undisputed ${wc} championship.`, 
               type: 'general' 
             });
-            titleFightBooked = true;
+            titleFightsBookedCount++;
           }
         } else if (titleState && titleState.status === 'vacant') {
           const contender = (wcGroups[wc] || []).find(f => f.id !== gpWinner.id && isAvailable(f.id));
@@ -420,7 +577,7 @@ function generateAutoEvent(state: GameState, dateStr: string, isRecovery?: boole
               content: `${gpWinner.lastName} will fight for the vacant ${wc} championship.`, 
               type: 'general' 
             });
-            titleFightBooked = true;
+            titleFightsBookedCount++;
           }
         }
       }
@@ -428,10 +585,10 @@ function generateAutoEvent(state: GameState, dateStr: string, isRecovery?: boole
   }
 
   // Priority 2: Overdue Undisputed Defenses
-  if (!titleFightBooked) {
+  if (titleFightsBookedCount < maxTitleFights) {
     // find WCs with undisputed champ, active, and overdue (e.g. > 120 days)
     for (const wc of weightClasses) {
-      if (titleFightBooked) break;
+      if (titleFightsBookedCount >= maxTitleFights) break;
       const titleState = state.titles[wc as WeightClass];
       if (titleState?.status === 'active' && titleState.undisputedChampionId) {
         const lastDefense = titleState.lastUndisputedDefenseDate;
@@ -456,7 +613,7 @@ function generateAutoEvent(state: GameState, dateStr: string, isRecovery?: boole
               });
               bookedFighters.add(champ.id);
               bookedFighters.add(contender.id);
-              titleFightBooked = true;
+              titleFightsBookedCount++;
             }
           }
         }
@@ -465,9 +622,9 @@ function generateAutoEvent(state: GameState, dateStr: string, isRecovery?: boole
   }
 
   // Priority 3: Interim Title Fights (for inactive champions)
-  if (!titleFightBooked) {
+  if (titleFightsBookedCount < maxTitleFights) {
     for (const wc of weightClasses) {
-      if (titleFightBooked) break;
+      if (titleFightsBookedCount >= maxTitleFights) break;
       const titleState = state.titles[wc as WeightClass];
       if (titleState?.status === 'inactive_champion' && !titleState.interimChampionId) {
         const contender1 = wcGroups[wc].find(f => f.id !== titleState.undisputedChampionId && isAvailable(f.id));
@@ -484,16 +641,16 @@ function generateAutoEvent(state: GameState, dateStr: string, isRecovery?: boole
           bookedFighters.add(contender1.id);
           bookedFighters.add(contender2.id);
           newNews.push({ id: uuidv4(), date: dateStr, title: `Interim ${wc} Title Fight Booked`, content: `${contender1.lastName} and ${contender2.lastName} will fight for the interim ${wc} championship.`, type: 'general' });
-          titleFightBooked = true;
+          titleFightsBookedCount++;
         }
       }
     }
   }
 
   // Priority 4: Vacant Undisputed Titles
-  if (!titleFightBooked) {
+  if (titleFightsBookedCount < maxTitleFights) {
     for (const wc of weightClasses) {
-      if (titleFightBooked) break;
+      if (titleFightsBookedCount >= maxTitleFights) break;
       const titleState = state.titles[wc as WeightClass];
       if (titleState?.status === 'vacant') {
         const available = wcGroups[wc].filter(f => isAvailable(f.id));
@@ -509,7 +666,7 @@ function generateAutoEvent(state: GameState, dateStr: string, isRecovery?: boole
           bookedFighters.add(available[0].id);
           bookedFighters.add(available[1].id);
           newNews.push({ id: uuidv4(), date: dateStr, title: `Vacant ${wc} Title Fight Booked`, content: `${available[0].lastName} and ${available[1].lastName} will fight for the vacant ${wc} championship.`, type: 'general' });
-          titleFightBooked = true;
+          titleFightsBookedCount++;
         }
       }
     }
@@ -566,12 +723,18 @@ function generateAutoEvent(state: GameState, dateStr: string, isRecovery?: boole
       bestTicketPrice = 15;
     }
   } else {
+    const isTentpole = slotType === 'tentpole_event';
     for (const v of venues) {
       if (!isEmergency && v.cost > state.promotion.money * 0.7) continue;
-      if (isEmergency && v.capacity > 3000) continue; // Only small venues in emergency
+      if (isEmergency && v.capacity > 3000) continue;
       
-      // adjust marketing based on money
-      const marketing = isEmergency ? 500 : Math.min(25000, Math.max(1000, Math.floor(state.promotion.money * 0.1)));
+      // Tentpole events prefer larger venues
+      if (isTentpole && v.capacity < 5000 && venues.some(x => x.capacity >= 5000 && x.cost <= state.promotion.money * 0.7)) {
+        continue;
+      }
+      
+      // adjust marketing based on money and event importance
+      const marketing = isEmergency ? 500 : (isTentpole ? Math.min(50000, Math.max(20000, Math.floor(state.promotion.money * 0.2))) : Math.min(25000, Math.max(1000, Math.floor(state.promotion.money * 0.1))));
       const tPrice = Math.floor(v.capacity * 0.05) + 20;
 
       const proj = calculateEventProjections(

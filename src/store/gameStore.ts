@@ -8,8 +8,9 @@ import { v4 as uuidv4 } from 'uuid';
 import { createNewGame, saveGameLocally, loadGameLocally, exportGameToJSON, importGameFromJSON, CURRENT_SAVE_VERSION } from '../lib/game/save';
 
 import { autoBookEventsAndContracts, maintainDeals } from '../lib/game/autobooker';
+import { generateSeasonPlan } from '../lib/game/season';
 import { quickSimulateEvent } from '../lib/engine';
-import { createGrandPrixTournament, scheduleQuarterfinals, scheduleSemifinals, scheduleFinal, cancelTournament, runAutopilotTournaments, syncTournamentTitleShotFlags } from '../lib/game/tournament';
+import { createGrandPrixTournament, scheduleQuarterfinals, scheduleSemifinals, scheduleFinal, cancelTournament, runAutopilotTournaments, syncTournamentTitleShotFlags, scheduleTournamentRound } from '../lib/game/tournament';
 import { WeightClass, TournamentFormat } from '../types/game';
 
 export interface ActiveSimulation {
@@ -21,14 +22,15 @@ export interface ActiveSimulation {
 }
 
 interface GameStore extends GameState {
-  currentView: 'dashboard' | 'roster' | 'free-agents' | 'event-builder' | 'simulation' | 'rankings' | 'news' | 'fighter-detail' | 'debug' | 'history' | 'fight-detail' | 'tournaments';
+  currentView: 'dashboard' | 'roster' | 'free-agents' | 'event-builder' | 'simulation' | 'rankings' | 'news' | 'fighter-detail' | 'debug' | 'history' | 'fight-detail' | 'tournaments' | 'calendar';
   selectedFighterId: string | null;
   selectedEventId: string | null;
+  selectedCalendarSlotId: string | null;
   selectedFightArchiveId: string | null;
   activeEventSimulation: ActiveSimulation | null;
   
   // Actions
-  setView: (view: GameStore['currentView'], data?: { fighterId?: string, eventId?: string, fightArchiveId?: string }) => void;
+  setView: (view: GameStore['currentView'], data?: { fighterId?: string, eventId?: string, fightArchiveId?: string, calendarSlotId?: string }) => void;
   setMode: (mode: 'manager' | 'observer') => void;
   setAutopilot: (settings: Partial<GameState['autopilot']>) => void;
   newGame: () => void;
@@ -56,6 +58,8 @@ interface GameStore extends GameState {
   scheduleSemifinals: (tournamentId: string, eventId: string) => void;
   scheduleFinal: (tournamentId: string, eventId: string) => void;
   cancelTournament: (tournamentId: string) => void;
+  generateCurrentYearPlan: () => void;
+  cancelCalendarSlot: (slotId: string) => void;
 }
 
 export const useGameStore = create<GameStore>((set, get) => ({
@@ -63,13 +67,15 @@ export const useGameStore = create<GameStore>((set, get) => ({
   currentView: 'dashboard',
   selectedFighterId: null,
   selectedEventId: null,
+  selectedCalendarSlotId: null,
   selectedFightArchiveId: null,
   activeEventSimulation: null,
 
-  setView: (view, data) => set({ 
+  setView: (view, data: any) => set({ 
     currentView: view, 
     selectedFighterId: data?.fighterId || null,
     selectedEventId: data?.eventId || null,
+    selectedCalendarSlotId: data?.calendarSlotId || null,
     selectedFightArchiveId: data?.fightArchiveId || null
   }),
 
@@ -181,7 +187,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
           sponsorDeals: newState.sponsorDeals,
           mediaDeals: newState.mediaDeals,
           financeLedger: newState.financeLedger,
-          tournaments: newState.tournaments || {}
+          tournaments: newState.tournaments || {},
+          seasonPlans: newState.seasonPlans || {}
         };
         
         // Auto-book events and contracts
@@ -522,9 +529,11 @@ export const useGameStore = create<GameStore>((set, get) => ({
       const id = uuidv4();
       const newEvt: Event = { ...eventData, id, isCompleted: false };
       
-      return {
+      let nextState = {
+        ...state,
         events: { ...state.events, [id]: newEvt },
-        currentView: 'dashboard',
+        currentView: 'dashboard' as const,
+        selectedCalendarSlotId: null,
         news: [{
           id: uuidv4(),
           date: state.currentDate,
@@ -533,6 +542,62 @@ export const useGameStore = create<GameStore>((set, get) => ({
           type: 'event' as const
         }, ...state.news].slice(0, 50)
       };
+
+      if (state.selectedCalendarSlotId && state.seasonPlans) {
+        const year = new Date(state.currentDate).getFullYear();
+        const plan = state.seasonPlans[year];
+        if (plan) {
+          const slot = plan.slots.find(s => s.id === state.selectedCalendarSlotId);
+          if (slot) {
+            const slots = plan.slots.map(s => {
+              if (s.id === state.selectedCalendarSlotId) {
+                return {
+                  ...s,
+                  eventId: id,
+                  status: 'scheduled' as const,
+                  notes: [...(s.notes || []), `Manually booked event on ${state.currentDate}.`]
+                };
+              }
+              return s;
+            });
+            nextState.seasonPlans = {
+              ...nextState.seasonPlans,
+              [year]: { ...plan, slots }
+            };
+
+            if (slot.type === 'grand_prix_round' && slot.tournamentId && slot.tournamentRound) {
+              try {
+                const gpState = scheduleTournamentRound(nextState, slot.tournamentId, slot.tournamentRound, id);
+                gpState.events[id].fights = newEvt.fights.map(f => {
+                  const originalGpMatch = gpState.events[id].fights.find(gf => 
+                    gf.tournamentFightSlotId && 
+                    gf.redCornerId === f.redCornerId && 
+                    gf.blueCornerId === f.blueCornerId
+                  );
+                  if (originalGpMatch) {
+                    return { 
+                      ...f, 
+                      id: originalGpMatch.id, 
+                      tournamentId: originalGpMatch.tournamentId, 
+                      tournamentRound: originalGpMatch.tournamentRound, 
+                      tournamentFightSlotId: originalGpMatch.tournamentFightSlotId 
+                    };
+                  }
+                  return f;
+                });
+                nextState = {
+                  ...nextState,
+                  ...gpState
+                };
+              } catch (e) {
+                console.error("Manual GP scheduling integration failed", e);
+              }
+            }
+          }
+        }
+      }
+
+      return nextState;
     });
   },
 
@@ -732,6 +797,45 @@ export const useGameStore = create<GameStore>((set, get) => ({
         alert(err.message);
         return state;
       }
+    });
+  },
+
+  generateCurrentYearPlan: () => {
+    set((state) => {
+      const year = new Date(state.currentDate).getFullYear();
+      const plan = generateSeasonPlan(state, year);
+      return {
+        seasonPlans: {
+          ...state.seasonPlans,
+          [year]: plan
+        }
+      };
+    });
+  },
+
+  cancelCalendarSlot: (slotId) => {
+    set((state) => {
+      const year = new Date(state.currentDate).getFullYear();
+      const plan = state.seasonPlans?.[year];
+      if (!plan) return state;
+
+      const slots = plan.slots.map(s => {
+        if (s.id === slotId) {
+          return {
+            ...s,
+            status: 'cancelled' as const,
+            notes: [...(s.notes || []), `Manually cancelled on ${state.currentDate}.`]
+          };
+        }
+        return s;
+      });
+
+      return {
+        seasonPlans: {
+          ...state.seasonPlans,
+          [year]: { ...plan, slots }
+        }
+      };
     });
   },
 

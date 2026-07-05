@@ -4,13 +4,54 @@ import { WEIGHT_CLASSES } from '../lib/game/constants';
 import { Trophy, Calendar, Star, TrendingUp, Award } from 'lucide-react';
 
 export default function HistoryStats() {
-  const { eventArchive, fightArchive, titleHistory, fighters, setView, belts, yearlyAwards = {}, financeLedger, tournaments = {} } = useGameStore();
+  const { eventArchive, fightArchive, titleHistory, fighters, setView, belts, yearlyAwards = {}, financeLedger, tournaments = {}, seasonPlans = {} } = useGameStore();
 
   const [expandedEventId, setExpandedEventId] = React.useState<string | null>(null);
   const [gpFilter, setGpFilter] = React.useState<'All' | 'Active' | 'Completed' | 'Cancelled' | '4-Man' | '8-Man'>('All');
 
+  const planYears = Object.keys(seasonPlans || {}).map(Number);
+  const archiveYears = Object.values(eventArchive).map(e => new Date(e.date).getFullYear());
+  const allYears = Array.from(new Set([...planYears, ...archiveYears])).sort((a, b) => b - a);
+  const [selectedSummaryYear, setSelectedSummaryYear] = React.useState<number>(
+    allYears.length > 0 ? allYears[0] : new Date().getFullYear()
+  );
+
   const events = Object.values(eventArchive).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   const fights = Object.values(fightArchive).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+  // Derive selected year summary statistics
+  const yearEvents = Object.values(eventArchive).filter(e => new Date(e.date).getFullYear() === selectedSummaryYear);
+  const yearFights = Object.values(fightArchive).filter(f => new Date(f.date).getFullYear() === selectedSummaryYear);
+  
+  const yearCompletedEvents = yearEvents.length;
+  const yearPlan = seasonPlans?.[selectedSummaryYear];
+  const yearTentpoles = yearPlan 
+    ? yearPlan.slots.filter(s => s.type === 'tentpole_event' && s.status === 'completed').length 
+    : yearEvents.filter(e => e.name.includes("Mega Showdown") || (e.marketingCost && e.marketingCost >= 20000)).length;
+    
+  const yearGPs = Object.values(tournaments).filter(t => t.status === 'completed' && t.completedDate && new Date(t.completedDate).getFullYear() === selectedSummaryYear).length;
+  
+  const yearBiggestEvent = yearEvents.length > 0 ? yearEvents.reduce((max, e) => e.attendance > max.attendance ? e : max, yearEvents[0]) : null;
+  const yearBestFight = yearFights.length > 0 ? yearFights.reduce((max, f) => f.performanceRating > max.performanceRating ? f : max, yearFights[0]) : null;
+  
+  let yearBiggestUpset: any = null;
+  let maxUpsetDiff = 0;
+  yearFights.forEach(f => {
+    const winner = fighters[f.winnerId || ''];
+    const loserId = f.winnerId === f.redFighterId ? f.blueFighterId : f.redFighterId;
+    const loser = fighters[loserId || ''];
+    if (winner && loser && loser.popularity > winner.popularity) {
+      const diff = loser.popularity - winner.popularity;
+      if (diff > maxUpsetDiff) {
+        maxUpsetDiff = diff;
+        yearBiggestUpset = f;
+      }
+    }
+  });
+
+  const yearProfit = yearEvents.reduce((sum, e) => sum + e.profit, 0);
+  const yearRevenue = yearEvents.reduce((sum, e) => sum + e.revenue, 0);
+  const yearSlots = yearPlan?.slots || [];
 
   // Legacy Calculation
   const legacyScores = Object.values(fighters).map(f => {
@@ -536,6 +577,166 @@ export default function HistoryStats() {
           )}
         </div>
       )}
+
+      {/* Season Summary & Calendar Slot Archive */}
+      <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-6 space-y-6">
+        <div className="flex justify-between items-center border-b border-neutral-800 pb-4">
+          <div className="flex items-center gap-2">
+            <Calendar className="w-5 h-5 text-blue-400" />
+            <h2 className="text-xl font-bold text-white uppercase tracking-tight">Season Summary & Calendar Archive</h2>
+          </div>
+          
+          <select 
+            value={selectedSummaryYear}
+            onChange={(e) => setSelectedSummaryYear(Number(e.target.value))}
+            className="bg-neutral-950 border border-neutral-700 text-white p-2 rounded focus:outline-none focus:border-neutral-500"
+          >
+            {allYears.length > 0 ? (
+              allYears.map(y => (
+                <option key={y} value={y}>{y} Season</option>
+              ))
+            ) : (
+              <option value={new Date().getFullYear()}>{new Date().getFullYear()} Season</option>
+            )}
+          </select>
+        </div>
+
+        {/* Stats Grid */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="bg-neutral-950 p-4 rounded border border-neutral-800">
+            <p className="text-xs text-neutral-500 uppercase font-bold tracking-wider">Completed Events</p>
+            <p className="text-2xl font-black text-white mt-1">{yearCompletedEvents}</p>
+          </div>
+          <div className="bg-neutral-950 p-4 rounded border border-neutral-800">
+            <p className="text-xs text-neutral-500 uppercase font-bold tracking-wider">Tentpole Events</p>
+            <p className="text-2xl font-black text-purple-400 mt-1">{yearTentpoles}</p>
+          </div>
+          <div className="bg-neutral-950 p-4 rounded border border-neutral-800">
+            <p className="text-xs text-neutral-500 uppercase font-bold tracking-wider">Completed Tourneys</p>
+            <p className="text-2xl font-black text-yellow-500 mt-1">{yearGPs}</p>
+          </div>
+          <div className="bg-neutral-950 p-4 rounded border border-neutral-800">
+            <p className="text-xs text-neutral-500 uppercase font-bold tracking-wider">Financial Net</p>
+            <p className={`text-2xl font-black mt-1 ${yearProfit >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+              {yearProfit >= 0 ? '+' : ''}${yearProfit.toLocaleString()}
+            </p>
+          </div>
+        </div>
+
+        {/* Best Performance Highlights */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="bg-neutral-950 p-4 rounded border border-neutral-800/60">
+            <p className="text-xs text-neutral-500 uppercase font-bold tracking-wider mb-2">Biggest Event</p>
+            {yearBiggestEvent ? (
+              <div>
+                <p className="text-sm font-bold text-white">{yearBiggestEvent.name}</p>
+                <p className="text-xs text-neutral-400 mt-0.5">{yearBiggestEvent.attendance.toLocaleString()} Attendance</p>
+              </div>
+            ) : (
+              <p className="text-sm text-neutral-500">None recorded</p>
+            )}
+          </div>
+          <div className="bg-neutral-950 p-4 rounded border border-neutral-800/60">
+            <p className="text-xs text-neutral-500 uppercase font-bold tracking-wider mb-2">Best Fight</p>
+            {yearBestFight ? (
+              <div 
+                className="cursor-pointer hover:underline"
+                onClick={() => setView('fight-detail', { fightArchiveId: yearBestFight.id })}
+              >
+                <p className="text-sm font-bold text-white">
+                  {fighters[yearBestFight.redFighterId]?.lastName} vs {fighters[yearBestFight.blueFighterId]?.lastName}
+                </p>
+                <p className="text-xs text-neutral-400 mt-0.5">Rating: {yearBestFight.performanceRating}% ({yearBestFight.eventName})</p>
+              </div>
+            ) : (
+              <p className="text-sm text-neutral-500">None recorded</p>
+            )}
+          </div>
+          <div className="bg-neutral-950 p-4 rounded border border-neutral-800/60">
+            <p className="text-xs text-neutral-500 uppercase font-bold tracking-wider mb-2">Biggest Upset</p>
+            {yearBiggestUpset ? (
+              <div 
+                className="cursor-pointer hover:underline"
+                onClick={() => setView('fight-detail', { fightArchiveId: yearBiggestUpset.id })}
+              >
+                <p className="text-sm font-bold text-white">
+                  {fighters[yearBiggestUpset.winnerId]?.lastName} def. {fighters[yearBiggestUpset.winnerId === yearBiggestUpset.redFighterId ? yearBiggestUpset.blueFighterId : yearBiggestUpset.redFighterId]?.lastName}
+                </p>
+                <p className="text-xs text-green-500 mt-0.5">Upset margin: +{maxUpsetDiff}%</p>
+              </div>
+            ) : (
+              <p className="text-sm text-neutral-500">None recorded</p>
+            )}
+          </div>
+        </div>
+
+        {/* Calendar Slots Archive list */}
+        {yearSlots.length > 0 && (
+          <div className="space-y-3">
+            <h3 className="text-sm font-bold text-neutral-300 uppercase tracking-wider">Calendar Slot Archive ({selectedSummaryYear})</h3>
+            <div className="overflow-x-auto border border-neutral-800 rounded">
+              <table className="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr className="bg-neutral-950 text-neutral-400 font-bold uppercase border-b border-neutral-800">
+                    <th className="p-3">Date</th>
+                    <th className="p-3">Slot Type</th>
+                    <th className="p-3">Status</th>
+                    <th className="p-3">Linked Event</th>
+                    <th className="p-3">Notes</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-neutral-800/50">
+                  {yearSlots.map(s => {
+                    const linkedEvent = Object.values(eventArchive).find(e => e.id === s.eventId);
+                    return (
+                      <tr key={s.id} className="hover:bg-neutral-950/40">
+                        <td className="p-3 font-mono text-neutral-400">{s.date}</td>
+                        <td className="p-3">
+                          <span className={`px-1.5 py-0.5 rounded font-black uppercase text-[9px] ${
+                            s.type === 'tentpole_event' ? 'bg-purple-900/40 text-purple-400' :
+                            s.type === 'title_fight_card' ? 'bg-yellow-900/40 text-yellow-400' :
+                            s.type === 'grand_prix_round' ? 'bg-blue-900/40 text-blue-400' :
+                            s.type === 'recovery_gap' ? 'bg-neutral-800 text-neutral-400' :
+                            'bg-neutral-950 text-neutral-400'
+                          }`}>
+                            {s.type.replace('_', ' ')}
+                          </span>
+                        </td>
+                        <td className="p-3">
+                          <span className={`px-1.5 py-0.5 rounded font-black uppercase text-[9px] ${
+                            s.status === 'completed' ? 'bg-green-900/40 text-green-400' :
+                            s.status === 'scheduled' ? 'bg-blue-900/40 text-blue-400' :
+                            s.status === 'missed' ? 'bg-orange-900/40 text-orange-400' :
+                            s.status === 'cancelled' ? 'bg-red-900/40 text-red-400' :
+                            'bg-neutral-800 text-neutral-500'
+                          }`}>
+                            {s.status}
+                          </span>
+                        </td>
+                        <td className="p-3">
+                          {linkedEvent ? (
+                            <span 
+                              className="text-blue-400 hover:underline cursor-pointer font-bold"
+                              onClick={() => setView('simulation', { eventId: linkedEvent.id })}
+                            >
+                              {linkedEvent.name}
+                            </span>
+                          ) : (
+                            <span className="text-neutral-500">—</span>
+                          )}
+                        </td>
+                        <td className="p-3 text-neutral-400 max-w-[200px] truncate" title={s.notes?.join(', ')}>
+                          {s.notes && s.notes.length > 0 ? s.notes.join(', ') : <span className="text-neutral-600">None</span>}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </div>
 
       <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-6">
         <h2 className="text-xl font-bold text-white mb-6 flex items-center gap-2">

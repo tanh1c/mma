@@ -450,6 +450,45 @@ export interface GameState {
   mediaDeals?: MediaDeal[];
   financeLedger?: FinanceLedgerEntry[];
   tournaments: Record<string, GrandPrixTournament>;
+  seasonPlans?: Record<number, SeasonPlan>;
+}
+
+export type CalendarSlotType =
+  | 'regular_event'
+  | 'tentpole_event'
+  | 'grand_prix_round'
+  | 'title_fight_card'
+  | 'recovery_gap';
+
+export type CalendarSlotStatus =
+  | 'planned'
+  | 'scheduled'
+  | 'completed'
+  | 'missed'
+  | 'cancelled';
+
+export interface SeasonCalendarSlot {
+  id: string;
+  year: number;
+  date: string;
+  type: CalendarSlotType;
+  status: CalendarSlotStatus;
+  targetWeightClass?: WeightClass;
+  tournamentId?: string;
+  tournamentRound?: TournamentRound;
+  eventId?: string;
+  priority: number;
+  notes?: string[];
+}
+
+export interface SeasonPlan {
+  year: number;
+  createdDate: string;
+  slots: SeasonCalendarSlot[];
+  targetEvents: number;
+  targetTentpoles: number;
+  targetGrandPrix: number;
+  status: 'active' | 'completed';
 }
 
 export type TournamentStatus =

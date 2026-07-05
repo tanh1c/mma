@@ -374,7 +374,8 @@ export function generateInitialWorld(seed?: number): GameState {
       }
     ],
     financeLedger: [],
-    tournaments: {}
+    tournaments: {},
+    seasonPlans: {}
   };
 
   initialState = initializeRankingScores(initialState);

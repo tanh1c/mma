@@ -8,7 +8,7 @@ import { ArrowUp, ArrowDown, Trash2, AlertTriangle, Info } from 'lucide-react';
 import { Select } from '../components/Select';
 
 export default function EventBuilder() {
-  const { fighters, venues, promotion, currentDate, storylines, titles, belts, createEvent, updateEvent, setView, selectedEventId, events, tournaments = {} } = useGameStore();
+  const { fighters, venues, promotion, currentDate, storylines, titles, belts, createEvent, updateEvent, setView, selectedEventId, selectedCalendarSlotId, seasonPlans = {}, events, tournaments = {} } = useGameStore();
   
   const isEditing = Boolean(selectedEventId && events[selectedEventId] && !events[selectedEventId].isCompleted);
   const editingEvent = isEditing ? events[selectedEventId!] : null;
@@ -20,6 +20,53 @@ export default function EventBuilder() {
   const [marketingSpend, setMarketingSpend] = useState(editingEvent ? editingEvent.marketingSpend : 10000);
   
   const [fights, setFights] = useState<Omit<FightMatchup, 'id' | 'result'>[]>(editingEvent ? [...editingEvent.fights] : []);
+  const [selectedWC, setSelectedWC] = useState<string>('Lightweight');
+
+  useEffect(() => {
+    if (!editingEvent && selectedCalendarSlotId && seasonPlans) {
+      const currentYear = new Date(currentDate).getFullYear();
+      const plan = seasonPlans[currentYear];
+      const slot = plan?.slots.find(s => s.id === selectedCalendarSlotId);
+      if (slot) {
+        setEventDate(slot.date);
+        
+        let initialName = `Cage Dynasty ${Object.keys(events).length + 1}`;
+        if (slot.type === 'tentpole_event') {
+          initialName = `CD Mega Showdown ${Object.keys(events).length + 1}`;
+          setMarketingSpend(25000);
+          const largeVenue = Object.values(venues).sort((a, b) => b.capacity - a.capacity)[0];
+          if (largeVenue) setVenueId(largeVenue.id);
+        } else if (slot.type === 'title_fight_card') {
+          initialName = `CD Championship Special ${Object.keys(events).length + 1}`;
+        } else if (slot.type === 'grand_prix_round') {
+          const roundLabel = slot.tournamentRound ? slot.tournamentRound.charAt(0).toUpperCase() + slot.tournamentRound.slice(1) : '';
+          initialName = `CD GP ${roundLabel} ${Object.keys(events).length + 1}`;
+        }
+        setEventName(initialName);
+
+        if (slot.type === 'grand_prix_round' && slot.tournamentId && slot.tournamentRound) {
+          const tourney = tournaments[slot.tournamentId];
+          if (tourney) {
+            const roundFights = tourney.fights.filter(f => f.round === slot.tournamentRound);
+            const gpFights = roundFights.map(f => ({
+              redCornerId: f.redFighterId!,
+              blueCornerId: f.blueFighterId!,
+              weightClass: tourney.weightClass,
+              isTitleFight: false,
+              rounds: slot.tournamentRound === 'final' ? 5 : 3,
+              tournamentId: tourney.id,
+              tournamentRound: slot.tournamentRound!,
+              tournamentFightSlotId: f.id
+            }));
+            setFights(gpFights);
+            setSelectedWC(tourney.weightClass);
+          }
+        } else if (slot.targetWeightClass) {
+          setSelectedWC(slot.targetWeightClass);
+        }
+      }
+    }
+  }, [editingEvent, selectedCalendarSlotId, seasonPlans, currentDate, tournaments, venues, events]);
 
   useEffect(() => {
     if (editingEvent) {
@@ -32,7 +79,6 @@ export default function EventBuilder() {
     }
   }, [editingEvent]);
 
-  const [selectedWC, setSelectedWC] = useState<string>('Lightweight');
   const [redFighter, setRedFighter] = useState('');
   const [blueFighter, setBlueFighter] = useState('');
   const [isTitleFight, setIsTitleFight] = useState(false);
