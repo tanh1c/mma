@@ -2,7 +2,7 @@ import { GameState, Event, FightMatchup, WeightClass, Fighter, CalendarSlotType,
 import { v4 as uuidv4 } from 'uuid';
 import { calculateEventProjections } from './economy';
 import { generateSeasonPlan, syncCalendarSlots } from './season';
-import { scheduleTournamentRound, getPendingTitleShotDebts, isFighterBookedUpcoming, evaluateAndCreateTournament, bindTournamentToCalendarSlots } from './tournament';
+import { scheduleTournamentRound, getPendingTitleShotDebts, isFighterBookedUpcoming, evaluateAndCreateTournament, bindTournamentToCalendarSlots, repairScheduledTournamentRound } from './tournament';
 
 const EVENT_INTERVAL_DAYS = 28;
 
@@ -304,6 +304,11 @@ export function autoBookEventsAndContracts(state: GameState): GameState {
           // If scheduling failed, write note
           approachingSlot.notes = [...(approachingSlot.notes || []), `GP scheduling failed: ${(e as Error).message}`];
         }
+      }
+
+      newState = checkAndCleanEmptyEvent(newState, newEvent.id);
+      if (!newState.events[newEvent.id]) {
+        newState.autopilot.nextBookingAttemptDate = addDays(newState.currentDate, 14);
       }
     } else {
       // Delay by 14 days and record reason
@@ -942,7 +947,7 @@ export function repairEventAvailability(state: GameState, eventId: string): Game
   const event = newState.events[eventId];
   if (!event || event.isCompleted) return newState;
 
-  let eventFights = [...event.fights];
+  let eventFights = [...event.fights].filter(f => f && f.redCornerId && f.blueCornerId);
   let changed = false;
 
   for (let i = eventFights.length - 1; i >= 0; i--) {
@@ -963,29 +968,9 @@ export function repairEventAvailability(state: GameState, eventId: string): Game
         const round = fight.tournamentRound;
         const tourney = newState.tournaments[tId];
         if (tourney) {
-          eventFights = eventFights.filter(f => !(f.tournamentId === tId && f.tournamentRound === round));
-          
-          const updatedTourneyFights = tourney.fights.map(tf => {
-            if (tf.round === round) {
-              return { ...tf, eventId: undefined };
-            }
-            return tf;
-          });
-          newState.tournaments[tId] = {
-            ...tourney,
-            fights: updatedTourneyFights
-          };
-
-          newState.tournaments[tId].roundDelayReason = null;
-          newState.tournaments[tId].delayedRound = null;
-          newState.tournaments[tId].earliestRoundDate = null;
-          newState.tournaments[tId].delayedFighterId = null;
-
-          newState.events[eventId] = { ...event, fights: eventFights };
-
           try {
-            newState = scheduleTournamentRound(newState, tId, round, eventId);
-            eventFights = [...newState.events[eventId].fights];
+            newState = repairScheduledTournamentRound(newState, tId, round, eventId);
+            return repairEventAvailability(newState, eventId);
           } catch (err) {
             console.error("Failed to repair tournament fight", err);
           }
@@ -1069,35 +1054,197 @@ export function repairEventAvailability(state: GameState, eventId: string): Game
     };
   }
 
-  const currentEvent = newState.events[eventId];
-  if (currentEvent && currentEvent.fights.length < 3) {
-    const year = new Date(currentEvent.date).getFullYear();
-    const plan = newState.seasonPlans?.[year];
-    const slot = plan?.slots.find(s => s.eventId === eventId);
+  return checkAndCleanEmptyEvent(newState, eventId);
+}
+
+export function rebuildCard(state: GameState, eventId: string): GameState {
+  let newState = {
+    ...state,
+    events: { ...state.events },
+    fighters: { ...state.fighters },
+    news: [...state.news]
+  };
+
+  const event = newState.events[eventId];
+  if (!event || event.isCompleted) return newState;
+
+  let eventFights = [...event.fights];
+  
+  // Clean up any invalid/undefined fights first
+  eventFights = eventFights.filter(f => f && f.redCornerId && f.blueCornerId);
+
+  if (eventFights.length >= 3) {
+    newState.events[eventId] = { ...event, fights: eventFights };
+    return newState;
+  }
+
+  // We need to add fights to reach at least 3 fights
+  const currentlyBooked = new Set<string>();
+  eventFights.forEach(f => {
+    currentlyBooked.add(f.redCornerId);
+    currentlyBooked.add(f.blueCornerId);
+  });
+
+  const availableFighters = Object.values(newState.fighters).filter(f => 
+    f.contract &&
+    f.injuryStatus === null &&
+    (!f.medicalSuspension || f.medicalSuspension.daysRemaining <= 0) &&
+    f.fatigue < 50 &&
+    !currentlyBooked.has(f.id) &&
+    !isFighterBookedUpcoming(newState, f.id, eventId)
+  );
+
+  // Group by weightClass
+  const groups: Record<string, Fighter[]> = {};
+  availableFighters.forEach(f => {
+    if (!groups[f.weightClass]) groups[f.weightClass] = [];
+    groups[f.weightClass].push(f);
+  });
+
+  // Try to create matchups in each weight class
+  for (const wc of Object.keys(groups)) {
+    if (eventFights.length >= 3) break;
+    const fightersInWc = groups[wc];
     
-    const nextDate = addDays(newState.currentDate, 14);
+    fightersInWc.sort((a, b) => {
+      const rankA = newState.rankings[wc as WeightClass]?.find(r => r.fighterId === a.id)?.rank ?? 99;
+      const rankB = newState.rankings[wc as WeightClass]?.find(r => r.fighterId === b.id)?.rank ?? 99;
+      if (rankA !== rankB) return rankA - rankB;
+      return b.popularity - a.popularity;
+    });
 
-    newState.news = [{
-      id: uuidv4(),
-      date: newState.currentDate,
-      title: `${currentEvent.name} Postponed`,
-      content: `Due to roster depletion and fight cancellations, ${currentEvent.name} has been postponed to ${nextDate}.`,
-      type: 'general' as const
-    }, ...newState.news];
+    for (let i = 0; i < fightersInWc.length - 1; i += 2) {
+      if (eventFights.length >= 3) break;
+      const f1 = fightersInWc[i];
+      const f2 = fightersInWc[i+1];
+      
+      eventFights.push({
+        id: uuidv4(),
+        redCornerId: f1.id,
+        blueCornerId: f2.id,
+        weightClass: wc as WeightClass,
+        isTitleFight: false,
+        rounds: 3
+      });
+      currentlyBooked.add(f1.id);
+      currentlyBooked.add(f2.id);
+    }
+  }
 
-    newState.events[eventId] = {
-      ...currentEvent,
-      date: nextDate
-    };
+  newState.events[eventId] = {
+    ...event,
+    fights: eventFights
+  };
 
-    if (slot) {
-      slot.date = nextDate;
-      slot.notes = [...(slot.notes || []), `Postponed from ${currentEvent.date} due to fight cancellations.`];
-      if (plan) {
-        plan.slots.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  return newState;
+}
+
+export function checkAndCleanEmptyEvent(state: GameState, eventId: string): GameState {
+  let newState = {
+    ...state,
+    events: { ...state.events },
+    tournaments: { ...state.tournaments },
+    news: [...state.news]
+  };
+
+  const event = newState.events[eventId];
+  if (!event || event.isCompleted) return newState;
+
+  newState = rebuildCard(newState, eventId);
+  const updatedEvent = newState.events[eventId];
+
+  if (updatedEvent && updatedEvent.fights.length >= 3) {
+    return newState;
+  }
+
+  // Rebuild failed! We must remove/cancel the event
+  console.log(`Event ${event.name} has ${updatedEvent ? updatedEvent.fights.length : 0} fights, which is below minimum 3. Cancelling/Removing.`);
+  
+  let slotYear: number | null = null;
+  let slotIdx: number = -1;
+  if (newState.seasonPlans) {
+    for (const yStr in newState.seasonPlans) {
+      const plan = newState.seasonPlans[Number(yStr)];
+      const idx = plan?.slots.findIndex(s => s.eventId === eventId) ?? -1;
+      if (idx !== -1) {
+        slotYear = Number(yStr);
+        slotIdx = idx;
+        break;
       }
     }
   }
+
+  delete newState.events[eventId];
+
+  newState.news.unshift({
+    id: uuidv4(),
+    date: newState.currentDate,
+    title: `Event Cancelled: ${event.name}`,
+    content: `Due to insufficient matchups and fighter unavailability, ${event.name} has been cancelled.`,
+    type: 'general' as const
+  });
+
+  if (slotYear !== null && slotIdx !== -1 && newState.seasonPlans) {
+    const plan = newState.seasonPlans[slotYear];
+    const slots = [...plan.slots];
+    const slot = slots[slotIdx];
+    
+    slots[slotIdx] = {
+      ...slot,
+      status: 'cancelled' as const,
+      eventId: undefined,
+      notes: [...(slot.notes || []), `Cancelled on ${newState.currentDate} due to insufficient fights (< 3 fights).`]
+    };
+
+    newState.seasonPlans[slotYear] = {
+      ...plan,
+      slots
+    };
+  }
+
+  Object.keys(newState.tournaments).forEach(tId => {
+    const t = newState.tournaments[tId];
+    const hasFightsLinked = t.fights.some(f => f.eventId === eventId);
+    if (hasFightsLinked) {
+      const updatedFights = t.fights.map(f => {
+        if (f.eventId === eventId) {
+          return {
+            ...f,
+            eventId: undefined,
+            fightId: undefined
+          };
+        }
+        return f;
+      });
+
+      const round = t.fights.find(f => f.eventId === eventId)?.round;
+      newState.tournaments[tId] = {
+        ...t,
+        fights: updatedFights,
+        roundDelayReason: `Event ${event.name} cancelled due to roster depletion.`,
+        delayedRound: round || null,
+        earliestRoundDate: addDays(newState.currentDate, 14),
+        notes: [...(t.notes || []), `Round delayed due to cancellation of event ${event.name}`]
+      };
+    }
+  });
+
+  return newState;
+}
+
+export function repairFutureEventAvailability(state: GameState): GameState {
+  let newState = { ...state };
+  const cutoffDate = addDays(newState.currentDate, 30);
+  
+  const upcomingEvents = Object.values(newState.events).filter(e => 
+    !e.isCompleted && 
+    e.date >= newState.currentDate && 
+    e.date <= cutoffDate
+  );
+
+  upcomingEvents.forEach(e => {
+    newState = repairEventAvailability(newState, e.id);
+  });
 
   return newState;
 }

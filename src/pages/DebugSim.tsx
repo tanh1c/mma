@@ -839,6 +839,34 @@ export default function DebugSim() {
                   <span className="text-neutral-400">Ledger Inconsistencies</span>
                   <span className={`font-bold ${report.ledgerInconsistencies > 0 ? 'text-red-400' : 'text-green-400'}`}>{report.ledgerInconsistencies}</span>
                 </div>
+                <div className="flex justify-between p-2 bg-neutral-950 rounded border border-neutral-850">
+                  <span className="text-neutral-400">Past Scheduled Events</span>
+                  <span className={`font-bold ${report.pastScheduledEventsCount > 0 ? 'text-red-400' : 'text-green-400'}`}>{report.pastScheduledEventsCount}</span>
+                </div>
+                <div className="flex justify-between p-2 bg-neutral-950 rounded border border-neutral-850">
+                  <span className="text-neutral-400">Scheduled w/ 0 Fights</span>
+                  <span className={`font-bold ${report.scheduledEventsWith0Fights > 0 ? 'text-red-400' : 'text-green-400'}`}>{report.scheduledEventsWith0Fights}</span>
+                </div>
+                <div className="flex justify-between p-2 bg-neutral-950 rounded border border-neutral-850">
+                  <span className="text-neutral-400">Upcoming Unavailable Fighters</span>
+                  <span className={`font-bold ${report.upcomingUnavailableFighterCount > 0 ? 'text-red-400' : 'text-green-400'}`}>{report.upcomingUnavailableFighterCount}</span>
+                </div>
+                <div className="flex justify-between p-2 bg-neutral-950 rounded border border-neutral-850">
+                  <span className="text-neutral-400">Slot/Event Date Mismatch</span>
+                  <span className={`font-bold ${report.slotEventDateMismatchCount > 0 ? 'text-red-400' : 'text-green-400'}`}>{report.slotEventDateMismatchCount}</span>
+                </div>
+                <div className="flex justify-between p-2 bg-neutral-950 rounded border border-neutral-850">
+                  <span className="text-neutral-400">Fake GP Events</span>
+                  <span className={`font-bold ${report.fakeGPEventCount > 0 ? 'text-red-400' : 'text-green-400'}`}>{report.fakeGPEventCount}</span>
+                </div>
+                <div className="flex justify-between p-2 bg-neutral-950 rounded border border-neutral-850">
+                  <span className="text-neutral-400">Fake GP Slots</span>
+                  <span className={`font-bold ${report.fakeGPSlotCount > 0 ? 'text-red-400' : 'text-green-400'}`}>{report.fakeGPSlotCount}</span>
+                </div>
+                <div className="flex justify-between p-2 bg-neutral-950 rounded border border-neutral-850">
+                  <span className="text-neutral-400">Stale Planned Slots</span>
+                  <span className={`font-bold ${report.stalePlannedSlotCount > 0 ? 'text-red-400' : 'text-green-400'}`}>{report.stalePlannedSlotCount}</span>
+                </div>
               </div>
             </div>
 
@@ -1133,7 +1161,86 @@ function calculateReport(store: any, initialFights: number) {
    const calendarTentpoleCount = slots.filter((s: any) => s.type === 'tentpole_event').length;
    const calendarIntegrityErrors = validateSeasonCalendarState(state);
 
+   const pastScheduledEventsCount = Object.values(state.events).filter((e: any) => !e.isCompleted && e.date < state.currentDate).length;
+   const scheduledEventsWith0Fights = Object.values(state.events).filter((e: any) => !e.isCompleted && e.fights.length === 0).length;
+
+   let upcomingUnavailableFighterCount = 0;
+   Object.values(state.events).forEach((e: any) => {
+     if (!e.isCompleted) {
+       e.fights.forEach((f: any) => {
+         const red = state.fighters[f.redCornerId];
+         const blue = state.fighters[f.blueCornerId];
+         if (!red || !red.contract || red.injuryStatus || (red.medicalSuspension && red.medicalSuspension.daysRemaining > 0)) {
+           upcomingUnavailableFighterCount++;
+         }
+         if (!blue || !blue.contract || blue.injuryStatus || (blue.medicalSuspension && blue.medicalSuspension.daysRemaining > 0)) {
+           upcomingUnavailableFighterCount++;
+         }
+       });
+     }
+   });
+
+   let slotEventDateMismatchCount = 0;
+   if (state.seasonPlans) {
+     Object.values(state.seasonPlans).forEach((plan: any) => {
+       plan.slots.forEach((slot: any) => {
+         if (slot.eventId) {
+           const event = state.events[slot.eventId] || state.eventArchive[slot.eventId];
+           if (event && slot.date !== event.date) {
+             slotEventDateMismatchCount++;
+           }
+         }
+       });
+     });
+   }
+
+   let fakeGPEventCount = 0;
+   Object.values(state.events).forEach((e: any) => {
+     const name = e.name.toLowerCase();
+     if (name.includes("gp quarter") || name.includes("gp semi") || name.includes("gp final") || name.includes("grand prix")) {
+       const hasMetadata = e.fights.some((f: any) => f.tournamentId && f.tournamentRound);
+       if (!hasMetadata) {
+         fakeGPEventCount++;
+       }
+     }
+   });
+
+   let fakeGPSlotCount = 0;
+   if (state.seasonPlans) {
+     Object.values(state.seasonPlans).forEach((plan: any) => {
+       plan.slots.forEach((slot: any) => {
+         if (slot.type === 'grand_prix_round' && (!slot.tournamentId || !slot.tournamentRound)) {
+           fakeGPSlotCount++;
+         }
+       });
+     });
+   }
+
+   let stalePlannedSlotCount = 0;
+   if (state.seasonPlans) {
+     Object.values(state.seasonPlans).forEach((plan: any) => {
+       plan.slots.forEach((slot: any) => {
+         const slotTime = new Date(slot.date).getTime();
+         const currTime = new Date(state.currentDate).getTime();
+         const diffDays = Math.ceil((currTime - slotTime) / (1000 * 3600 * 24));
+         if (diffDays > 14 && slot.status === 'planned') {
+           const isDelayed = (slot.notes || []).some((n: string) => n.toLowerCase().includes('delayed') || n.toLowerCase().includes('rescheduled'));
+           if (!isDelayed) {
+             stalePlannedSlotCount++;
+           }
+         }
+       });
+     });
+   }
+
    return {
+      pastScheduledEventsCount,
+      scheduledEventsWith0Fights,
+      upcomingUnavailableFighterCount,
+      slotEventDateMismatchCount,
+      fakeGPEventCount,
+      fakeGPSlotCount,
+      stalePlannedSlotCount,
       calendarIntegrityErrors,
       calendarSlotsCount,
       calendarCompletedCount,

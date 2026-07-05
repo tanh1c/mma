@@ -1797,3 +1797,239 @@ export function handleDelayedRoundCalendarSlot(state: GameState, tournamentId: s
   }
   return newState;
 }
+
+export function repairScheduledTournamentRound(
+  state: GameState,
+  tournamentId: string,
+  round: 'quarterfinal' | 'semifinal' | 'final',
+  eventId: string
+): GameState {
+  const tourney = state.tournaments[tournamentId];
+  if (!tourney) throw new Error("Tournament not found");
+
+  const event = state.events[eventId];
+  if (!event || event.isCompleted) {
+    throw new Error("Invalid or completed event selected.");
+  }
+
+  const slots = tourney.fights.filter(f => f.round === round);
+
+  let newState = { 
+    ...state, 
+    tournaments: { ...state.tournaments }, 
+    events: { ...state.events },
+    fighters: { ...state.fighters },
+    news: [...state.news]
+  };
+
+  const updatedTourney = { ...tourney, fights: [...tourney.fights] };
+  const updatedEvent = { ...event, fights: [...event.fights] };
+
+  let delayReason: string | null = null;
+  let delayFighterId: string | null = null;
+  let delayEarliestDate: string | null = null;
+
+  const addDaysStr = (dateStr: string, days: number): string => {
+    const d = addDays(new Date(dateStr), days);
+    return d.toISOString().split('T')[0];
+  };
+
+  const checkReplacement = (fighterId: string, originalFighterId: string): string => {
+    const fighter = newState.fighters[fighterId];
+    if (!fighter) throw new Error("Fighter not found");
+    
+    const isInjured = fighter.injuryStatus !== null;
+    const isSuspendedLong = fighter.medicalSuspension && fighter.medicalSuspension.daysRemaining > 35;
+    const isSuspendedShort = fighter.medicalSuspension && fighter.medicalSuspension.daysRemaining <= 35 && fighter.medicalSuspension.daysRemaining > 0;
+    const isFatigued = fighter.fatigue > 75;
+    
+    const isBookedElsewhere = Object.values(newState.events).some(e => 
+      !e.isCompleted && e.id !== eventId && e.fights.some(f => f.redCornerId === fighterId || f.blueCornerId === fighterId)
+    );
+    
+    if (isSuspendedShort || isBookedElsewhere) {
+      delayReason = isSuspendedShort 
+        ? `${fighter.lastName} is medically suspended for ${fighter.medicalSuspension?.daysRemaining} days.`
+        : `${fighter.lastName} is already booked in another event.`;
+      delayFighterId = fighter.id;
+      const delayDays = isSuspendedShort ? fighter.medicalSuspension!.daysRemaining : 28;
+      delayEarliestDate = addDaysStr(newState.currentDate, delayDays);
+      return fighterId;
+    }
+    
+    if (isInjured || isSuspendedLong || isFatigued) {
+      const unusedReserveId = updatedTourney.reserveFighterIds.find(resId => {
+        const reserveFighter = newState.fighters[resId];
+        const hasNoContract = !reserveFighter || !reserveFighter.contract;
+        const resInjured = reserveFighter?.injuryStatus;
+        const resSuspended = reserveFighter?.medicalSuspension && reserveFighter.medicalSuspension.daysRemaining > 0;
+        const resFatigued = reserveFighter?.fatigue > 75;
+        const resBooked = Object.values(newState.events).some(e => 
+          !e.isCompleted && e.fights.some(f => f.redCornerId === resId || f.blueCornerId === resId)
+        );
+        
+        const reserveUnavailable = hasNoContract || resInjured || resSuspended || resFatigued || resBooked;
+        
+        const isCurrentParticipant = updatedTourney.participants.some(p => p.fighterId === resId);
+        const inAnySlot = updatedTourney.fights.some(s => s.redFighterId === resId || s.blueFighterId === resId);
+        const alreadyUsed = updatedTourney.usedReserveFighterIds?.includes(resId) || false;
+        
+        return !reserveUnavailable && !isCurrentParticipant && !inAnySlot && !alreadyUsed;
+      });
+      
+      if (unusedReserveId) {
+        if (!updatedTourney.usedReserveFighterIds) {
+          updatedTourney.usedReserveFighterIds = [];
+        }
+        updatedTourney.usedReserveFighterIds.push(unusedReserveId);
+        updatedTourney.reserveFighterIds = updatedTourney.reserveFighterIds.filter(id => id !== unusedReserveId);
+
+        const participantIdx = updatedTourney.participants.findIndex(p => p.fighterId === originalFighterId);
+        if (participantIdx !== -1) {
+          updatedTourney.participants[participantIdx] = {
+            ...updatedTourney.participants[participantIdx],
+            fighterId: unusedReserveId,
+            replacementForFighterId: originalFighterId
+          };
+        }
+        
+        const origF = newState.fighters[originalFighterId];
+        const newF = newState.fighters[unusedReserveId];
+        updatedTourney.notes = [...(updatedTourney.notes || []), `Replacement: ${newF.lastName} replaced unavailable fighter ${origF.lastName} on ${state.currentDate} for round ${round}.`];
+        
+        newState.news = [
+          {
+            id: uuidv4(),
+            date: state.currentDate,
+            type: 'general' as const,
+            title: `Grand Prix Replacement: ${newF.lastName} enters ${round}!`,
+            content: `Due to long-term injury/suspension/fatigue, ${origF.firstName} ${origF.lastName} is unable to compete. Reserve fighter ${newF.firstName} ${newF.lastName} steps in for the ${round} round.`
+          },
+          ...newState.news
+        ];
+        
+        return unusedReserveId;
+      } else {
+        delayReason = `${fighter.lastName} is unavailable and no reserve is available.`;
+        delayFighterId = fighter.id;
+        if (fighter.medicalSuspension && fighter.medicalSuspension.daysRemaining > 0) {
+          delayEarliestDate = addDaysStr(newState.currentDate, fighter.medicalSuspension.daysRemaining);
+        } else {
+          delayEarliestDate = addDaysStr(newState.currentDate, 30);
+        }
+        return fighterId;
+      }
+    }
+    return fighterId;
+  };
+
+  const updatedSlots = [...slots];
+  for (let i = 0; i < updatedSlots.length; i++) {
+    const slot = updatedSlots[i];
+    if (!slot.redFighterId || !slot.blueFighterId) {
+      throw new Error(`Round ${round} slot is missing participants.`);
+    }
+    const f1 = checkReplacement(slot.redFighterId, slot.redFighterId);
+    if (delayReason) break;
+    const f2 = checkReplacement(slot.blueFighterId, slot.blueFighterId);
+    if (delayReason) break;
+    
+    updatedSlots[i] = {
+      ...slot,
+      redFighterId: f1,
+      blueFighterId: f2
+    };
+  }
+
+  // Remove existing tournament fights for this round from the event
+  updatedEvent.fights = updatedEvent.fights.filter(f => !(f.tournamentId === tournamentId && f.tournamentRound === round));
+
+  if (delayReason) {
+    updatedTourney.roundDelayReason = delayReason;
+    updatedTourney.delayedRound = round;
+    updatedTourney.earliestRoundDate = delayEarliestDate;
+    updatedTourney.delayedFighterId = delayFighterId;
+    
+    if (round === 'final') {
+      updatedTourney.finalDelayReason = delayReason;
+      updatedTourney.earliestFinalDate = delayEarliestDate;
+      updatedTourney.delayedFighterId = delayFighterId;
+    }
+    
+    updatedTourney.notes = [...(updatedTourney.notes || []), `Round ${round} delayed: ${delayReason}`];
+    
+    const isNewDelay = tourney.roundDelayReason !== delayReason || tourney.earliestRoundDate !== delayEarliestDate;
+    if (isNewDelay) {
+      newState = handleDelayedRoundCalendarSlot(newState, tournamentId, round, delayEarliestDate, delayReason);
+      newState.news = [
+        {
+          id: uuidv4(),
+          date: state.currentDate,
+          type: 'general' as const,
+          title: `${updatedTourney.name} ${round} Delayed`,
+          content: `The ${round} of the ${updatedTourney.name} has been delayed. Reason: ${delayReason}. Earliest expected reschedule: ${delayEarliestDate}.`
+        },
+        ...newState.news
+      ];
+    }
+    
+    // Clear eventId/fightId from the slot since it's delayed (unscheduled)
+    updatedTourney.fights = updatedTourney.fights.map(f => {
+      if (f.round === round) {
+        return {
+          ...f,
+          eventId: undefined,
+          fightId: undefined
+        };
+      }
+      return f;
+    });
+
+    newState.tournaments[tournamentId] = updatedTourney;
+    newState.events[eventId] = updatedEvent;
+    return newState;
+  }
+
+  updatedTourney.roundDelayReason = null;
+  updatedTourney.delayedRound = null;
+  updatedTourney.earliestRoundDate = null;
+  updatedTourney.delayedFighterId = null;
+  if (round === 'final') {
+    updatedTourney.finalDelayReason = null;
+    updatedTourney.earliestFinalDate = null;
+    updatedTourney.delayedFighterId = null;
+  }
+
+  const updatedFightsInTourney = updatedTourney.fights.map(f => {
+    if (f.round === round) {
+      const matchingSlot = updatedSlots.find(s => s.id === f.id)!;
+      const fightId = uuidv4();
+      const matchup: FightMatchup = {
+        id: fightId,
+        redCornerId: matchingSlot.redFighterId!,
+        blueCornerId: matchingSlot.blueFighterId!,
+        weightClass: updatedTourney.weightClass,
+        isTitleFight: false,
+        rounds: round === 'final' ? 5 : 3,
+        tournamentId: updatedTourney.id,
+        tournamentRound: round,
+        tournamentFightSlotId: f.id
+      };
+      updatedEvent.fights.push(matchup);
+      return {
+        ...matchingSlot,
+        eventId: updatedEvent.id,
+        fightId: fightId
+      };
+    }
+    return f;
+  });
+
+  updatedTourney.fights = updatedFightsInTourney;
+  updatedTourney.notes = [...(updatedTourney.notes || []), `Round ${round} repaired/rescheduled on Event: ${updatedEvent.name} on ${state.currentDate}`];
+  
+  newState.tournaments[tournamentId] = updatedTourney;
+  newState.events[eventId] = updatedEvent;
+  
+  return newState;
+}

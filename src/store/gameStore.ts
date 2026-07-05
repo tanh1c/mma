@@ -7,7 +7,7 @@ import { updateRankings } from '../lib/game/rankings';
 import { v4 as uuidv4 } from 'uuid';
 import { createNewGame, saveGameLocally, loadGameLocally, exportGameToJSON, importGameFromJSON, CURRENT_SAVE_VERSION } from '../lib/game/save';
 
-import { autoBookEventsAndContracts, maintainDeals, repairEventAvailability } from '../lib/game/autobooker';
+import { autoBookEventsAndContracts, maintainDeals, repairEventAvailability, repairFutureEventAvailability } from '../lib/game/autobooker';
 import { generateSeasonPlan } from '../lib/game/season';
 import { quickSimulateEvent } from '../lib/engine';
 import { createGrandPrixTournament, scheduleQuarterfinals, scheduleSemifinals, scheduleFinal, cancelTournament, runAutopilotTournaments, syncTournamentTitleShotFlags, scheduleTournamentRound } from '../lib/game/tournament';
@@ -198,6 +198,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
         // Advance 1 day
         gameState = advanceTime(gameState, 1);
         gameState = maintainDeals(gameState);
+        gameState = repairFutureEventAvailability(gameState);
         gameState = syncTournamentTitleShotFlags(gameState);
         daysSimulated++;
         
@@ -206,40 +207,48 @@ export const useGameStore = create<GameStore>((set, get) => ({
         // If there's an event today, simulate it
         let todayEvents = Object.values(newState.events).filter(e => e.date === newState.currentDate && !e.isCompleted);
         
-        if (todayEvents.length > 0) {
+        while (todayEvents.length > 0) {
           const event = todayEvents[0];
           gameState = repairEventAvailability(gameState, event.id);
           Object.assign(newState, gameState);
           
           const recheckedEvent = newState.events[event.id];
-          if (recheckedEvent && recheckedEvent.date === newState.currentDate) {
-            if (simulateEvents) {
-              // Stop to watch event
-              newState.currentView = 'simulation';
-              newState.selectedEventId = recheckedEvent.id;
-              
-              // Setup active simulation
-              let startIndex = recheckedEvent.fights.length - 1;
-              while (startIndex >= 0 && recheckedEvent.fights[startIndex].result) {
-                startIndex--;
-              }
-  
-              newState.activeEventSimulation = {
-                eventId: recheckedEvent.id,
-                activeFightIndex: startIndex,
-                pendingResult: null,
-                revealedLines: 0,
-                status: 'idle'
-              };
-              
-              stoppedEarly = true;
-              break; // Break out of the loop
-            } else {
-              // Quick simulate the entire event
-              const simResult = quickSimulateEvent(newState, recheckedEvent.id);
-              Object.assign(newState, simResult);
-            }
+          if (!recheckedEvent || recheckedEvent.date !== newState.currentDate) {
+            todayEvents = Object.values(newState.events).filter(e => e.date === newState.currentDate && !e.isCompleted);
+            continue;
           }
+
+          if (simulateEvents) {
+            // Stop to watch event
+            newState.currentView = 'simulation';
+            newState.selectedEventId = recheckedEvent.id;
+            
+            // Setup active simulation
+            let startIndex = recheckedEvent.fights.length - 1;
+            while (startIndex >= 0 && recheckedEvent.fights[startIndex].result) {
+              startIndex--;
+            }
+  
+            newState.activeEventSimulation = {
+              eventId: recheckedEvent.id,
+              activeFightIndex: startIndex,
+              pendingResult: null,
+              revealedLines: 0,
+              status: 'idle'
+            };
+            
+            stoppedEarly = true;
+            break; // Break out of the loop
+          } else {
+            // Quick simulate the entire event
+            const simResult = quickSimulateEvent(newState, recheckedEvent.id);
+            Object.assign(newState, simResult);
+            todayEvents = Object.values(newState.events).filter(e => e.date === newState.currentDate && !e.isCompleted);
+          }
+        }
+
+        if (stoppedEarly) {
+          break;
         }
       }
       

@@ -137,56 +137,96 @@ export function generateSeasonPlan(state: GameState, year: number): SeasonPlan {
 }
 
 export function syncCalendarSlots(state: GameState): GameState {
-  const newState = { ...state };
+  const newState = { ...state, seasonPlans: { ...state.seasonPlans } };
   if (!newState.seasonPlans) {
     newState.seasonPlans = {};
     return newState;
   }
   
-  const currentYear = new Date(newState.currentDate).getFullYear();
-  const plan = newState.seasonPlans[currentYear];
-  if (!plan) return newState;
+  for (const yearStr in newState.seasonPlans) {
+    const year = Number(yearStr);
+    const plan = newState.seasonPlans[year];
+    if (!plan) continue;
 
-  const updatedSlots = plan.slots.map(slot => {
-    if (slot.status === 'completed' || slot.status === 'cancelled' || slot.status === 'missed') {
-      return slot;
-    }
-    
-    if (slot.eventId) {
-      const event = newState.events[slot.eventId];
-      if (event) {
-        if (event.isCompleted) {
-          return { ...slot, status: 'completed' as const };
-        } else {
-          return { ...slot, status: 'scheduled' as const };
-        }
-      } else {
-        return { ...slot, status: 'planned' as const, eventId: undefined };
+    const updatedSlots = plan.slots.map(slot => {
+      if (slot.status === 'completed' || slot.status === 'cancelled' || slot.status === 'missed') {
+        return slot;
       }
-    }
-    
-    // Calculate date difference
-    const slotTime = new Date(slot.date).getTime();
-    const currTime = new Date(newState.currentDate).getTime();
-    const diffDays = Math.ceil((currTime - slotTime) / (1000 * 60 * 60 * 24));
-    
-    if (diffDays > 14 && slot.status === 'planned') {
-      return { ...slot, status: 'missed' as const };
-    }
-    
-    return slot;
-  });
+      
+      if (slot.eventId) {
+        const event = newState.events[slot.eventId] || newState.eventArchive?.[slot.eventId];
+        if (event) {
+          const isCompleted = 'isCompleted' in event ? event.isCompleted : true;
+          if (isCompleted) {
+            return { ...slot, status: 'completed' as const };
+          } else {
+            return { ...slot, status: 'scheduled' as const };
+          }
+        } else {
+          return { ...slot, status: 'planned' as const, eventId: undefined };
+        }
+      }
+      
+      // Calculate date difference
+      const slotTime = new Date(slot.date).getTime();
+      const currTime = new Date(newState.currentDate).getTime();
+      const diffDays = Math.ceil((currTime - slotTime) / (1000 * 60 * 60 * 24));
+      
+      if (diffDays > 14 && slot.status === 'planned') {
+        return { ...slot, status: 'missed' as const };
+      }
+      
+      return slot;
+    });
 
-  newState.seasonPlans[currentYear] = {
-    ...plan,
-    slots: updatedSlots
-  };
+    newState.seasonPlans[year] = {
+      ...plan,
+      slots: updatedSlots
+    };
+  }
   
   return newState;
 }
 
 export function validateSeasonCalendarState(state: GameState): string[] {
   const errors: string[] = [];
+
+  // Check event-level invariants
+  Object.values(state.events).forEach(event => {
+    // 1. no non-completed event with event.date < currentDate
+    if (!event.isCompleted && event.date < state.currentDate) {
+      errors.push(`Event ${event.id} (${event.name}, Date: ${event.date}): Upcoming/non-completed event is in the past (Current date: ${state.currentDate}).`);
+    }
+
+    // 2. no upcoming event with 0 fights
+    if (!event.isCompleted && event.fights.length === 0) {
+      errors.push(`Event ${event.id} (${event.name}, Date: ${event.date}): Upcoming event has 0 fights.`);
+    }
+
+    // 3. no upcoming event with injured/medically suspended/unsigned fighter
+    if (!event.isCompleted) {
+      event.fights.forEach((fight, idx) => {
+        const red = state.fighters[fight.redCornerId];
+        const blue = state.fighters[fight.blueCornerId];
+        if (!red || !red.contract || red.injuryStatus !== null || (red.medicalSuspension && red.medicalSuspension.daysRemaining > 0)) {
+          errors.push(`Event ${event.id} (${event.name}, Date: ${event.date}): Matchup #${idx + 1} has unavailable red corner fighter ${red ? `${red.firstName} ${red.lastName}` : 'Unknown'}.`);
+        }
+        if (!blue || !blue.contract || blue.injuryStatus !== null || (blue.medicalSuspension && blue.medicalSuspension.daysRemaining > 0)) {
+          errors.push(`Event ${event.id} (${event.name}, Date: ${event.date}): Matchup #${idx + 1} has unavailable blue corner fighter ${blue ? `${blue.firstName} ${blue.lastName}` : 'Unknown'}.`);
+        }
+      });
+    }
+
+    // 4. no event named GP Quarterfinal/Semifinal/Final unless it has tournament metadata
+    const nameLower = event.name.toLowerCase();
+    if (nameLower.includes("gp quarter") || nameLower.includes("gp semi") || nameLower.includes("gp final") || nameLower.includes("grand prix")) {
+      const hasMetadata = event.fights.some(f => f.tournamentId && f.tournamentRound);
+      if (!hasMetadata) {
+        errors.push(`Event ${event.id} (${event.name}, Date: ${event.date}): GP event has no tournament fights/metadata.`);
+      }
+    }
+  });
+
   if (!state.seasonPlans) return errors;
 
   for (const yearStr in state.seasonPlans) {
@@ -290,6 +330,19 @@ export function validateSeasonCalendarState(state: GameState): string[] {
         const tourney = state.tournaments[slot.tournamentId];
         if (tourney && tourney.status === 'planned') {
           errors.push(`Slot ${slot.id} (${slot.date}): Tournament "${tourney.name}" is planned/created but linked to completed/missed/cancelled slot.`);
+        }
+      }
+
+      // 12. no scheduled slot with slot.date < currentDate
+      if (slot.status === 'scheduled' && slot.date < state.currentDate) {
+        errors.push(`Slot ${slot.id} (${slot.date}): Scheduled slot date is in the past (Current date: ${state.currentDate}).`);
+      }
+
+      // 13. no scheduled slot linked to event with 0 fights
+      if (slot.status === 'scheduled' && slot.eventId) {
+        const event = state.events[slot.eventId];
+        if (event && event.fights.length === 0) {
+          errors.push(`Slot ${slot.id} (${slot.date}): Scheduled slot is linked to event ${event.name} which has 0 fights.`);
         }
       }
     });
