@@ -7,6 +7,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { useGameStore } from '../store/gameStore';
 import { createGrandPrixTournament, scheduleSemifinals, scheduleFinal, validateTournamentState, validateTitleShotDebtState, diagnoseActiveTournaments } from '../lib/game/tournament';
 import { applyFightResult } from '../lib/engine';
+import { validateSeasonCalendarState } from '../lib/game/season';
 
 const createFighter = (name: string, attrs: Partial<Fighter['attributes']>, age: number = 28): Fighter => {
   const rng = new PRNG(Math.random());
@@ -889,6 +890,16 @@ export default function DebugSim() {
                 </ul>
               </div>
             )}
+            {report.calendarIntegrityErrors && report.calendarIntegrityErrors.length > 0 && (
+              <div className="bg-red-950 p-4 border border-red-800 rounded">
+                <h4 className="font-bold text-red-400 mb-2">Calendar Integrity Errors</h4>
+                <ul className="text-sm text-red-300 space-y-1">
+                  {report.calendarIntegrityErrors.map((err: string, idx: number) => (
+                    <li key={idx}>• {err}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -1120,8 +1131,10 @@ function calculateReport(store: any, initialFights: number) {
    const calendarGPCount = slots.filter((s: any) => s.type === 'grand_prix_round').length;
    const calendarTitleFightCount = slots.filter((s: any) => s.type === 'title_fight_card').length;
    const calendarTentpoleCount = slots.filter((s: any) => s.type === 'tentpole_event').length;
+   const calendarIntegrityErrors = validateSeasonCalendarState(state);
 
    return {
+      calendarIntegrityErrors,
       calendarSlotsCount,
       calendarCompletedCount,
       calendarScheduledCount,

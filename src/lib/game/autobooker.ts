@@ -2,7 +2,7 @@ import { GameState, Event, FightMatchup, WeightClass, Fighter, CalendarSlotType,
 import { v4 as uuidv4 } from 'uuid';
 import { calculateEventProjections } from './economy';
 import { generateSeasonPlan, syncCalendarSlots } from './season';
-import { scheduleTournamentRound, getPendingTitleShotDebts } from './tournament';
+import { scheduleTournamentRound, getPendingTitleShotDebts, isFighterBookedUpcoming, evaluateAndCreateTournament, bindTournamentToCalendarSlots } from './tournament';
 
 const EVENT_INTERVAL_DAYS = 28;
 
@@ -151,6 +151,36 @@ export function autoBookEventsAndContracts(state: GameState): GameState {
   const approachingSlot = plannedSlots.find(s => s.date <= addDays(newState.currentDate, 28));
 
   if (approachingSlot) {
+    if (approachingSlot.type === 'grand_prix_window') {
+      const activeOrPlannedGP = Object.values(newState.tournaments || {}).find(t => t.status === 'active' || t.status === 'planned');
+      if (activeOrPlannedGP) {
+        approachingSlot.type = 'regular_event';
+        approachingSlot.notes = [...(approachingSlot.notes || []), `Converted GP Window to Regular Event because GP "${activeOrPlannedGP.name}" is already active/planned.`];
+      } else {
+        const isEightManPreferred = (approachingSlot.notes || []).some(n => n.includes("8-Man Preferred"));
+        const prefFormat = isEightManPreferred ? 'eight_man' : undefined;
+        
+        const { state: updatedState, created, tournamentId, errorReason } = evaluateAndCreateTournament(newState, prefFormat);
+        newState = updatedState;
+        
+        if (created && tournamentId) {
+          const tournament = newState.tournaments[tournamentId];
+          const firstRound: TournamentRound = tournament.format === 'eight_man' ? 'quarterfinal' : 'semifinal';
+          
+          approachingSlot.type = 'grand_prix_round';
+          approachingSlot.targetWeightClass = tournament.weightClass;
+          approachingSlot.tournamentRound = firstRound;
+          approachingSlot.tournamentId = tournamentId;
+          approachingSlot.notes = [...(approachingSlot.notes || []), `Created and linked ${tournament.name} to this slot.`];
+          
+          newState = bindTournamentToCalendarSlots(newState, tournamentId);
+        } else {
+          approachingSlot.type = 'regular_event';
+          approachingSlot.notes = [...(approachingSlot.notes || []), `Converted GP Window to Regular Event. Reason: ${errorReason || 'Evaluation failed'}`];
+        }
+      }
+    }
+
     if (approachingSlot.type === 'recovery_gap') {
       // Just mark it completed once the date is reached/passed
       if (newState.currentDate >= approachingSlot.date) {
@@ -240,8 +270,18 @@ export function autoBookEventsAndContracts(state: GameState): GameState {
       newState.autopilot.nextBookingAttemptDate = null;
       
       // Update slot status
+      const originalDate = approachingSlot.date;
+      const eventDate = newEvent.date;
+      const notes = [...(approachingSlot.notes || [])];
+      if (originalDate !== eventDate) {
+        notes.push(`Rescheduled from ${originalDate} to ${eventDate} to match linked event.`);
+      }
+      approachingSlot.date = eventDate;
+      approachingSlot.notes = notes;
       approachingSlot.eventId = newEvent.id;
       approachingSlot.status = 'scheduled';
+      
+      plan.slots.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
       
       newState.news = [{
         id: uuidv4(),
@@ -432,7 +472,7 @@ function generateAutoEvent(
     eventName = `CD Mega Showdown ${Object.keys(state.events).length + 1}`;
   } else if (slotType === 'title_fight_card') {
     eventName = `CD Championship Special ${Object.keys(state.events).length + 1}`;
-  } else if (slotType === 'grand_prix_round') {
+  } else if (slotType === 'grand_prix_round' && tournamentId) {
     const roundLabel = tournamentRound ? tournamentRound.charAt(0).toUpperCase() + tournamentRound.slice(1) : '';
     eventName = `CD GP ${roundLabel} ${Object.keys(state.events).length + 1}`;
   }
@@ -450,6 +490,10 @@ function generateAutoEvent(
       if (!isChamp) {
         return false;
       }
+    }
+    // Prevent double-booking across future events (Priority 6)
+    if (isFighterBookedUpcoming(state, f.id)) {
+      return false;
     }
     return f.contract && !f.injuryStatus && !f.medicalSuspension && f.fatigue < 50;
   });
@@ -500,8 +544,8 @@ function generateAutoEvent(
   const maxTitleFights = slotType === 'title_fight_card' ? 3 : 1;
   let titleFightsBookedCount = 0;
 
-  // Helper to check if a fighter is available
-  const isAvailable = (id: string | null | undefined) => id && !bookedFighters.has(id);
+  // Helper to check if a fighter is available (Priority 6 - title check)
+  const isAvailable = (id: string | null | undefined) => id && !bookedFighters.has(id) && !isFighterBookedUpcoming(state, id);
 
   // Priority 1: Unification Fights
   for (const wc of weightClasses) {
@@ -882,6 +926,178 @@ function maintainRoster(state: GameState): GameState {
       });
     }
   });
+
+  return newState;
+}
+
+export function repairEventAvailability(state: GameState, eventId: string): GameState {
+  let newState = {
+    ...state,
+    events: { ...state.events },
+    tournaments: { ...state.tournaments },
+    fighters: { ...state.fighters },
+    news: [...state.news]
+  };
+
+  const event = newState.events[eventId];
+  if (!event || event.isCompleted) return newState;
+
+  let eventFights = [...event.fights];
+  let changed = false;
+
+  for (let i = eventFights.length - 1; i >= 0; i--) {
+    const fight = eventFights[i];
+    const red = newState.fighters[fight.redCornerId];
+    const blue = newState.fighters[fight.blueCornerId];
+
+    const redUnavailable = !red || !red.contract || red.injuryStatus !== null || (red.medicalSuspension && red.medicalSuspension.daysRemaining > 0);
+    const blueUnavailable = !blue || !blue.contract || blue.injuryStatus !== null || (blue.medicalSuspension && blue.medicalSuspension.daysRemaining > 0);
+
+    if (redUnavailable || blueUnavailable) {
+      changed = true;
+      const unavailableFighter = redUnavailable ? red : blue;
+      const unavailableName = unavailableFighter ? `${unavailableFighter.firstName} ${unavailableFighter.lastName}` : "Unknown Fighter";
+
+      if (fight.tournamentId && fight.tournamentRound) {
+        const tId = fight.tournamentId;
+        const round = fight.tournamentRound;
+        const tourney = newState.tournaments[tId];
+        if (tourney) {
+          eventFights = eventFights.filter(f => !(f.tournamentId === tId && f.tournamentRound === round));
+          
+          const updatedTourneyFights = tourney.fights.map(tf => {
+            if (tf.round === round) {
+              return { ...tf, eventId: undefined };
+            }
+            return tf;
+          });
+          newState.tournaments[tId] = {
+            ...tourney,
+            fights: updatedTourneyFights
+          };
+
+          newState.tournaments[tId].roundDelayReason = null;
+          newState.tournaments[tId].delayedRound = null;
+          newState.tournaments[tId].earliestRoundDate = null;
+          newState.tournaments[tId].delayedFighterId = null;
+
+          newState.events[eventId] = { ...event, fights: eventFights };
+
+          try {
+            newState = scheduleTournamentRound(newState, tId, round, eventId);
+            eventFights = [...newState.events[eventId].fights];
+          } catch (err) {
+            console.error("Failed to repair tournament fight", err);
+          }
+        }
+      } else if (fight.isTitleFight) {
+        eventFights.splice(i, 1);
+        const redName = red ? `${red.firstName} ${red.lastName}` : "Champion";
+        const blueName = blue ? `${blue.firstName} ${blue.lastName}` : "Challenger";
+        
+        newState.news = [{
+          id: uuidv4(),
+          date: newState.currentDate,
+          title: `Title Fight Postponed`,
+          content: `The ${fight.weightClass} title fight between ${redName} and ${blueName} has been postponed due to injury/suspension of ${unavailableName}.`,
+          type: 'general' as const
+        }, ...newState.news];
+      } else {
+        const weightClass = fight.weightClass;
+        
+        const currentlyBooked = new Set<string>();
+        eventFights.forEach(f => {
+          if (f.id !== fight.id) {
+            currentlyBooked.add(f.redCornerId);
+            currentlyBooked.add(f.blueCornerId);
+          }
+        });
+
+        const replacementCandidates = Object.values(newState.fighters).filter(f => 
+          f.weightClass === weightClass &&
+          f.contract &&
+          f.injuryStatus === null &&
+          (!f.medicalSuspension || f.medicalSuspension.daysRemaining <= 0) &&
+          !currentlyBooked.has(f.id) &&
+          !isFighterBookedUpcoming(newState, f.id, eventId) &&
+          !f.isChampion
+        );
+
+        if (replacementCandidates.length > 0) {
+          replacementCandidates.sort((a, b) => {
+            const rankA = newState.rankings[weightClass]?.find(r => r.fighterId === a.id)?.rank ?? 99;
+            const rankB = newState.rankings[weightClass]?.find(r => r.fighterId === b.id)?.rank ?? 99;
+            if (rankA !== rankB) return rankA - rankB;
+            return b.popularity - a.popularity;
+          });
+
+          const repFighter = replacementCandidates[0];
+          const replacedFighter = redUnavailable ? red : blue;
+          const replacedName = replacedFighter ? `${replacedFighter.firstName} ${replacedFighter.lastName}` : "Unknown";
+
+          if (redUnavailable) {
+            fight.redCornerId = repFighter.id;
+          } else {
+            fight.blueCornerId = repFighter.id;
+          }
+
+          newState.news = [{
+            id: uuidv4(),
+            date: newState.currentDate,
+            title: `Fight Matchup Updated`,
+            content: `${repFighter.firstName} ${repFighter.lastName} has stepped in to face ${redUnavailable ? blue?.lastName : red?.lastName} on ${event.name}, replacing the injured/suspended ${replacedName}.`,
+            type: 'general' as const
+          }, ...newState.news];
+        } else {
+          eventFights.splice(i, 1);
+          newState.news = [{
+            id: uuidv4(),
+            date: newState.currentDate,
+            title: `Fight Removed`,
+            content: `The bout between ${red ? red.lastName : 'Unknown'} and ${blue ? blue.lastName : 'Unknown'} has been removed from ${event.name} due to medical suspension/injury of ${unavailableName}.`,
+            type: 'general' as const
+          }, ...newState.news];
+        }
+      }
+    }
+  }
+
+  if (changed) {
+    newState.events[eventId] = {
+      ...event,
+      fights: eventFights
+    };
+  }
+
+  const currentEvent = newState.events[eventId];
+  if (currentEvent && currentEvent.fights.length < 3) {
+    const year = new Date(currentEvent.date).getFullYear();
+    const plan = newState.seasonPlans?.[year];
+    const slot = plan?.slots.find(s => s.eventId === eventId);
+    
+    const nextDate = addDays(newState.currentDate, 14);
+
+    newState.news = [{
+      id: uuidv4(),
+      date: newState.currentDate,
+      title: `${currentEvent.name} Postponed`,
+      content: `Due to roster depletion and fight cancellations, ${currentEvent.name} has been postponed to ${nextDate}.`,
+      type: 'general' as const
+    }, ...newState.news];
+
+    newState.events[eventId] = {
+      ...currentEvent,
+      date: nextDate
+    };
+
+    if (slot) {
+      slot.date = nextDate;
+      slot.notes = [...(slot.notes || []), `Postponed from ${currentEvent.date} due to fight cancellations.`];
+      if (plan) {
+        plan.slots.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      }
+    }
+  }
 
   return newState;
 }

@@ -456,6 +456,7 @@ export interface GameState {
 export type CalendarSlotType =
   | 'regular_event'
   | 'tentpole_event'
+  | 'grand_prix_window'
   | 'grand_prix_round'
   | 'title_fight_card'
   | 'recovery_gap';

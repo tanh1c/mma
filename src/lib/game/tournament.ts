@@ -1,11 +1,11 @@
-import { GameState, GrandPrixTournament, TournamentParticipant, TournamentFightSlot, WeightClass, Fighter, FightMatchup, FightResult, TournamentFormat, TournamentRound, TournamentStatus } from '../../types/game';
+import { GameState, GrandPrixTournament, TournamentParticipant, TournamentFightSlot, WeightClass, Fighter, FightMatchup, FightResult, TournamentFormat, TournamentRound, TournamentStatus, SeasonCalendarSlot } from '../../types/game';
 import { v4 as uuidv4 } from 'uuid';
 import { addDays } from 'date-fns';
 import { generateSeasonPlan } from './season';
 
-export function isFighterBookedUpcoming(state: GameState, fighterId: string): boolean {
+export function isFighterBookedUpcoming(state: GameState, fighterId: string, excludeEventId?: string): boolean {
   return Object.values(state.events || {}).some(e => 
-    !e.isCompleted && e.fights.some(f => f.redCornerId === fighterId || f.blueCornerId === fighterId)
+    !e.isCompleted && e.id !== excludeEventId && e.fights.some(f => f.redCornerId === fighterId || f.blueCornerId === fighterId)
   );
 }
 
@@ -938,25 +938,6 @@ export function runAutopilotTournaments(state: GameState): GameState {
     return newState;
   }
 
-  // Avoid creating new GP if there are urgent title shot debts pending
-  const debts = getPendingTitleShotDebts(newState);
-  const urgentDebts = debts.filter(d => d.status === 'pending');
-  if (urgentDebts.length > 0) {
-    return newState;
-  }
-  
-  const completedTourneys = Object.values(newState.tournaments).filter(t => t.status === 'completed');
-  if (completedTourneys.length > 0) {
-    const lastCompleted = completedTourneys.sort((a, b) => new Date(b.completedDate || '').getTime() - new Date(a.completedDate || '').getTime())[0];
-    if (lastCompleted && lastCompleted.completedDate) {
-      const diffDays = Math.abs(new Date(newState.currentDate).getTime() - new Date(lastCompleted.completedDate).getTime()) / (1000 * 60 * 60 * 24);
-      const requiredCooldown = lastCompleted.format === 'eight_man' ? 540 : 270;
-      if (diffDays < requiredCooldown) {
-        return newState;
-      }
-    }
-  }
-
   // 1. Dynamically target a single division and maintain depth
   let targetWc = newState.autopilot.targetTournamentWeightClass;
   if (targetWc) {
@@ -972,14 +953,11 @@ export function runAutopilotTournaments(state: GameState): GameState {
   
   const weightClasses: WeightClass[] = ['Bantamweight', 'Featherweight', 'Lightweight', 'Welterweight', 'Middleweight', 'Heavyweight'];
   if (!targetWc) {
-    // Pick the best target class that does not have active/planned GP and is not in crisis
     const availableWcs = weightClasses.filter(wc => {
       const hasActiveOrPlanned = Object.values(newState.tournaments).some(t => t.weightClass === wc && (t.status === 'active' || t.status === 'planned'));
       if (hasActiveOrPlanned) return false;
-      
       const title = newState.titles[wc];
       if (title && title.status === 'unification_needed') return false;
-      
       return true;
     });
     
@@ -1010,7 +988,7 @@ export function runAutopilotTournaments(state: GameState): GameState {
           if (champ && champ.lastFightDate) {
             const daysSinceFight = Math.floor(Math.abs(new Date(newState.currentDate).getTime() - new Date(champ.lastFightDate).getTime()) / (1000 * 3600 * 24));
             if (daysSinceFight > 180) {
-              score += 30; // Stale title picture
+              score += 30;
             }
           }
         }
@@ -1027,32 +1005,120 @@ export function runAutopilotTournaments(state: GameState): GameState {
   }
 
   // 2. Concentrate depth building ONLY in the target division
-  const signedWcsInThisTick = new Set<WeightClass>();
   if (targetWc) {
-    const prevSignedCount = Object.values(newState.fighters).filter(f => f.weightClass === targetWc && f.contract).length;
     newState = maintainTournamentRosterDepth(newState, targetWc);
-    const currSignedCount = Object.values(newState.fighters).filter(f => f.weightClass === targetWc && f.contract).length;
-    if (currSignedCount > prevSignedCount) {
-      signedWcsInThisTick.add(targetWc);
+  }
+
+  return newState;
+}
+
+export function evaluateAndCreateTournament(
+  state: GameState,
+  preferredFormat?: TournamentFormat
+): { state: GameState; created: boolean; tournamentId?: string; errorReason?: string } {
+  let newState = { ...state };
+
+  if (newState.promotion.reputation < 30 || newState.promotion.money < 150000) {
+    return { state: newState, created: false, errorReason: "Insufficient promotion reputation or funds." };
+  }
+
+  const debts = getPendingTitleShotDebts(newState);
+  const urgentDebts = debts.filter(d => d.status === 'pending');
+  if (urgentDebts.length > 0) {
+    return { state: newState, created: false, errorReason: "Urgent title shot debts are pending." };
+  }
+  
+  const completedTourneys = Object.values(newState.tournaments).filter(t => t.status === 'completed');
+  if (completedTourneys.length > 0) {
+    const lastCompleted = completedTourneys.sort((a, b) => new Date(b.completedDate || '').getTime() - new Date(a.completedDate || '').getTime())[0];
+    if (lastCompleted && lastCompleted.completedDate) {
+      const diffDays = Math.abs(new Date(newState.currentDate).getTime() - new Date(lastCompleted.completedDate).getTime()) / (1000 * 60 * 60 * 24);
+      const requiredCooldown = lastCompleted.format === 'eight_man' ? 540 : 270;
+      if (diffDays < requiredCooldown) {
+        return { state: newState, created: false, errorReason: `Grand Prix cooldown active (${Math.round(requiredCooldown - diffDays)} days remaining).` };
+      }
     }
   }
 
-  // Cooldown / rare check to actually trigger the creation
-  if (Math.random() > 0.05) { 
-    return newState;
+  let targetWc = newState.autopilot.targetTournamentWeightClass;
+  if (targetWc) {
+    const hasActiveOrPlanned = Object.values(newState.tournaments).some(
+      t => t.weightClass === targetWc && (t.status === 'active' || t.status === 'planned')
+    );
+    const title = newState.titles[targetWc];
+    const hasCrisis = title && title.status === 'unification_needed';
+    if (hasActiveOrPlanned || hasCrisis) {
+      targetWc = null;
+    }
   }
 
-  if (!targetWc) return newState;
-  
-  // Decide format for target division
+  const weightClasses: WeightClass[] = ['Bantamweight', 'Featherweight', 'Lightweight', 'Welterweight', 'Middleweight', 'Heavyweight'];
+  if (!targetWc) {
+    const availableWcs = weightClasses.filter(wc => {
+      const hasActiveOrPlanned = Object.values(newState.tournaments).some(t => t.weightClass === wc && (t.status === 'active' || t.status === 'planned'));
+      if (hasActiveOrPlanned) return false;
+      const title = newState.titles[wc];
+      if (title && title.status === 'unification_needed') return false;
+      return true;
+    });
+
+    if (availableWcs.length > 0) {
+      const scoredWcs = availableWcs.map(wc => {
+        const title = newState.titles[wc];
+        const freeAgentsCount = Object.values(newState.fighters).filter(f => !f.contract && f.weightClass === wc).length;
+        const wcFighters = Object.values(newState.fighters).filter(f => 
+          f.weightClass === wc && 
+          f.contract && 
+          !f.injuryStatus && 
+          (!f.medicalSuspension || f.medicalSuspension.daysRemaining <= 0) &&
+          !f.isChampion
+        );
+        const isVacant = title ? title.status === 'vacant' : true;
+        const isInactive = title ? title.status === 'inactive_champion' : false;
+        let score = 0;
+        if (isVacant) score += 100;
+        if (isInactive) score += 50;
+        score += freeAgentsCount * 10;
+        score += wcFighters.length * 5;
+        if (title && title.undisputedChampionId) {
+          const champ = newState.fighters[title.undisputedChampionId];
+          if (champ && champ.lastFightDate) {
+            const daysSinceFight = Math.floor(Math.abs(new Date(newState.currentDate).getTime() - new Date(champ.lastFightDate).getTime()) / (1000 * 3600 * 24));
+            if (daysSinceFight > 180) {
+              score += 30;
+            }
+          }
+        }
+        return { wc, score };
+      });
+      const best = scoredWcs.sort((a, b) => b.score - a.score)[0];
+      if (best) {
+        targetWc = best.wc;
+      }
+    }
+  }
+
+  if (!targetWc) {
+    return { state: newState, created: false, errorReason: "No suitable division found for tournament." };
+  }
+
+  // Ensure depth is built
+  newState = maintainTournamentRosterDepth(newState, targetWc);
+
   const canRunEightMan = newState.promotion.reputation >= 60 && newState.promotion.money >= 200000;
   let format: TournamentFormat = 'four_man';
   if (canRunEightMan) {
     const everCompleted8man = Object.values(newState.tournaments).some(t => t.format === 'eight_man' && t.status === 'completed');
-    const highRepBonus = newState.promotion.reputation >= 75 ? 0.20 : 0.0;
-    const neverHad8manBonus = !everCompleted8man && newState.promotion.reputation >= 75 && newState.promotion.money >= 500000 ? 0.30 : 0.0;
-    const moneyBonus = newState.promotion.money >= 500000 ? 0.10 : 0.0;
-    const eightManChance = 0.25 + highRepBonus + neverHad8manBonus + moneyBonus;
+    let eightManChance = 0.25;
+    if (newState.promotion.reputation >= 75 && newState.promotion.money >= 500000) {
+      eightManChance = 0.60;
+      if (!everCompleted8man) {
+        eightManChance = 0.90;
+      }
+    }
+    if (preferredFormat === 'eight_man') {
+      eightManChance = 1.0;
+    }
     format = Math.random() < eightManChance ? 'eight_man' : 'four_man';
   }
 
@@ -1064,14 +1130,14 @@ export function runAutopilotTournaments(state: GameState): GameState {
     !f.isChampion &&
     !isFighterBookedUpcoming(newState, f.id)
   );
-  
+
   if (format === 'eight_man' && wcFighters.length < 11) {
     format = 'four_man';
   }
-  
+
   const finalRequiredCount = format === 'eight_man' ? 11 : 6;
   if (wcFighters.length < finalRequiredCount) {
-    return newState; // Not enough depth yet, keep building
+    return { state: newState, created: false, errorReason: `Insufficient healthy/available fighters in ${targetWc} (have ${wcFighters.length}, need ${finalRequiredCount}).` };
   }
 
   const sortedFighters = wcFighters.sort((a, b) => (b.rankingScore || 0) - (a.rankingScore || 0));
@@ -1092,13 +1158,14 @@ export function runAutopilotTournaments(state: GameState): GameState {
       participantIds,
       reserveIds
     });
-    // Clear target so next tournament targets a different division
+    
+    const newT = Object.values(newState.tournaments).find(t => t.weightClass === targetWc && t.status === 'planned');
+    
     newState.autopilot.targetTournamentWeightClass = null;
+    return { state: newState, created: true, tournamentId: newT?.id, errorReason: undefined };
   } catch (e: any) {
-    console.log(`Tournament creation failed: ${e?.message}`);
+    return { state: newState, created: false, errorReason: `Tournament creation failed: ${e?.message}` };
   }
-  
-  return newState;
 }
 
 export interface TitleShotDebt {
@@ -1557,20 +1624,55 @@ export function bindTournamentToCalendarSlots(state: GameState, tournamentId: st
   const plan = newState.seasonPlans[year];
   const slots = [...plan.slots];
 
-  // Try to find pre-allocated slots for this weight class
-  let matchingSlots = slots.filter(s => 
-    s.type === 'grand_prix_round' && 
-    s.targetWeightClass === tournament.weightClass && 
-    !s.tournamentId
-  );
-
   const neededRounds: TournamentRound[] = tournament.format === 'eight_man' 
     ? ['quarterfinal', 'semifinal', 'final'] 
     : ['semifinal', 'final'];
 
-  // If pre-allocated slots match the needed rounds, bind them
+  const getAvailableFutureSlots = () => {
+    return slots.filter(s => 
+      s.status === 'planned' &&
+      s.date >= state.currentDate &&
+      !s.eventId &&
+      (!s.tournamentId || s.tournamentId === tournament.id)
+    );
+  };
+
+  let matchingSlots = getAvailableFutureSlots().filter(s => 
+    s.type === 'grand_prix_round' && 
+    s.targetWeightClass === tournament.weightClass
+  );
+
+  if (matchingSlots.length < neededRounds.length) {
+    const convertableSlots = getAvailableFutureSlots().filter(s => 
+      s.type === 'regular_event' || s.type === 'title_fight_card' || s.type === 'grand_prix_window'
+    );
+    
+    const neededToConvert = neededRounds.length - matchingSlots.length;
+    for (let i = 0; i < Math.min(neededToConvert, convertableSlots.length); i++) {
+      const slot = convertableSlots[i];
+      const idx = slots.findIndex(s => s.id === slot.id);
+      if (idx !== -1) {
+        slots[idx] = {
+          ...slots[idx],
+          type: 'grand_prix_round',
+          targetWeightClass: tournament.weightClass,
+        };
+      }
+    }
+    
+    matchingSlots = slots.filter(s => 
+      s.status === 'planned' &&
+      s.date >= state.currentDate &&
+      !s.eventId &&
+      s.type === 'grand_prix_round' && 
+      s.targetWeightClass === tournament.weightClass &&
+      (!s.tournamentId || s.tournamentId === tournament.id)
+    );
+  }
+
+  matchingSlots.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
   if (matchingSlots.length >= neededRounds.length) {
-    matchingSlots.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
     neededRounds.forEach((round, i) => {
       const slotIdx = slots.findIndex(s => s.id === matchingSlots[i].id);
       if (slotIdx !== -1) {
@@ -1583,24 +1685,38 @@ export function bindTournamentToCalendarSlots(state: GameState, tournamentId: st
       }
     });
   } else {
-    // Otherwise, convert planned slots to GP rounds
-    let convertedCount = 0;
-    for (let i = 0; i < slots.length; i++) {
-      if (convertedCount >= neededRounds.length) break;
-      const slot = slots[i];
-      if (!slot.tournamentId && (slot.type === 'regular_event' || slot.type === 'title_fight_card') && slot.status === 'planned') {
-        slots[i] = {
-          ...slot,
-          type: 'grand_prix_round',
-          targetWeightClass: tournament.weightClass,
-          tournamentRound: neededRounds[convertedCount],
-          tournamentId: tournament.id,
-          notes: [...(slot.notes || []), `Converted and linked to ${tournament.name}`]
-        };
-        convertedCount++;
+    let baseDate = new Date(state.currentDate);
+    neededRounds.forEach((round, i) => {
+      const alreadyBound = slots.some(s => s.tournamentId === tournament.id && s.tournamentRound === round);
+      if (alreadyBound) return;
+
+      let offsetDays = 28;
+      if (round === 'semifinal' && tournament.format === 'eight_man') {
+        offsetDays = 42;
+      } else if (round === 'final') {
+        offsetDays = 42;
       }
-    }
+
+      baseDate.setDate(baseDate.getDate() + offsetDays);
+      const slotDateStr = baseDate.toISOString().split('T')[0];
+
+      const newSlot: SeasonCalendarSlot = {
+        id: uuidv4(),
+        year: baseDate.getFullYear(),
+        date: slotDateStr,
+        type: 'grand_prix_round',
+        status: 'planned',
+        targetWeightClass: tournament.weightClass,
+        tournamentId: tournament.id,
+        tournamentRound: round,
+        priority: 1,
+        notes: [`Created and linked to ${tournament.name}`]
+      };
+      slots.push(newSlot);
+    });
   }
+
+  slots.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
   newState.seasonPlans[year] = {
     ...plan,
@@ -1613,6 +1729,8 @@ export function bindTournamentToCalendarSlots(state: GameState, tournamentId: st
 export function linkScheduledRoundToSlot(state: GameState, tournamentId: string, round: TournamentRound, eventId: string): GameState {
   const newState = { ...state };
   if (!newState.seasonPlans) return newState;
+  const event = newState.events[eventId];
+  if (!event) return newState;
   
   for (const yearStr in newState.seasonPlans) {
     const plan = newState.seasonPlans[Number(yearStr)];
@@ -1620,12 +1738,23 @@ export function linkScheduledRoundToSlot(state: GameState, tournamentId: string,
     const slotIndex = plan.slots.findIndex(s => s.tournamentId === tournamentId && s.tournamentRound === round);
     if (slotIndex !== -1) {
       const slots = [...plan.slots];
+      const slot = slots[slotIndex];
+      const originalDate = slot.date;
+      const eventDate = event.date;
+      const notes = [...(slot.notes || [])];
+      if (originalDate !== eventDate) {
+        notes.push(`Rescheduled from ${originalDate} to ${eventDate} to match linked event.`);
+      }
+      notes.push(`Scheduled on event ${eventId} (Date: ${eventDate})`);
+      
       slots[slotIndex] = {
-        ...slots[slotIndex],
+        ...slot,
         eventId,
         status: 'scheduled' as const,
-        notes: [...(slots[slotIndex].notes || []), `Scheduled on event ${eventId} (Date: ${newState.events[eventId]?.date || 'Unknown'})`]
+        date: eventDate,
+        notes
       };
+      slots.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
       newState.seasonPlans[Number(yearStr)] = { ...plan, slots };
       break;
     }

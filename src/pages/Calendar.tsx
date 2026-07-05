@@ -9,10 +9,13 @@ export default function CalendarPage() {
     seasonPlans = {}, 
     events = {}, 
     eventArchive = {}, 
+    tournaments = {},
     generateCurrentYearPlan, 
     cancelCalendarSlot, 
     setView 
   } = useGameStore();
+
+  const [filter, setFilter] = React.useState<'All' | 'Regular' | 'Tentpole' | 'Title' | 'GP Window' | 'GP Round' | 'Recovery' | 'Missed/Cancelled'>('All');
 
   const currentYear = new Date(currentDate).getFullYear();
   const plan = seasonPlans[currentYear];
@@ -32,6 +35,18 @@ export default function CalendarPage() {
   const plannedCount = slots.filter(s => s.status === 'planned').length;
   const missedCount = slots.filter(s => s.status === 'missed').length;
   const cancelledCount = slots.filter(s => s.status === 'cancelled').length;
+
+  const filteredSlots = slots.filter(s => {
+    if (filter === 'All') return true;
+    if (filter === 'Regular') return s.type === 'regular_event';
+    if (filter === 'Tentpole') return s.type === 'tentpole_event';
+    if (filter === 'Title') return s.type === 'title_fight_card';
+    if (filter === 'GP Window') return s.type === 'grand_prix_window';
+    if (filter === 'GP Round') return s.type === 'grand_prix_round';
+    if (filter === 'Recovery') return s.type === 'recovery_gap';
+    if (filter === 'Missed/Cancelled') return s.status === 'missed' || s.status === 'cancelled';
+    return true;
+  });
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500 max-w-6xl mx-auto pb-12">
@@ -77,6 +92,23 @@ export default function CalendarPage() {
         </div>
       </div>
 
+      {/* Filter Buttons */}
+      <div className="flex flex-wrap gap-2 bg-neutral-900 p-4 rounded-lg border border-neutral-800">
+        {(['All', 'Regular', 'Tentpole', 'Title', 'GP Window', 'GP Round', 'Recovery', 'Missed/Cancelled'] as const).map(f => (
+          <button
+            key={f}
+            onClick={() => setFilter(f)}
+            className={`px-3 py-1.5 rounded text-xs font-black uppercase tracking-wider transition ${
+              filter === f 
+                ? 'bg-blue-600 text-white font-bold' 
+                : 'bg-neutral-800 hover:bg-neutral-700 text-neutral-400 hover:text-white'
+            }`}
+          >
+            {f}
+          </button>
+        ))}
+      </div>
+
       {/* Main Content */}
       <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-6">
         {slots.length === 0 ? (
@@ -105,10 +137,33 @@ export default function CalendarPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-neutral-800/40 text-sm">
-                {slots.map(s => {
+                {filteredSlots.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="py-8 text-center text-neutral-500 italic">
+                      No slots found matching the selected filter.
+                    </td>
+                  </tr>
+                ) : filteredSlots.map(s => {
                   const eventObj = events[s.eventId || ''] || eventArchive[s.eventId || ''];
                   const isPast = s.date < currentDate;
                   const isApproaching = s.date >= currentDate && s.date <= addDaysStr(currentDate, 28);
+
+                  const warnings: string[] = [];
+                  if (eventObj && s.date !== eventObj.date) {
+                    warnings.push("Date Mismatch");
+                  }
+                  if (s.type === 'grand_prix_round' && !s.tournamentId) {
+                    warnings.push("No Tournament");
+                  }
+                  if (isPast && s.status === 'planned') {
+                    const isDelayed = (s.notes || []).some(n => n.toLowerCase().includes('delayed') || n.toLowerCase().includes('rescheduled'));
+                    if (!isDelayed) {
+                      warnings.push("Overdue Slot");
+                    }
+                  }
+                  if (s.notes && s.notes.some(n => n.toLowerCase().includes('delayed') || n.toLowerCase().includes('delay'))) {
+                    warnings.push("Delayed Round");
+                  }
 
                   return (
                     <tr 
@@ -134,6 +189,7 @@ export default function CalendarPage() {
                           s.type === 'tentpole_event' ? 'bg-purple-900/40 text-purple-400' :
                           s.type === 'title_fight_card' ? 'bg-yellow-900/40 text-yellow-400' :
                           s.type === 'grand_prix_round' ? 'bg-blue-900/40 text-blue-400' :
+                          s.type === 'grand_prix_window' ? 'bg-indigo-900/40 text-indigo-400' :
                           s.type === 'recovery_gap' ? 'bg-neutral-850 text-neutral-500 border border-neutral-800' :
                           'bg-neutral-950 text-neutral-400'
                         }`}>
@@ -166,7 +222,17 @@ export default function CalendarPage() {
                             GP {s.tournamentRound}
                           </div>
                         )}
-                        {!s.targetWeightClass && !s.tournamentRound && (
+                        {s.tournamentId && tournaments[s.tournamentId] && (
+                          <div className="mt-1">
+                            <span 
+                              onClick={() => setView('tournaments')}
+                              className="text-purple-400 hover:underline cursor-pointer font-bold block text-[10px]"
+                            >
+                              🏆 {tournaments[s.tournamentId].name} ({tournaments[s.tournamentId].status})
+                            </span>
+                          </div>
+                        )}
+                        {!s.targetWeightClass && !s.tournamentRound && !s.tournamentId && (
                           <span className="text-neutral-500">—</span>
                         )}
                       </td>
@@ -191,18 +257,27 @@ export default function CalendarPage() {
                         )}
                       </td>
 
-                      {/* Notes / Delays */}
-                      <td className="py-4 text-xs text-neutral-400 max-w-[200px] truncate" title={s.notes?.join('\n')}>
+                      {/* Notes / Delays / Warnings */}
+                      <td className="py-4 text-xs text-neutral-400 max-w-[200px]" title={s.notes?.join('\n')}>
+                        {warnings.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mb-1">
+                            {warnings.map((w, idx) => (
+                              <span key={idx} className="bg-red-950/60 text-red-400 border border-red-900/50 rounded px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider flex items-center gap-0.5">
+                                <AlertTriangle size={8} /> {w}
+                              </span>
+                            ))}
+                          </div>
+                        )}
                         {s.notes && s.notes.length > 0 ? (
                           <div className="space-y-0.5">
                             {s.notes.map((n, idx) => (
-                              <div key={idx} className="text-neutral-400 text-[11px]">
+                              <div key={idx} className="text-neutral-400 text-[11px] truncate">
                                 {n}
                               </div>
                             ))}
                           </div>
                         ) : (
-                          <span className="text-neutral-600 italic">No notes</span>
+                          warnings.length === 0 && <span className="text-neutral-600 italic">No notes</span>
                         )}
                       </td>
 
@@ -232,8 +307,9 @@ export default function CalendarPage() {
                         </div>
                       </td>
                     </tr>
-                  );
-                })}
+                    );
+                  })
+                }
               </tbody>
             </table>
           </div>

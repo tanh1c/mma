@@ -7,7 +7,7 @@ import { updateRankings } from '../lib/game/rankings';
 import { v4 as uuidv4 } from 'uuid';
 import { createNewGame, saveGameLocally, loadGameLocally, exportGameToJSON, importGameFromJSON, CURRENT_SAVE_VERSION } from '../lib/game/save';
 
-import { autoBookEventsAndContracts, maintainDeals } from '../lib/game/autobooker';
+import { autoBookEventsAndContracts, maintainDeals, repairEventAvailability } from '../lib/game/autobooker';
 import { generateSeasonPlan } from '../lib/game/season';
 import { quickSimulateEvent } from '../lib/engine';
 import { createGrandPrixTournament, scheduleQuarterfinals, scheduleSemifinals, scheduleFinal, cancelTournament, runAutopilotTournaments, syncTournamentTitleShotFlags, scheduleTournamentRound } from '../lib/game/tournament';
@@ -204,36 +204,41 @@ export const useGameStore = create<GameStore>((set, get) => ({
         Object.assign(newState, gameState);
         
         // If there's an event today, simulate it
-        const todayEvents = Object.values(newState.events).filter(e => e.date === newState.currentDate && !e.isCompleted);
+        let todayEvents = Object.values(newState.events).filter(e => e.date === newState.currentDate && !e.isCompleted);
         
         if (todayEvents.length > 0) {
           const event = todayEvents[0];
-          if (simulateEvents) {
-            // Stop to watch event
-            newState.currentView = 'simulation';
-            newState.selectedEventId = event.id;
-            
-            // Setup active simulation
-            let startIndex = event.fights.length - 1;
-            while (startIndex >= 0 && event.fights[startIndex].result) {
-              startIndex--;
+          gameState = repairEventAvailability(gameState, event.id);
+          Object.assign(newState, gameState);
+          
+          const recheckedEvent = newState.events[event.id];
+          if (recheckedEvent && recheckedEvent.date === newState.currentDate) {
+            if (simulateEvents) {
+              // Stop to watch event
+              newState.currentView = 'simulation';
+              newState.selectedEventId = recheckedEvent.id;
+              
+              // Setup active simulation
+              let startIndex = recheckedEvent.fights.length - 1;
+              while (startIndex >= 0 && recheckedEvent.fights[startIndex].result) {
+                startIndex--;
+              }
+  
+              newState.activeEventSimulation = {
+                eventId: recheckedEvent.id,
+                activeFightIndex: startIndex,
+                pendingResult: null,
+                revealedLines: 0,
+                status: 'idle'
+              };
+              
+              stoppedEarly = true;
+              break; // Break out of the loop
+            } else {
+              // Quick simulate the entire event
+              const simResult = quickSimulateEvent(newState, recheckedEvent.id);
+              Object.assign(newState, simResult);
             }
-
-            newState.activeEventSimulation = {
-              eventId: event.id,
-              activeFightIndex: startIndex,
-              pendingResult: null,
-              revealedLines: 0,
-              status: 'idle'
-            };
-            
-            stoppedEarly = true;
-            break; // Break out of the loop
-          } else {
-            // Quick simulate the entire event
-            const simResult = quickSimulateEvent(newState, event.id);
-            Object.assign(newState, simResult);
-            // Optionally, add a news item or delay
           }
         }
       }
@@ -551,15 +556,24 @@ export const useGameStore = create<GameStore>((set, get) => ({
           if (slot) {
             const slots = plan.slots.map(s => {
               if (s.id === state.selectedCalendarSlotId) {
+                const notes = [...(s.notes || [])];
+                const originalDate = s.date;
+                const eventDate = newEvt.date;
+                if (originalDate !== eventDate) {
+                  notes.push(`Rescheduled from ${originalDate} to ${eventDate} to match linked event.`);
+                }
+                notes.push(`Manually booked event on ${state.currentDate}.`);
                 return {
                   ...s,
                   eventId: id,
                   status: 'scheduled' as const,
-                  notes: [...(s.notes || []), `Manually booked event on ${state.currentDate}.`]
+                  date: eventDate,
+                  notes
                 };
               }
               return s;
             });
+            slots.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
             nextState.seasonPlans = {
               ...nextState.seasonPlans,
               [year]: { ...plan, slots }
@@ -621,14 +635,24 @@ export const useGameStore = create<GameStore>((set, get) => ({
       if (!event) return state;
       
       let tempState: GameState = { ...state };
+      tempState = repairEventAvailability(tempState, eventId);
       
-      if (new Date(event.date) > new Date(tempState.currentDate)) {
-         tempState.currentDate = event.date;
+      const updatedEvent = tempState.events[eventId];
+      if (!updatedEvent) return tempState;
+      
+      if (new Date(updatedEvent.date) > new Date(tempState.currentDate)) {
+         tempState.currentDate = updatedEvent.date;
       }
 
-      // Find first unsimulated fight from the bottom of the card
-      let startIndex = event.fights.length - 1;
-      while (startIndex >= 0 && event.fights[startIndex].result) {
+      if (updatedEvent.date !== event.date) {
+        return {
+          ...tempState,
+          currentView: 'dashboard' as const
+        };
+      }
+
+      let startIndex = updatedEvent.fights.length - 1;
+      while (startIndex >= 0 && updatedEvent.fights[startIndex].result) {
         startIndex--;
       }
 
@@ -642,7 +666,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
       return {
         ...tempState,
-        currentView: 'simulation',
+        currentView: 'simulation' as const,
         selectedEventId: eventId,
         activeEventSimulation: simState
       };

@@ -104,56 +104,24 @@ export function generateSeasonPlan(state: GameState, year: number): SeasonPlan {
     notes: []
   }));
 
-  // 4. Assign Grand Prix round slots
-  // We'll replace slot types of some planned slots with grand_prix_round
+  // 4. Assign Grand Prix window slots
   let gpScheduled = 0;
   let currentSlotIdx = 1;
-  const weightClasses: WeightClass[] = ['Bantamweight', 'Featherweight', 'Lightweight', 'Welterweight', 'Middleweight', 'Heavyweight'];
   
-  while (gpScheduled < targetGrandPrix && currentSlotIdx + 4 < slots.length) {
-    const isEightMan = rep >= 60 && money >= 200000;
-    const targetWc = weightClasses[Math.floor(Math.random() * weightClasses.length)];
-    
-    if (isEightMan) {
-      // 8-man needs 3 rounds (QF, SF, F). We'll use slotIdx, slotIdx+2, slotIdx+4
-      const qfSlot = slots[currentSlotIdx];
-      const sfSlot = slots[currentSlotIdx + 2];
-      const fSlot = slots[currentSlotIdx + 4];
-      
-      qfSlot.type = 'grand_prix_round';
-      qfSlot.targetWeightClass = targetWc;
-      qfSlot.tournamentRound = 'quarterfinal';
-      qfSlot.notes = [...(qfSlot.notes || []), `Planned ${targetWc} QF`];
-      
-      sfSlot.type = 'grand_prix_round';
-      sfSlot.targetWeightClass = targetWc;
-      sfSlot.tournamentRound = 'semifinal';
-      sfSlot.notes = [...(sfSlot.notes || []), `Planned ${targetWc} SF`];
-      
-      fSlot.type = 'grand_prix_round';
-      fSlot.targetWeightClass = targetWc;
-      fSlot.tournamentRound = 'final';
-      fSlot.notes = [...(fSlot.notes || []), `Planned ${targetWc} Final`];
-      
+  while (gpScheduled < targetGrandPrix && currentSlotIdx < slots.length) {
+    const slot = slots[currentSlotIdx];
+    if (slot.type === 'regular_event') {
+      const slotMonth = new Date(slot.date).getMonth();
+      let prefNote = "";
+      if (rep >= 75 && (slotMonth === 6 || slotMonth === 11)) {
+        prefNote = " (8-Man Preferred)";
+      }
+      slot.type = 'grand_prix_window';
+      slot.notes = [...(slot.notes || []), `Grand Prix Window planned${prefNote}.`];
       gpScheduled++;
-      currentSlotIdx += 5;
+      currentSlotIdx += 4; // Space them out
     } else {
-      // 4-man needs 2 rounds (SF, F). We'll use slotIdx, slotIdx+2
-      const sfSlot = slots[currentSlotIdx];
-      const fSlot = slots[currentSlotIdx + 2];
-      
-      sfSlot.type = 'grand_prix_round';
-      sfSlot.targetWeightClass = targetWc;
-      sfSlot.tournamentRound = 'semifinal';
-      sfSlot.notes = [...(sfSlot.notes || []), `Planned ${targetWc} SF`];
-      
-      fSlot.type = 'grand_prix_round';
-      fSlot.targetWeightClass = targetWc;
-      fSlot.tournamentRound = 'final';
-      fSlot.notes = [...(fSlot.notes || []), `Planned ${targetWc} Final`];
-      
-      gpScheduled++;
-      currentSlotIdx += 3;
+      currentSlotIdx++;
     }
   }
 
@@ -215,5 +183,118 @@ export function syncCalendarSlots(state: GameState): GameState {
   };
   
   return newState;
+}
+
+export function validateSeasonCalendarState(state: GameState): string[] {
+  const errors: string[] = [];
+  if (!state.seasonPlans) return errors;
+
+  for (const yearStr in state.seasonPlans) {
+    const plan = state.seasonPlans[Number(yearStr)];
+    if (!plan) continue;
+
+    plan.slots.forEach(slot => {
+      // 1. no completed/scheduled grand_prix_round without tournamentId
+      if (slot.type === 'grand_prix_round' && (slot.status === 'completed' || slot.status === 'scheduled') && !slot.tournamentId) {
+        errors.push(`Slot ${slot.id} (${slot.date}): Completed/scheduled grand_prix_round is missing tournamentId.`);
+      }
+
+      // 2. no grand_prix_round without tournamentRound
+      if (slot.type === 'grand_prix_round' && !slot.tournamentRound) {
+        errors.push(`Slot ${slot.id} (${slot.date}): grand_prix_round is missing tournamentRound.`);
+      }
+
+      // 3. no linked slot where slot.eventId exists but event is missing from events/eventArchive
+      if (slot.eventId) {
+        const event = state.events[slot.eventId] || state.eventArchive[slot.eventId];
+        if (!event) {
+          errors.push(`Slot ${slot.id} (${slot.date}): Linked eventId ${slot.eventId} is missing from events/eventArchive.`);
+        }
+      }
+
+      // 4. if linked event exists, slot.date === event.date
+      if (slot.eventId) {
+        const event = state.events[slot.eventId] || state.eventArchive[slot.eventId];
+        if (event && slot.date !== event.date) {
+          errors.push(`Slot ${slot.id} (${slot.date}): Date mismatch with linked event date (${event.date}).`);
+        }
+      }
+
+      // 5. completed slot must link to completed event or valid recovery gap
+      if (slot.status === 'completed') {
+        if (slot.type === 'recovery_gap') {
+          // valid
+        } else if (!slot.eventId) {
+          errors.push(`Slot ${slot.id} (${slot.date}): Completed slot must have a linked eventId or be a recovery gap.`);
+        } else {
+          const event = state.events[slot.eventId] || state.eventArchive[slot.eventId];
+          if (event) {
+            const isCompleted = 'isCompleted' in event ? event.isCompleted : true;
+            if (!isCompleted) {
+              errors.push(`Slot ${slot.id} (${slot.date}): Completed slot is linked to an incomplete event.`);
+            }
+          }
+        }
+      }
+
+      // 6. scheduled slot must link to upcoming event
+      if (slot.status === 'scheduled') {
+        if (!slot.eventId) {
+          errors.push(`Slot ${slot.id} (${slot.date}): Scheduled slot must have a linked eventId.`);
+        } else {
+          const event = state.events[slot.eventId];
+          if (!event) {
+            errors.push(`Slot ${slot.id} (${slot.date}): Scheduled slot is linked to an event that is missing or completed/archived.`);
+          } else if (event.isCompleted) {
+            errors.push(`Slot ${slot.id} (${slot.date}): Scheduled slot is linked to a completed event.`);
+          }
+        }
+      }
+
+      // 7. missed slot should not have eventId
+      if (slot.status === 'missed' && slot.eventId) {
+        errors.push(`Slot ${slot.id} (${slot.date}): Missed slot should not have eventId.`);
+      }
+
+      // 8. cancelled slot should not have future eventId
+      if (slot.status === 'cancelled' && slot.eventId) {
+        const event = state.events[slot.eventId];
+        if (event && !event.isCompleted) {
+          errors.push(`Slot ${slot.id} (${slot.date}): Cancelled slot is linked to a future/scheduled event.`);
+        }
+      }
+
+      // 9. tournament round slot must match tournament weightClass and round
+      if (slot.type === 'grand_prix_round' && slot.tournamentId) {
+        const tourney = state.tournaments[slot.tournamentId];
+        if (tourney) {
+          if (slot.targetWeightClass !== tourney.weightClass) {
+            errors.push(`Slot ${slot.id} (${slot.date}): GP round weightClass (${slot.targetWeightClass}) mismatch with tournament weightClass (${tourney.weightClass}).`);
+          }
+        }
+      }
+
+      // 10. no slot older than 14 days remains planned unless it is intentionally delayed with note
+      const slotTime = new Date(slot.date).getTime();
+      const currTime = new Date(state.currentDate).getTime();
+      const diffDays = Math.ceil((currTime - slotTime) / (1000 * 3600 * 24));
+      if (diffDays > 14 && slot.status === 'planned') {
+        const isDelayed = (slot.notes || []).some(n => n.toLowerCase().includes('delayed') || n.toLowerCase().includes('rescheduled'));
+        if (!isDelayed) {
+          errors.push(`Slot ${slot.id} (${slot.date}): Overdue planned slot (older than 14 days) without delay/reschedule note.`);
+        }
+      }
+
+      // 11. no tournament is linked to completed/missed/cancelled old slots at creation
+      if (slot.tournamentId && (slot.status === 'completed' || slot.status === 'missed' || slot.status === 'cancelled')) {
+        const tourney = state.tournaments[slot.tournamentId];
+        if (tourney && tourney.status === 'planned') {
+          errors.push(`Slot ${slot.id} (${slot.date}): Tournament "${tourney.name}" is planned/created but linked to completed/missed/cancelled slot.`);
+        }
+      }
+    });
+  }
+
+  return errors;
 }
 
