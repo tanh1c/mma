@@ -1,6 +1,7 @@
 import { GameState, GrandPrixTournament, TournamentParticipant, TournamentFightSlot, WeightClass, Fighter, FightMatchup, FightResult, TournamentFormat, TournamentRound, TournamentStatus, SeasonCalendarSlot } from '../../types/game';
 import { v4 as uuidv4 } from 'uuid';
 import { addDays } from 'date-fns';
+import { getTournamentBranding } from '../branding';
 import { generateSeasonPlan } from './season';
 
 export function isFighterBookedUpcoming(state: GameState, fighterId: string, excludeEventId?: string): boolean {
@@ -158,12 +159,7 @@ export function createGrandPrixTournament(
   const newTourney: GrandPrixTournament = {
     id: uuidv4(),
     name,
-    shortName: name.includes("Lightweight") ? "Lightweight GP" :
-               name.includes("Featherweight") ? "Featherweight GP" :
-               name.includes("Bantamweight") ? "Bantamweight GP" :
-               name.includes("Welterweight") ? "Welterweight GP" :
-               name.includes("Middleweight") ? "Middleweight GP" :
-               name.includes("Heavyweight") ? "Heavyweight GP" : "Grand Prix",
+    shortName: getTournamentBranding(weightClass, format).shortName,
     weightClass,
     status: 'planned',
     format,
@@ -410,6 +406,17 @@ export function scheduleTournamentRound(
         ...newState.news
       ];
     }
+    updatedTourney.fights = updatedTourney.fights.map(f => {
+      if (f.round === round) {
+        return {
+          ...f,
+          eventId: undefined,
+          fightId: undefined
+        };
+      }
+      return f;
+    });
+
     newState.tournaments[tournamentId] = updatedTourney;
     return newState;
   }
@@ -608,12 +615,16 @@ export function applyTournamentProgression(
   const slotIdx = tourney.fights.findIndex(f => f.id === slotId);
   if (slotIdx === -1) return state;
   const slot = tourney.fights[slotIdx];
-  
-  if (slot.isCompleted && slot.winnerId === winnerId) {
+  // ponytail: tournament draws advance by bracket order; upgrade to overtime/rematch if draw-specific gameplay is added.
+  const advancementWinnerId = winnerId ?? slot.redFighterId ?? null;
+  const advancementLoserId = loserId ?? (advancementWinnerId === slot.redFighterId ? slot.blueFighterId : slot.redFighterId) ?? null;
+  const usedDrawTiebreaker = winnerId === null && advancementWinnerId !== null;
+
+  if (slot.isCompleted && slot.winnerId === advancementWinnerId) {
     return state;
   }
-  
-  const newState = { 
+
+  const newState = {
     ...state, 
     tournaments: { ...state.tournaments }, 
     fighters: { ...state.fighters } 
@@ -622,10 +633,15 @@ export function applyTournamentProgression(
   
   updatedTourney.fights[slotIdx] = {
     ...slot,
-    winnerId,
-    loserId,
+    winnerId: advancementWinnerId,
+    loserId: advancementLoserId,
     isCompleted: true
   };
+
+  if (usedDrawTiebreaker) {
+    const fighter = newState.fighters[advancementWinnerId!];
+    updatedTourney.notes = [...(updatedTourney.notes || []), `Draw tiebreaker: ${fighter ? `${fighter.firstName} ${fighter.lastName}` : 'Unknown'} advanced from ${slot.round} by bracket order.`];
+  }
   
   if (slot.round === 'quarterfinal') {
     const qfSlots = updatedTourney.fights.filter(f => f.round === 'quarterfinal');
@@ -711,10 +727,10 @@ export function applyTournamentProgression(
     }
   } else if (slot.round === 'final') {
     updatedTourney.status = 'completed';
-    updatedTourney.winnerId = winnerId;
+    updatedTourney.winnerId = advancementWinnerId;
     updatedTourney.completedDate = state.currentDate;
-    
-    const champ = winnerId ? newState.fighters[winnerId] : null;
+
+    const champ = advancementWinnerId ? newState.fighters[advancementWinnerId] : null;
     const champName = champ ? `${champ.firstName} ${champ.lastName}` : 'Unknown';
     
     updatedTourney.notes = [...(updatedTourney.notes || []), `Grand Prix Winner: ${champName} on ${state.currentDate}`];
@@ -735,28 +751,28 @@ export function applyTournamentProgression(
       updatedChamp.rankingScore = (updatedChamp.rankingScore || 1000) + winBonus;
       updatedChamp.popularity = Math.min(100, updatedChamp.popularity + winPop);
       updatedChamp.momentum = Math.min(100, updatedChamp.momentum + winMom);
-      updatedChamp.history = [`Won Grand Prix vs ${loserId ? newState.fighters[loserId]?.lastName : 'Unknown'}`, ...updatedChamp.history].slice(0, 5);
+      updatedChamp.history = [`Won Grand Prix vs ${advancementLoserId ? newState.fighters[advancementLoserId]?.lastName : 'Unknown'}`, ...updatedChamp.history].slice(0, 5);
       
       newState.fighters[champ.id] = updatedChamp;
     }
     
-    if (loserId) {
-      const runnerUp = newState.fighters[loserId];
+    if (advancementLoserId) {
+      const runnerUp = newState.fighters[advancementLoserId];
       if (runnerUp) {
         const updatedRunner = { ...runnerUp };
         updatedRunner.rankingScore = (updatedRunner.rankingScore || 1000) + runnerBonus;
         updatedRunner.popularity = Math.min(100, updatedRunner.popularity + runnerPop);
-        newState.fighters[loserId] = updatedRunner;
+        newState.fighters[advancementLoserId] = updatedRunner;
       }
     }
-    
+
     newState.news = [
       {
         id: uuidv4(),
         date: state.currentDate,
         type: 'general' as const,
         title: `${champName} Wins the ${updatedTourney.name}!`,
-        content: `${champName} defeated ${loserId ? newState.fighters[loserId]?.lastName : 'Unknown'} in the Grand Prix final to claim the crown!${updatedTourney.titleShotPromised ? ' A future title shot is guaranteed.' : ''}`
+        content: `${champName} defeated ${advancementLoserId ? newState.fighters[advancementLoserId]?.lastName : 'Unknown'} in the Grand Prix final to claim the crown!${updatedTourney.titleShotPromised ? ' A future title shot is guaranteed.' : ''}`
       },
       ...newState.news
     ];
@@ -1147,7 +1163,7 @@ export function evaluateAndCreateTournament(
   const participantIds = slicedFighters.slice(0, participantCount).map(f => f.id);
   const reserveIds = slicedFighters.slice(participantCount).map(f => f.id);
   
-  const name = `${targetWc} ${format === 'eight_man' ? '8-Man' : '4-Man'} Grand Prix`;
+  const name = getTournamentBranding(targetWc, format).name;
   
   try {
     newState = createGrandPrixTournament(newState, {
@@ -1788,6 +1804,8 @@ export function handleDelayedRoundCalendarSlot(state: GameState, tournamentId: s
       slots[slotIdx] = {
         ...slot,
         date: newDate,
+        eventId: undefined,
+        status: 'planned' as const,
         notes
       };
       
@@ -1986,7 +2004,10 @@ export function repairScheduledTournamentRound(
     });
 
     newState.tournaments[tournamentId] = updatedTourney;
-    newState.events[eventId] = updatedEvent;
+    newState.events[eventId] = {
+      ...updatedEvent,
+      name: updatedEvent.name.replace(/CD GP (Quarterfinal|Semifinal|Final)/, 'Cage Dynasty')
+    };
     return newState;
   }
 

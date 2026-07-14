@@ -5,12 +5,15 @@ import { Trophy, TrendingUp, Users, DollarSign, Calendar, AlertTriangle, AlertCi
 import { calculateEventProjections } from '../lib/game/economy';
 import { WEIGHT_CLASSES } from '../lib/game/constants';
 import { getPendingTitleShotDebts } from '../lib/game/tournament';
+import { Button, Panel, PageHeader, Stat, StatusBadge } from '../components/ui';
 
 export default function Dashboard() {
   const { promotion, currentDate, events, fighters, tournaments = {}, venues, news, storylines, titles, belts, setView, mode, autopilot, setMode, setAutopilot, advanceAutopilot, lastAutopilotSummary, sponsorDeals = [], mediaDeals = [], financeLedger = [], signSponsorDeal, signMediaDeal, renewDeal } = useGameStore();
 
   const [isAdvancing, setIsAdvancing] = useState(false);
   const [ledgerFilter, setLedgerFilter] = useState<'All' | 'Event' | 'Deals' | 'Costs' | 'Income'>('All');
+  const [isFinanceOpen, setIsFinanceOpen] = useState(true);
+  const [isNewsOpen, setIsNewsOpen] = useState(true);
 
   const activeSponsorIncome = sponsorDeals.filter(d => d.isActive).reduce((sum, d) => sum + d.monthlyIncome, 0);
   const activeMediaIncome = mediaDeals.filter(d => d.isActive).reduce((sum, d) => sum + d.monthlyIncome, 0);
@@ -220,75 +223,57 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center bg-neutral-900 p-4 rounded-lg border border-neutral-800">
-        <div className="flex items-center gap-4">
-          <h1 className="text-2xl font-black text-white uppercase tracking-wider">{promotion.name || 'Your Promotion'}</h1>
-          <div className="flex gap-2 bg-neutral-950 p-1 rounded-md border border-neutral-800">
-            <button 
-              onClick={() => { setMode('manager'); setAutopilot({ enabled: false }); }}
-              className={`px-3 py-1 rounded text-xs font-bold uppercase tracking-wider transition-colors ${mode === 'manager' ? 'bg-blue-600 text-white' : 'text-neutral-500 hover:text-white'}`}
-            >
-              Manager Mode
-            </button>
-            <button 
-              onClick={() => { setMode('observer'); setAutopilot({ enabled: true }); }}
-              className={`px-3 py-1 rounded text-xs font-bold uppercase tracking-wider transition-colors ${mode === 'observer' ? 'bg-purple-600 text-white' : 'text-neutral-500 hover:text-white'}`}
-            >
-              Observer Mode
-            </button>
-          </div>
-        </div>
-        <div className="text-right">
-          <p className="text-sm text-neutral-500 uppercase tracking-wider font-bold">Current Date</p>
-          <p className="text-xl font-bold text-white">{format(new Date(currentDate), 'MMM d, yyyy')}</p>
-        </div>
-      </div>
+      <PageHeader
+        eyebrow={format(new Date(currentDate), 'MMM d, yyyy')}
+        title={promotion.name || 'Your Promotion'}
+        actions={<div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto"><Button variant={mode === 'manager' ? 'primary' : 'quiet'} onClick={() => { setMode('manager'); setAutopilot({ enabled: false }); }} className="min-h-9 px-3 text-xs">Manager mode</Button><Button variant={mode === 'observer' ? 'primary' : 'quiet'} onClick={() => { setMode('observer'); setAutopilot({ enabled: true }); }} className="min-h-9 px-3 text-xs">Observer mode</Button></div>}
+      />
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <StatCard icon={<DollarSign className="text-green-500" />} label="Funds" value={`$${promotion.money.toLocaleString()}`} />
-        <StatCard icon={<TrendingUp className="text-blue-500" />} label="Reputation" value={`${promotion.reputation}/100`} />
-        <StatCard icon={<Users className="text-purple-500" />} label="Fanbase" value={promotion.fanbase.toLocaleString()} />
-        <StatCard icon={<Trophy className="text-yellow-500" />} label="Roster Size" value={rosterCount.toString()} />
-      </div>
+      <Panel className="grid grid-cols-2 gap-5 sm:grid-cols-4">
+        <Stat label="Funds" value={`$${promotion.money.toLocaleString()}`} />
+        <Stat label="Reputation" value={`${promotion.reputation}/100`} />
+        <Stat label="Fanbase" value={promotion.fanbase.toLocaleString()} />
+        <Stat label="Roster size" value={rosterCount} />
+      </Panel>
 
       {mode === 'observer' && (
-        <div className="bg-purple-900/20 border border-purple-500/30 rounded-lg p-6 relative overflow-hidden">
-          <div className="absolute top-0 right-0 p-4 opacity-10">
-            <FastForward size={100} />
-          </div>
-          <div className="relative z-10">
-            <h2 className="text-xl font-black text-purple-400 mb-2 flex items-center gap-2">
-              <Settings size={20} /> Autopilot / Observer Mode
-            </h2>
-            <p className="text-sm text-purple-200/70 mb-6">
-              The AI will automatically book events, sign free agents, renew contracts, and release fighters. 
-              Sit back and watch the MMA world evolve, or take control anytime.
-            </p>
+        <Panel className="border-[#2a2c31]">
+          <h2 className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.16em] text-neutral-300">
+            <Settings size={16} /> Autopilot / Observer Mode
+          </h2>
+          <p className="mt-3 text-sm text-neutral-400">
+            The AI will automatically book events, sign free agents, renew contracts, and release fighters.
+            Sit back and watch the MMA world evolve, or take control anytime.
+          </p>
+          <div className="mt-6">
             
-            <div className="flex flex-wrap gap-4 items-center">
-              <button 
+            <div className="flex flex-wrap gap-3 sm:gap-4 items-center">
+              <Button
+                variant="secondary"
                 onClick={() => handleAutoAdvance(7, autopilot.watchEvents)}
                 disabled={isAdvancing}
-                className="bg-purple-700 hover:bg-purple-600 disabled:opacity-50 text-white px-4 py-2 rounded font-bold text-sm flex items-center gap-2 transition-colors"
+                className="inline-flex min-h-9 items-center gap-2 px-3 text-xs"
               >
                 <FastForward size={16} /> Advance 1 Week
-              </button>
-              <button 
+              </Button>
+              <Button
+                variant="secondary"
                 onClick={() => handleAutoAdvance(28, autopilot.watchEvents)}
                 disabled={isAdvancing}
-                className="bg-purple-700 hover:bg-purple-600 disabled:opacity-50 text-white px-4 py-2 rounded font-bold text-sm flex items-center gap-2 transition-colors"
+                className="inline-flex min-h-9 items-center gap-2 px-3 text-xs"
               >
                 <FastForward size={16} /> Advance 1 Month
-              </button>
-              <button 
+              </Button>
+              <Button
+                variant="primary"
                 onClick={() => handleAutoAdvance(180, autopilot.watchEvents)}
                 disabled={isAdvancing}
-                className="bg-purple-800 hover:bg-purple-700 disabled:opacity-50 text-white px-4 py-2 rounded font-bold text-sm flex items-center gap-2 transition-colors"
+                className="inline-flex min-h-9 items-center gap-2 px-3 text-xs"
               >
                 <FastForward size={16} /> Quick Sim 6 Months
-              </button>
+              </Button>
               
-              <div className="ml-auto flex items-center gap-3 bg-neutral-950 px-4 py-2 rounded border border-purple-900/50">
+              <div className="sm:ml-auto flex items-center gap-3 bg-neutral-950 px-4 py-2 rounded border border-purple-900/50">
                 <span className="text-sm font-bold text-neutral-300">Watch Events Live:</span>
                 <button 
                   onClick={() => setAutopilot({ watchEvents: !autopilot.watchEvents })}
@@ -364,25 +349,25 @@ export default function Dashboard() {
               </div>
             )}
           </div>
-        </div>
+        </Panel>
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
           {/* Action Items */}
           {alerts.length > 0 && (
-            <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-6">
+            <div className="bg-[#101114] border border-[#2a2c31] rounded-lg p-6">
               <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
                 <AlertCircle size={20} className="text-red-500" /> Action Items
               </h2>
               <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2">
                 {alerts.map(alert => (
-                  <div key={alert.id} className={`p-3 rounded-md border flex justify-between items-center ${
+                  <div key={alert.id} className={`p-3 rounded-md border flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between ${
                     alert.type === 'danger' ? 'bg-red-950/30 border-red-900/50' : 
                     alert.type === 'warning' ? 'bg-yellow-950/30 border-yellow-900/50' : 
                     'bg-blue-950/30 border-blue-900/50'
                   }`}>
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-start sm:items-center gap-3">
                       {alert.type === 'danger' ? <AlertTriangle className="text-red-500" size={18} /> : 
                        alert.type === 'warning' ? <AlertTriangle className="text-yellow-500" size={18} /> : 
                        <Info className="text-blue-500" size={18} />}
@@ -391,7 +376,7 @@ export default function Dashboard() {
                     {alert.action && (
                       <button 
                         onClick={alert.action.onClick}
-                        className="text-xs font-bold bg-neutral-800 hover:bg-neutral-700 text-white px-3 py-1.5 rounded shrink-0 ml-4"
+                        className="text-xs font-bold bg-neutral-800 hover:bg-neutral-700 text-white px-3 py-1.5 rounded shrink-0 sm:ml-4 self-start sm:self-auto"
                       >
                         {alert.action.label}
                       </button>
@@ -403,13 +388,13 @@ export default function Dashboard() {
           )}
 
           {/* Next Event */}
-          <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-6">
+          <div className="bg-[#101114] border border-[#2a2c31] rounded-lg p-6">
             <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
               <Calendar size={20} /> Next Event
             </h2>
             {nextEvent ? (
               <div className="bg-neutral-950 p-4 rounded-md border border-neutral-800">
-                <div className="flex justify-between items-start mb-4">
+                <div className="flex flex-col sm:flex-row gap-3 sm:items-start sm:justify-between mb-4">
                   <div>
                     <h3 className="text-xl font-bold text-white">{nextEvent.name}</h3>
                     <p className="text-sm text-neutral-400">{nextEvent.date}</p>
@@ -450,7 +435,7 @@ export default function Dashboard() {
                     const red = fighters[fight.redCornerId];
                     const blue = fighters[fight.blueCornerId];
                     return (
-                      <div key={idx} className="flex justify-between items-center text-sm p-2 bg-neutral-900 rounded">
+                      <div key={idx} className="flex flex-wrap justify-between items-center gap-2 text-sm p-2 bg-neutral-900 rounded">
                         <span className="font-medium">{red?.lastName}</span>
                         <span className="text-neutral-500 text-xs">vs</span>
                         <span className="font-medium">{blue?.lastName}</span>
@@ -474,7 +459,7 @@ export default function Dashboard() {
           </div>
 
           {/* Past Events */}
-          <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-6">
+          <div className="bg-[#101114] border border-[#2a2c31] rounded-lg p-6">
             <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
               <Calendar size={20} className="text-neutral-500" /> Past Events
             </h2>
@@ -484,7 +469,7 @@ export default function Dashboard() {
                 .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
                 .slice(0, 3)
                 .map(event => (
-                  <div key={event.id} className="bg-neutral-950 p-3 rounded-md border border-neutral-800 flex justify-between items-center">
+                  <div key={event.id} className="bg-neutral-950 p-3 rounded-md border border-neutral-800 flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
                     <div>
                       <h3 className="font-bold text-white">{event.name}</h3>
                       <p className="text-xs text-neutral-500">{event.date} • {event.fights.length} Fights</p>
@@ -509,11 +494,11 @@ export default function Dashboard() {
           </div>
 
           {/* Champions */}
-          <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-6">
+          <div className="bg-[#101114] border border-[#2a2c31] rounded-lg p-6">
             <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
               <Trophy size={20} className="text-yellow-500" /> Current Champions
             </h2>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {champions.map(champ => {
                 const beltId = `belt_${champ.weightClass.toLowerCase()}`;
                 const belt = belts[beltId];
@@ -536,12 +521,18 @@ export default function Dashboard() {
             </div>
           </div>
           {/* Finance & Deals MVP */}
-          <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-6">
+          <div className="bg-[#101114] border border-[#2a2c31] rounded-lg p-6">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
-               <h2 className="text-lg font-bold text-white flex items-center gap-2">
+               <button
+                 type="button"
+                 onClick={() => setIsFinanceOpen(open => !open)}
+                 aria-expanded={isFinanceOpen}
+                 className="flex items-center gap-2 text-left text-lg font-bold text-white hover:text-neutral-300"
+               >
                  <span className="text-green-500">$</span> Finance & Deals
-               </h2>
-               <div className="flex gap-4">
+                 <span className="text-[10px] uppercase tracking-wider text-neutral-500">{isFinanceOpen ? 'Collapse' : 'Expand'}</span>
+               </button>
+               <div className="flex flex-wrap gap-3 sm:gap-4">
                   <div className="bg-neutral-950 px-3 py-1.5 rounded border border-neutral-800 text-center">
                      <p className="text-[10px] text-neutral-500 uppercase font-bold tracking-wider mb-0.5">Sponsor Income</p>
                      <p className="text-sm font-mono text-green-400">+${activeSponsorIncome.toLocaleString()}/mo</p>
@@ -553,6 +544,7 @@ export default function Dashboard() {
                </div>
             </div>
             
+            {isFinanceOpen && <>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <h3 className="text-sm font-bold text-neutral-400 mb-2 uppercase tracking-wider">Sponsors</h3>
@@ -560,7 +552,7 @@ export default function Dashboard() {
                    const daysLeft = differenceInDays(new Date(deal.expiresDate), new Date(currentDate));
                    const isExpiringSoon = deal.isActive && daysLeft <= 60;
                    return (
-                  <div key={deal.id} className={`p-3 rounded border mb-2 flex justify-between items-center ${deal.isActive ? 'bg-neutral-950 border-neutral-800' : 'bg-red-950/20 border-red-900/50'}`}>
+                  <div key={deal.id} className={`p-3 rounded border mb-2 flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between ${deal.isActive ? 'bg-neutral-950 border-neutral-800' : 'bg-red-950/20 border-red-900/50'}`}>
                     <div>
                       <p className="font-bold text-white text-sm">
                          {deal.name} 
@@ -595,7 +587,7 @@ export default function Dashboard() {
                          const isLocked = promotion.reputation < tmpl.req;
                          if (hasDeal) return null;
                          return (
-                            <div key={tmpl.name} className="flex justify-between items-center p-2 bg-neutral-900 border border-neutral-800 rounded">
+                            <div key={tmpl.name} className="flex flex-col sm:flex-row gap-2 sm:items-center sm:justify-between p-2 bg-[#101114] border border-[#2a2c31] rounded">
                                <div>
                                   <p className="text-sm text-white font-bold">{tmpl.name}</p>
                                   <p className="text-xs text-neutral-500">Req Rep: {tmpl.req}</p>
@@ -620,7 +612,7 @@ export default function Dashboard() {
                    const daysLeft = differenceInDays(new Date(deal.expiresDate), new Date(currentDate));
                    const isExpiringSoon = deal.isActive && daysLeft <= 60;
                    return (
-                  <div key={deal.id} className={`p-3 rounded border mb-2 flex justify-between items-center ${deal.isActive ? 'bg-neutral-950 border-neutral-800' : 'bg-red-950/20 border-red-900/50'}`}>
+                  <div key={deal.id} className={`p-3 rounded border mb-2 flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between ${deal.isActive ? 'bg-neutral-950 border-neutral-800' : 'bg-red-950/20 border-red-900/50'}`}>
                     <div>
                       <p className="font-bold text-white text-sm">
                          {deal.name} 
@@ -655,7 +647,7 @@ export default function Dashboard() {
                          const isLocked = promotion.reputation < tmpl.req;
                          if (hasDeal) return null;
                          return (
-                            <div key={tmpl.name} className="flex justify-between items-center p-2 bg-neutral-900 border border-neutral-800 rounded">
+                            <div key={tmpl.name} className="flex flex-col sm:flex-row gap-2 sm:items-center sm:justify-between p-2 bg-[#101114] border border-[#2a2c31] rounded">
                                <div>
                                   <p className="text-sm text-white font-bold">{tmpl.name}</p>
                                   <p className="text-xs text-neutral-500">Req Rep: {tmpl.req}</p>
@@ -676,9 +668,9 @@ export default function Dashboard() {
             </div>
             
             <div className="mt-6 border-t border-neutral-800 pt-4">
-               <div className="flex items-center justify-between mb-3">
+               <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between mb-3">
                  <h3 className="text-sm font-bold text-neutral-400 uppercase tracking-wider">Recent Ledger</h3>
-                 <div className="flex gap-2">
+                 <div className="flex flex-wrap gap-2">
                     {['All', 'Event', 'Deals', 'Costs', 'Income'].map(filter => (
                        <button 
                          key={filter}
@@ -692,14 +684,14 @@ export default function Dashboard() {
                </div>
                <div className="space-y-2 max-h-[300px] overflow-y-auto pr-2">
                  {filteredLedger.length > 0 ? filteredLedger.slice(0, 50).map(entry => (
-                   <div key={entry.id} className={`flex justify-between items-center text-sm py-1.5 border-b border-neutral-800/50 ${entry.isSummary ? 'bg-neutral-950 px-2 py-2 rounded border border-blue-900/30 my-1' : ''}`}>
+                   <div key={entry.id} className={`flex gap-3 justify-between items-start text-sm py-1.5 border-b border-neutral-800/50 ${entry.isSummary ? 'bg-neutral-950 px-2 py-2 rounded border border-blue-900/30 my-1' : ''}`}>
                      <div>
                        <p className={`text-neutral-300 ${entry.isSummary ? 'text-blue-400 font-semibold' : ''}`}>
                          {entry.isSummary ? '📊 ' : ''}{entry.description}
                        </p>
                        <p className="text-xs text-neutral-500 font-mono">{entry.date}</p>
                      </div>
-                     <span className={`font-mono font-bold ${entry.isSummary ? 'text-blue-400' : (entry.amount >= 0 ? 'text-green-400' : 'text-red-400')}`}>
+                     <span className={`shrink-0 font-mono font-bold ${entry.isSummary ? 'text-blue-400' : (entry.amount >= 0 ? 'text-green-400' : 'text-red-400')}`}>
                        {entry.amount > 0 ? '+' : ''}{entry.amount.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })}
                      </span>
                    </div>
@@ -708,12 +700,24 @@ export default function Dashboard() {
                  )}
                </div>
             </div>
+            </>}
           </div>
         </div>
 
         {/* News Feed */}
-        <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-6 flex flex-col h-[600px]">
-          <h2 className="text-lg font-bold text-white mb-4">Latest News</h2>
+        <div className={`bg-[#101114] border border-[#2a2c31] rounded-lg p-4 sm:p-6 flex flex-col ${isNewsOpen ? 'h-auto lg:h-[600px] max-h-[70svh] lg:max-h-none' : ''}`}>
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <h2 className="text-lg font-bold text-white">Latest News</h2>
+            <button
+              type="button"
+              onClick={() => setIsNewsOpen(open => !open)}
+              aria-expanded={isNewsOpen}
+              className="text-xs font-bold uppercase text-neutral-400 hover:text-white"
+            >
+              {isNewsOpen ? 'Collapse' : 'Expand'}
+            </button>
+          </div>
+          {isNewsOpen && <>
           <div className="flex-1 overflow-y-auto space-y-4 pr-2">
             {news.slice(0, 10).map(item => {
               const borderColor = 
@@ -735,27 +739,14 @@ export default function Dashboard() {
               );
             })}
           </div>
-          <button 
+          <button
             onClick={() => setView('news')}
             className="w-full mt-4 bg-neutral-950 border border-neutral-800 text-neutral-300 py-2 rounded text-sm font-bold hover:bg-neutral-800 transition-colors"
           >
             View All News
           </button>
+          </>}
         </div>
-      </div>
-    </div>
-  );
-}
-
-function StatCard({ icon, label, value }: { icon: React.ReactNode, label: string, value: string }) {
-  return (
-    <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-4 flex items-center gap-4">
-      <div className="p-3 bg-neutral-950 rounded-md">
-        {icon}
-      </div>
-      <div>
-        <p className="text-sm text-neutral-400">{label}</p>
-        <p className="text-xl font-bold text-white">{value}</p>
       </div>
     </div>
   );

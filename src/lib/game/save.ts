@@ -1,6 +1,7 @@
 import { GameState } from '../../types/game';
 import { generateInitialWorld } from './generator';
 import { syncChampionFlags } from '../engine';
+import { getBeltBranding } from '../branding';
 
 const SAVE_KEY = 'cage-dynasty-save';
 export const CURRENT_SAVE_VERSION = 6;
@@ -185,8 +186,7 @@ function validateAndMigrateState(parsed: any): GameState | null {
       const beltId = `belt_${wc.toLowerCase()}`;
       state.belts[beltId] = {
         id: beltId,
-        name: `Cage Dynasty ${wc} Championship`,
-        shortName: `CD ${wc} Title`,
+        ...getBeltBranding(wc),
         weightClass: wc,
         type: 'undisputed',
         prestige: 60

@@ -2,6 +2,7 @@ import React from 'react';
 import { useGameStore } from '../store/gameStore';
 import { WEIGHT_CLASSES } from '../lib/game/constants';
 import { Trophy, Calendar, Star, TrendingUp, Award } from 'lucide-react';
+import { PageHeader, Panel, Stat } from '../components/ui';
 
 export default function HistoryStats() {
   const { eventArchive, fightArchive, titleHistory, fighters, setView, belts, yearlyAwards = {}, financeLedger, tournaments = {}, seasonPlans = {} } = useGameStore();
@@ -201,24 +202,14 @@ export default function HistoryStats() {
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500 max-w-6xl mx-auto pb-12">
-      <div className="flex justify-between items-center bg-neutral-900 p-6 rounded-lg border border-neutral-800">
-        <div>
-          <h1 className="text-3xl font-black text-white uppercase tracking-wider">Promotion History & Stats</h1>
-          <p className="text-neutral-400 mt-1">Review your legacy and historical records.</p>
-        </div>
-        <div className="flex gap-4">
-           <div className="text-right">
-             <p className="text-xs text-neutral-500 uppercase tracking-wider font-bold">Total Events</p>
-             <p className="text-2xl font-bold text-white">{totalEvents}</p>
-           </div>
-           <div className="text-right pl-4 border-l border-neutral-800">
-             <p className="text-xs text-neutral-500 uppercase tracking-wider font-bold">Lifetime Profit</p>
-             <p className={`text-2xl font-bold ${totalProfit >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-               ${totalProfit.toLocaleString()}
-             </p>
-           </div>
-        </div>
-      </div>
+      <PageHeader
+        eyebrow="Promotion record"
+        title="Promotion History & Stats"
+        description="Review your legacy and historical records."
+        actions={<div className="flex gap-5"><Stat label="Total events" value={totalEvents} /><Stat label="Lifetime profit" value={<span className={totalProfit >= 0 ? 'text-emerald-300' : 'text-red-300'}>${totalProfit.toLocaleString()}</span>} /></div>}
+      />
+
+      <Panel>
 
       {/* Legacy Rankings */}
       <div className="bg-neutral-900 p-6 rounded-lg border border-neutral-800">
@@ -227,8 +218,8 @@ export default function HistoryStats() {
           <h2 className="text-xl font-bold text-white uppercase tracking-tight">All-Time Legacy Rankings (Top 10)</h2>
         </div>
         
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm whitespace-nowrap">
+        <div className="overflow-x-auto custom-scrollbar">
+          <table className="w-full min-w-[720px] text-left text-sm whitespace-nowrap">
             <thead>
               <tr className="border-b border-neutral-800 text-neutral-500 uppercase tracking-wider text-xs">
                 <th className="pb-2 font-bold w-12 text-center">Rank</th>
@@ -283,7 +274,7 @@ export default function HistoryStats() {
                   key={f}
                   onClick={() => setGpFilter(f)}
                   className={`text-[10px] uppercase font-bold py-1 px-2.5 rounded transition-all ${
-                    gpFilter === f ? 'bg-purple-600 text-white' : 'text-neutral-400 hover:text-white'
+                    gpFilter === f ? 'bg-white text-black' : 'text-neutral-300 hover:bg-[#1b1c20] hover:text-white'
                   }`}
                 >
                   {f}
@@ -292,8 +283,8 @@ export default function HistoryStats() {
             </div>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
+          <div className="overflow-x-auto custom-scrollbar">
+            <table className="w-full min-w-[900px] text-left border-collapse">
               <thead>
                 <tr className="border-b border-neutral-800 text-[10px] text-neutral-400 uppercase tracking-wider font-bold">
                   <th className="py-2.5">Date</th>
@@ -303,7 +294,7 @@ export default function HistoryStats() {
                   <th className="py-2.5">Reserves Used</th>
                   <th className="py-2.5">Winner</th>
                   <th className="py-2.5">Runner-Up</th>
-                  <th className="py-2.5">Title Shot Status</th>
+                  <th title="Grand Prix winner is owed an undisputed title fight." className="py-2.5">Title Shot Status</th>
                   <th className="py-2.5">Fights</th>
                   <th className="py-2.5 text-right">Actions</th>
                 </tr>
@@ -428,9 +419,9 @@ export default function HistoryStats() {
                           )}
                         </td>
                         <td className="py-3">
-                          {titleShotStatus === 'Used' && <span className="text-green-400 font-bold text-xs bg-green-950/40 px-1.5 py-0.5 rounded font-sans">Used</span>}
-                          {titleShotStatus === 'Pending' && <span className="text-yellow-400 font-bold text-xs bg-yellow-950/40 px-1.5 py-0.5 rounded font-sans">Pending</span>}
-                          {titleShotStatus === 'TBD' && <span className="text-blue-400 text-xs bg-blue-950/40 px-1.5 py-0.5 rounded font-sans">TBD</span>}
+                          {titleShotStatus === 'Used' && <span title="The promised title shot has been completed." className="text-green-400 font-bold text-xs bg-green-950/40 px-1.5 py-0.5 rounded font-sans">Used</span>}
+                          {titleShotStatus === 'Pending' && <span title="Grand Prix winner is owed an undisputed title fight." className="text-yellow-400 font-bold text-xs bg-yellow-950/40 px-1.5 py-0.5 rounded font-sans">Pending</span>}
+                          {titleShotStatus === 'TBD' && <span title="A winner must be decided before the promised title shot can be tracked." className="text-blue-400 text-xs bg-blue-950/40 px-1.5 py-0.5 rounded font-sans">TBD</span>}
                           {titleShotStatus === 'N/A' && <span className="text-neutral-500 text-xs">—</span>}
                         </td>
                         <td className="py-3">
@@ -609,7 +600,7 @@ export default function HistoryStats() {
           </div>
           <div className="bg-neutral-950 p-4 rounded border border-neutral-800">
             <p className="text-xs text-neutral-500 uppercase font-bold tracking-wider">Tentpole Events</p>
-            <p className="text-2xl font-black text-purple-400 mt-1">{yearTentpoles}</p>
+            <p className="text-2xl font-black text-amber-300 mt-1">{yearTentpoles}</p>
           </div>
           <div className="bg-neutral-950 p-4 rounded border border-neutral-800">
             <p className="text-xs text-neutral-500 uppercase font-bold tracking-wider">Completed Tourneys</p>
@@ -674,8 +665,8 @@ export default function HistoryStats() {
         {yearSlots.length > 0 && (
           <div className="space-y-3">
             <h3 className="text-sm font-bold text-neutral-300 uppercase tracking-wider">Calendar Slot Archive ({selectedSummaryYear})</h3>
-            <div className="overflow-x-auto border border-neutral-800 rounded">
-              <table className="w-full text-left border-collapse text-xs">
+            <div className="overflow-x-auto custom-scrollbar border border-neutral-800 rounded">
+              <table className="w-full min-w-[640px] text-left border-collapse text-xs">
                 <thead>
                   <tr className="bg-neutral-950 text-neutral-400 font-bold uppercase border-b border-neutral-800">
                     <th className="p-3">Date</th>
@@ -994,6 +985,7 @@ export default function HistoryStats() {
         </div>
       </div>
 
+      </Panel>
     </div>
   );
 }

@@ -7,9 +7,8 @@ import { updateRankings } from '../lib/game/rankings';
 import { v4 as uuidv4 } from 'uuid';
 import { createNewGame, saveGameLocally, loadGameLocally, exportGameToJSON, importGameFromJSON, CURRENT_SAVE_VERSION } from '../lib/game/save';
 
-import { autoBookEventsAndContracts, maintainDeals, repairEventAvailability, repairFutureEventAvailability } from '../lib/game/autobooker';
-import { generateSeasonPlan } from '../lib/game/season';
-import { quickSimulateEvent } from '../lib/engine';
+import { autoBookEventsAndContracts, maintainDeals, repairEventAvailability, repairFutureEventAvailability, repairPastScheduledEvents, simulateDueEvents } from '../lib/game/autobooker';
+import { generateSeasonPlan, syncCalendarSlots } from '../lib/game/season';
 import { createGrandPrixTournament, scheduleQuarterfinals, scheduleSemifinals, scheduleFinal, cancelTournament, runAutopilotTournaments, syncTournamentTitleShotFlags, scheduleTournamentRound } from '../lib/game/tournament';
 import { WeightClass, TournamentFormat } from '../types/game';
 
@@ -21,16 +20,35 @@ export interface ActiveSimulation {
   status: 'idle' | 'replaying' | 'result-ready' | 'completed';
 }
 
-interface GameStore extends GameState {
-  currentView: 'dashboard' | 'roster' | 'free-agents' | 'event-builder' | 'simulation' | 'rankings' | 'news' | 'fighter-detail' | 'debug' | 'history' | 'fight-detail' | 'tournaments' | 'calendar';
+export type GameView = 'dashboard' | 'roster' | 'free-agents' | 'event-builder' | 'simulation' | 'rankings' | 'news' | 'fighter-detail' | 'debug' | 'history' | 'fight-detail' | 'tournaments' | 'calendar' | 'mma-guide';
+
+type ViewData = {
+  fighterId?: string;
+  eventId?: string;
+  fightArchiveId?: string;
+  calendarSlotId?: string;
+};
+
+type ViewCheckpoint = {
+  view: GameView;
   selectedFighterId: string | null;
   selectedEventId: string | null;
   selectedCalendarSlotId: string | null;
   selectedFightArchiveId: string | null;
+};
+
+interface GameStore extends GameState {
+  currentView: GameView;
+  selectedFighterId: string | null;
+  selectedEventId: string | null;
+  selectedCalendarSlotId: string | null;
+  selectedFightArchiveId: string | null;
+  viewHistory: ViewCheckpoint[];
   activeEventSimulation: ActiveSimulation | null;
-  
+
   // Actions
-  setView: (view: GameStore['currentView'], data?: { fighterId?: string, eventId?: string, fightArchiveId?: string, calendarSlotId?: string }) => void;
+  setView: (view: GameView, data?: ViewData, options?: { replace?: boolean }) => void;
+  goBack: (fallback?: GameView) => void;
   setMode: (mode: 'manager' | 'observer') => void;
   setAutopilot: (settings: Partial<GameState['autopilot']>) => void;
   newGame: () => void;
@@ -69,14 +87,59 @@ export const useGameStore = create<GameStore>((set, get) => ({
   selectedEventId: null,
   selectedCalendarSlotId: null,
   selectedFightArchiveId: null,
+  viewHistory: [],
   activeEventSimulation: null,
 
-  setView: (view, data: any) => set({ 
-    currentView: view, 
-    selectedFighterId: data?.fighterId || null,
-    selectedEventId: data?.eventId || null,
-    selectedCalendarSlotId: data?.calendarSlotId || null,
-    selectedFightArchiveId: data?.fightArchiveId || null
+  setView: (view, data, options) => set((state) => {
+    const selectedFighterId = data?.fighterId || null;
+    const selectedEventId = data?.eventId || null;
+    const selectedCalendarSlotId = data?.calendarSlotId || null;
+    const selectedFightArchiveId = data?.fightArchiveId || null;
+    const isCurrentView = state.currentView === view &&
+      state.selectedFighterId === selectedFighterId &&
+      state.selectedEventId === selectedEventId &&
+      state.selectedCalendarSlotId === selectedCalendarSlotId &&
+      state.selectedFightArchiveId === selectedFightArchiveId;
+
+    return {
+      currentView: view,
+      selectedFighterId,
+      selectedEventId,
+      selectedCalendarSlotId,
+      selectedFightArchiveId,
+      viewHistory: options?.replace || isCurrentView
+        ? state.viewHistory
+        : [...state.viewHistory, {
+            view: state.currentView,
+            selectedFighterId: state.selectedFighterId,
+            selectedEventId: state.selectedEventId,
+            selectedCalendarSlotId: state.selectedCalendarSlotId,
+            selectedFightArchiveId: state.selectedFightArchiveId
+          }].slice(-25)
+    };
+  }),
+
+  goBack: (fallback = 'dashboard') => set((state) => {
+    const checkpoint = state.viewHistory.at(-1);
+    if (!checkpoint) {
+      return {
+        currentView: fallback,
+        selectedFighterId: null,
+        selectedEventId: null,
+        selectedCalendarSlotId: null,
+        selectedFightArchiveId: null,
+        viewHistory: []
+      };
+    }
+
+    return {
+      currentView: checkpoint.view,
+      selectedFighterId: checkpoint.selectedFighterId,
+      selectedEventId: checkpoint.selectedEventId,
+      selectedCalendarSlotId: checkpoint.selectedCalendarSlotId,
+      selectedFightArchiveId: checkpoint.selectedFightArchiveId,
+      viewHistory: state.viewHistory.slice(0, -1)
+    };
   }),
 
   setMode: (mode) => set({ mode }),
@@ -86,7 +149,16 @@ export const useGameStore = create<GameStore>((set, get) => ({
   })),
   
   newGame: () => {
-    set({ ...createNewGame(), currentView: 'dashboard', selectedFighterId: null, selectedEventId: null });
+    set({
+      ...createNewGame(),
+      currentView: 'dashboard',
+      selectedFighterId: null,
+      selectedEventId: null,
+      selectedCalendarSlotId: null,
+      selectedFightArchiveId: null,
+      viewHistory: [],
+      activeEventSimulation: null
+    });
   },
 
   saveGame: () => {
@@ -101,7 +173,16 @@ export const useGameStore = create<GameStore>((set, get) => ({
   loadGame: () => {
     const loadedState = loadGameLocally();
     if (loadedState) {
-      set({ ...loadedState });
+      set({
+        ...loadedState,
+        currentView: 'dashboard',
+        selectedFighterId: null,
+        selectedEventId: null,
+        selectedCalendarSlotId: null,
+        selectedFightArchiveId: null,
+        viewHistory: [],
+        activeEventSimulation: null
+      });
       alert('Game loaded!');
     } else {
       alert('Failed to load save or no save found');
@@ -115,7 +196,16 @@ export const useGameStore = create<GameStore>((set, get) => ({
   importGame: (jsonData) => {
     const importedState = importGameFromJSON(jsonData);
     if (importedState) {
-      set({ ...importedState, currentView: 'dashboard' });
+      set({
+        ...importedState,
+        currentView: 'dashboard',
+        selectedFighterId: null,
+        selectedEventId: null,
+        selectedCalendarSlotId: null,
+        selectedFightArchiveId: null,
+        viewHistory: [],
+        activeEventSimulation: null
+      });
       alert('Game imported successfully!');
     } else {
       alert('Failed to import save. Invalid or corrupted data.');
@@ -191,44 +281,26 @@ export const useGameStore = create<GameStore>((set, get) => ({
           seasonPlans: newState.seasonPlans || {}
         };
         
-        // Auto-book events and contracts
-        gameState = autoBookEventsAndContracts(gameState);
-        gameState = runAutopilotTournaments(gameState);
+        gameState = syncCalendarSlots(gameState);
+        gameState = repairPastScheduledEvents(gameState);
 
-        // Advance 1 day
-        gameState = advanceTime(gameState, 1);
-        gameState = maintainDeals(gameState);
-        gameState = repairFutureEventAvailability(gameState);
-        gameState = syncTournamentTitleShotFlags(gameState);
-        daysSimulated++;
-        
-        Object.assign(newState, gameState);
-        
-        // If there's an event today, simulate it
-        let todayEvents = Object.values(newState.events).filter(e => e.date === newState.currentDate && !e.isCompleted);
-        
-        while (todayEvents.length > 0) {
-          const event = todayEvents[0];
-          gameState = repairEventAvailability(gameState, event.id);
+        let dueResult = simulateDueEvents(gameState, simulateEvents);
+        gameState = syncCalendarSlots(dueResult.state);
+        if (dueResult.stoppedForManualEvent && dueResult.selectedEventId) {
           Object.assign(newState, gameState);
-          
-          const recheckedEvent = newState.events[event.id];
-          if (!recheckedEvent || recheckedEvent.date !== newState.currentDate) {
-            todayEvents = Object.values(newState.events).filter(e => e.date === newState.currentDate && !e.isCompleted);
-            continue;
-          }
-
-          if (simulateEvents) {
-            // Stop to watch event
+          const recheckedEvent = newState.events[dueResult.selectedEventId];
+          if (recheckedEvent) {
+            newState.viewHistory = [...newState.viewHistory, {
+              view: newState.currentView,
+              selectedFighterId: newState.selectedFighterId,
+              selectedEventId: newState.selectedEventId,
+              selectedCalendarSlotId: newState.selectedCalendarSlotId,
+              selectedFightArchiveId: newState.selectedFightArchiveId
+            }].slice(-25);
             newState.currentView = 'simulation';
             newState.selectedEventId = recheckedEvent.id;
-            
-            // Setup active simulation
             let startIndex = recheckedEvent.fights.length - 1;
-            while (startIndex >= 0 && recheckedEvent.fights[startIndex].result) {
-              startIndex--;
-            }
-  
+            while (startIndex >= 0 && recheckedEvent.fights[startIndex].result) startIndex--;
             newState.activeEventSimulation = {
               eventId: recheckedEvent.id,
               activeFightIndex: startIndex,
@@ -236,18 +308,48 @@ export const useGameStore = create<GameStore>((set, get) => ({
               revealedLines: 0,
               status: 'idle'
             };
-            
-            stoppedEarly = true;
-            break; // Break out of the loop
-          } else {
-            // Quick simulate the entire event
-            const simResult = quickSimulateEvent(newState, recheckedEvent.id);
-            Object.assign(newState, simResult);
-            todayEvents = Object.values(newState.events).filter(e => e.date === newState.currentDate && !e.isCompleted);
           }
+          stoppedEarly = true;
+          break;
         }
 
-        if (stoppedEarly) {
+        gameState = autoBookEventsAndContracts(gameState);
+        gameState = runAutopilotTournaments(gameState);
+        gameState = repairFutureEventAvailability(gameState);
+        gameState = advanceTime(gameState, 1);
+        gameState = maintainDeals(gameState);
+        gameState = repairFutureEventAvailability(gameState);
+        gameState = syncTournamentTitleShotFlags(gameState);
+        gameState = repairPastScheduledEvents(gameState);
+
+        dueResult = simulateDueEvents(gameState, simulateEvents);
+        gameState = syncCalendarSlots(dueResult.state);
+        daysSimulated++;
+        Object.assign(newState, gameState);
+
+        if (dueResult.stoppedForManualEvent && dueResult.selectedEventId) {
+          const recheckedEvent = newState.events[dueResult.selectedEventId];
+          if (recheckedEvent) {
+            newState.viewHistory = [...newState.viewHistory, {
+              view: newState.currentView,
+              selectedFighterId: newState.selectedFighterId,
+              selectedEventId: newState.selectedEventId,
+              selectedCalendarSlotId: newState.selectedCalendarSlotId,
+              selectedFightArchiveId: newState.selectedFightArchiveId
+            }].slice(-25);
+            newState.currentView = 'simulation';
+            newState.selectedEventId = recheckedEvent.id;
+            let startIndex = recheckedEvent.fights.length - 1;
+            while (startIndex >= 0 && recheckedEvent.fights[startIndex].result) startIndex--;
+            newState.activeEventSimulation = {
+              eventId: recheckedEvent.id,
+              activeFightIndex: startIndex,
+              pendingResult: null,
+              revealedLines: 0,
+              status: 'idle'
+            };
+          }
+          stoppedEarly = true;
           break;
         }
       }

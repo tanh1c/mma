@@ -3,6 +3,8 @@ import { v4 as uuidv4 } from 'uuid';
 import { calculateEventProjections } from './economy';
 import { generateSeasonPlan, syncCalendarSlots } from './season';
 import { scheduleTournamentRound, getPendingTitleShotDebts, isFighterBookedUpcoming, evaluateAndCreateTournament, bindTournamentToCalendarSlots, repairScheduledTournamentRound } from './tournament';
+import { quickSimulateEvent } from '../engine';
+import { getEventName } from '../branding';
 
 const EVENT_INTERVAL_DAYS = 28;
 
@@ -14,6 +16,112 @@ function addDays(dateStr: string, days: number) {
   const d = new Date(dateStr);
   d.setDate(d.getDate() + days);
   return d.toISOString().split('T')[0];
+}
+
+function hasTournamentFights(event: Event): boolean {
+  return event.fights.some(f => Boolean(f.tournamentId && f.tournamentRound));
+}
+
+function rescheduleGrandPrixWindow(
+  state: GameState,
+  sourceSlot: SeasonCalendarSlot,
+  reason: string
+) {
+  const hasFutureWindow = Object.values(state.seasonPlans || {}).some(plan =>
+    plan.slots.some(slot =>
+      slot.id !== sourceSlot.id &&
+      slot.type === 'grand_prix_window' &&
+      slot.status === 'planned' &&
+      slot.date > state.currentDate
+    )
+  );
+  if (hasFutureWindow) return;
+
+  let date = addDays(state.currentDate, EVENT_INTERVAL_DAYS * 2);
+  const occupiedDates = new Set(Object.values(state.seasonPlans || {}).flatMap(plan => plan.slots.map(slot => slot.date)));
+  while (occupiedDates.has(date)) date = addDays(date, 7);
+
+  const year = new Date(date).getFullYear();
+  if (!state.seasonPlans[year]) {
+    state.seasonPlans[year] = generateSeasonPlan(state, year);
+  }
+  if (state.seasonPlans[year].slots.some(slot => slot.type === 'grand_prix_window' && slot.status === 'planned' && slot.date > state.currentDate)) {
+    return;
+  }
+
+  state.seasonPlans[year].slots.push({
+    id: uuidv4(),
+    year,
+    date,
+    type: 'grand_prix_window',
+    status: 'planned',
+    priority: sourceSlot.priority,
+    notes: [`Rescheduled Grand Prix Window from ${sourceSlot.date}. Reason: ${reason}`]
+  });
+  state.seasonPlans[year].slots.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+}
+
+function cancelFailedGrandPrixEvent(
+  state: GameState,
+  eventId: string,
+  tournamentId: string,
+  round: TournamentRound,
+  reason: string
+): GameState {
+  let newState = {
+    ...state,
+    events: { ...state.events },
+    tournaments: { ...state.tournaments },
+    news: [...state.news]
+  };
+
+  const event = newState.events[eventId];
+  delete newState.events[eventId];
+
+  const tourney = newState.tournaments[tournamentId];
+  if (tourney) {
+    newState.tournaments[tournamentId] = {
+      ...tourney,
+      fights: tourney.fights.map(slot => slot.eventId === eventId ? { ...slot, eventId: undefined, fightId: undefined } : slot),
+      roundDelayReason: reason,
+      delayedRound: round,
+      earliestRoundDate: addDays(newState.currentDate, 14),
+      notes: [...(tourney.notes || []), `Round ${round} delayed: ${reason}`]
+    };
+  }
+
+  if (newState.seasonPlans) {
+    for (const yearStr in newState.seasonPlans) {
+      const year = Number(yearStr);
+      const plan = newState.seasonPlans[year];
+      if (!plan) continue;
+
+      const slots = plan.slots.map(slot => {
+        if (slot.eventId !== eventId) return slot;
+        return {
+          ...slot,
+          eventId: undefined,
+          status: 'planned' as const,
+          date: addDays(newState.currentDate, 14),
+          notes: [...(slot.notes || []), `GP round delayed: ${reason}`]
+        };
+      }).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+      newState.seasonPlans[year] = { ...plan, slots };
+    }
+  }
+
+  if (event) {
+    newState.news.unshift({
+      id: uuidv4(),
+      date: newState.currentDate,
+      title: `Grand Prix Round Delayed`,
+      content: `${event.name} was removed because tournament scheduling failed: ${reason}`,
+      type: 'general' as const
+    });
+  }
+
+  return newState;
 }
 
 export function autoBookEventsAndContracts(state: GameState): GameState {
@@ -154,8 +262,10 @@ export function autoBookEventsAndContracts(state: GameState): GameState {
     if (approachingSlot.type === 'grand_prix_window') {
       const activeOrPlannedGP = Object.values(newState.tournaments || {}).find(t => t.status === 'active' || t.status === 'planned');
       if (activeOrPlannedGP) {
+        const reason = `GP "${activeOrPlannedGP.name}" is already active/planned.`;
         approachingSlot.type = 'regular_event';
-        approachingSlot.notes = [...(approachingSlot.notes || []), `Converted GP Window to Regular Event because GP "${activeOrPlannedGP.name}" is already active/planned.`];
+        approachingSlot.notes = [...(approachingSlot.notes || []), `Converted GP Window to Regular Event because ${reason}`];
+        rescheduleGrandPrixWindow(newState, approachingSlot, reason);
       } else {
         const isEightManPreferred = (approachingSlot.notes || []).some(n => n.includes("8-Man Preferred"));
         const prefFormat = isEightManPreferred ? 'eight_man' : undefined;
@@ -175,8 +285,10 @@ export function autoBookEventsAndContracts(state: GameState): GameState {
           
           newState = bindTournamentToCalendarSlots(newState, tournamentId);
         } else {
+          const reason = errorReason || 'Evaluation failed';
           approachingSlot.type = 'regular_event';
-          approachingSlot.notes = [...(approachingSlot.notes || []), `Converted GP Window to Regular Event. Reason: ${errorReason || 'Evaluation failed'}`];
+          approachingSlot.notes = [...(approachingSlot.notes || []), `Converted GP Window to Regular Event. Reason: ${reason}`];
+          rescheduleGrandPrixWindow(newState, approachingSlot, reason);
         }
       }
     }
@@ -300,9 +412,25 @@ export function autoBookEventsAndContracts(state: GameState): GameState {
             approachingSlot.tournamentRound,
             newEvent.id
           );
+
+          const scheduledEvent = newState.events[newEvent.id];
+          if (!scheduledEvent || !hasTournamentFights(scheduledEvent)) {
+            newState = cancelFailedGrandPrixEvent(
+              newState,
+              newEvent.id,
+              approachingSlot.tournamentId,
+              approachingSlot.tournamentRound,
+              'Tournament round produced no valid tournament fights.'
+            );
+          }
         } catch (e) {
-          // If scheduling failed, write note
-          approachingSlot.notes = [...(approachingSlot.notes || []), `GP scheduling failed: ${(e as Error).message}`];
+          newState = cancelFailedGrandPrixEvent(
+            newState,
+            newEvent.id,
+            approachingSlot.tournamentId,
+            approachingSlot.tournamentRound,
+            (e as Error).message
+          );
         }
       }
 
@@ -472,15 +600,14 @@ function generateAutoEvent(
   tournamentId?: string,
   tournamentRound?: TournamentRound
 ): Event | null {
-  let eventName = `Cage Dynasty ${Object.keys(state.events).length + 1}`;
-  if (slotType === 'tentpole_event') {
-    eventName = `CD Mega Showdown ${Object.keys(state.events).length + 1}`;
-  } else if (slotType === 'title_fight_card') {
-    eventName = `CD Championship Special ${Object.keys(state.events).length + 1}`;
-  } else if (slotType === 'grand_prix_round' && tournamentId) {
-    const roundLabel = tournamentRound ? tournamentRound.charAt(0).toUpperCase() + tournamentRound.slice(1) : '';
-    eventName = `CD GP ${roundLabel} ${Object.keys(state.events).length + 1}`;
-  }
+  const eventIndex = Object.keys(state.events).length + 1;
+  const eventName = slotType === 'tentpole_event'
+    ? getEventName('tentpole', eventIndex)
+    : slotType === 'title_fight_card'
+      ? getEventName('title', eventIndex)
+      : slotType === 'grand_prix_round' && tournamentId
+        ? getEventName('grand_prix', eventIndex, tournamentRound)
+        : getEventName('regular', eventIndex);
 
   const fights: Omit<FightMatchup, 'id' | 'result'>[] = [];
   const bookedFighters = new Set<string>();
@@ -970,7 +1097,7 @@ export function repairEventAvailability(state: GameState, eventId: string): Game
         if (tourney) {
           try {
             newState = repairScheduledTournamentRound(newState, tId, round, eventId);
-            return repairEventAvailability(newState, eventId);
+            return checkAndCleanEmptyEvent(newState, eventId);
           } catch (err) {
             console.error("Failed to repair tournament fight", err);
           }
@@ -997,8 +1124,9 @@ export function repairEventAvailability(state: GameState, eventId: string): Game
             currentlyBooked.add(f.blueCornerId);
           }
         });
+        currentlyBooked.add(redUnavailable ? fight.blueCornerId : fight.redCornerId);
 
-        const replacementCandidates = Object.values(newState.fighters).filter(f => 
+        const replacementCandidates = Object.values(newState.fighters).filter(f =>
           f.weightClass === weightClass &&
           f.contract &&
           f.injuryStatus === null &&
@@ -1232,13 +1360,76 @@ export function checkAndCleanEmptyEvent(state: GameState, eventId: string): Game
   return newState;
 }
 
+export function simulateDueEvents(
+  state: GameState,
+  simulateEvents: boolean
+): { state: GameState; stoppedForManualEvent: boolean; selectedEventId?: string } {
+  let newState = { ...state };
+
+  while (true) {
+    const dueEvent = Object.values(newState.events)
+      .filter(e => !e.isCompleted && e.date <= newState.currentDate)
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())[0];
+
+    if (!dueEvent) return { state: newState, stoppedForManualEvent: false };
+
+    newState = repairEventAvailability(newState, dueEvent.id);
+    newState = checkAndCleanEmptyEvent(newState, dueEvent.id);
+
+    const repairedEvent = newState.events[dueEvent.id];
+    if (!repairedEvent || repairedEvent.isCompleted || repairedEvent.fights.length < 3) continue;
+
+    if (simulateEvents) {
+      return { state: newState, stoppedForManualEvent: true, selectedEventId: repairedEvent.id };
+    }
+
+    newState = quickSimulateEvent(newState, repairedEvent.id);
+  }
+}
+
+export function repairPastScheduledEvents(state: GameState): GameState {
+  let newState = { ...state };
+  const pastEvents = Object.values(newState.events)
+    .filter(e => !e.isCompleted && e.date < newState.currentDate)
+    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+  pastEvents.forEach(event => {
+    const currentEvent = newState.events[event.id];
+    if (!currentEvent || currentEvent.isCompleted) return;
+
+    if (currentEvent.fights.length < 3) {
+      newState = checkAndCleanEmptyEvent(newState, currentEvent.id);
+      return;
+    }
+
+    if (!newState.seasonPlans) return;
+    for (const yearStr in newState.seasonPlans) {
+      const year = Number(yearStr);
+      const plan = newState.seasonPlans[year];
+      if (!plan) continue;
+
+      const slots = plan.slots.map(slot => {
+        if (slot.eventId !== currentEvent.id) return slot;
+        return {
+          ...slot,
+          date: currentEvent.date,
+          status: 'scheduled' as const,
+          notes: [...(slot.notes || []), `Past due event queued for simulation on ${newState.currentDate}.`]
+        };
+      });
+      newState.seasonPlans[year] = { ...plan, slots };
+    }
+  });
+
+  return newState;
+}
+
 export function repairFutureEventAvailability(state: GameState): GameState {
   let newState = { ...state };
   const cutoffDate = addDays(newState.currentDate, 30);
-  
-  const upcomingEvents = Object.values(newState.events).filter(e => 
-    !e.isCompleted && 
-    e.date >= newState.currentDate && 
+
+  const upcomingEvents = Object.values(newState.events).filter(e =>
+    !e.isCompleted &&
     e.date <= cutoffDate
   );
 

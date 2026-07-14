@@ -43,7 +43,9 @@ export function Select({ value, onChange, options, placeholder, className }: Sel
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full flex items-center justify-between gap-2 bg-neutral-900 border border-neutral-800 text-white text-sm rounded-md px-3 py-2 hover:bg-neutral-800 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+        aria-expanded={isOpen}
+        aria-haspopup="listbox"
+        className="flex min-h-11 w-full items-center justify-between gap-2 rounded-lg border border-[#2a2c31] bg-[#101114] px-3 text-sm text-white transition-colors hover:border-neutral-500 hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
       >
         <span className="truncate">{selectedOption ? selectedOption.label : (placeholder || 'Select...')}</span>
         <ChevronDown size={16} className={cn('text-neutral-400 transition-transform', isOpen && 'rotate-180')} />
@@ -56,9 +58,10 @@ export function Select({ value, onChange, options, placeholder, className }: Sel
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -10, scale: 0.95 }}
             transition={{ duration: 0.15 }}
-            className="absolute z-50 w-full min-w-fit mt-1 bg-neutral-900 border border-neutral-700 rounded-md shadow-xl overflow-hidden"
+            className="absolute z-50 mt-1 w-full min-w-fit overflow-hidden rounded-lg border border-[#2a2c31] bg-[#101114]"
+            role="listbox"
           >
-            <div className="max-h-60 overflow-y-auto py-1">
+            <div className="max-h-60 overflow-y-auto py-1 custom-scrollbar">
               {options.map((opt) => (
                 <button
                   key={opt.value}
@@ -68,11 +71,13 @@ export function Select({ value, onChange, options, placeholder, className }: Sel
                     onChange(opt.value);
                     setIsOpen(false);
                   }}
+                  role="option"
+                  aria-selected={opt.value === value}
                   className={cn(
-                    'w-full text-left px-3 py-2 text-sm flex items-center justify-between transition-colors',
-                    opt.disabled && 'opacity-50 cursor-not-allowed',
-                    !opt.disabled && opt.value === value && 'bg-blue-500/10 text-blue-400 font-medium',
-                    !opt.disabled && opt.value !== value && 'text-neutral-300 hover:bg-neutral-800 hover:text-white'
+                    'flex min-h-11 w-full items-center justify-between px-3 text-left text-sm transition-colors',
+                    opt.disabled && 'cursor-not-allowed opacity-50',
+                    !opt.disabled && opt.value === value && 'bg-white/10 text-white',
+                    !opt.disabled && opt.value !== value && 'text-neutral-300 hover:bg-white/5 hover:text-white'
                   )}
                 >
                   <span className="truncate pr-4">{opt.label}</span>

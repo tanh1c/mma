@@ -1,420 +1,197 @@
-import React, { useState, useEffect } from 'react';
-import { useGameStore } from '../store/gameStore';
+import React, { useEffect, useState } from 'react';
 import { ArrowLeft, UserCheck, UserMinus } from 'lucide-react';
+import { useGameStore } from '../store/gameStore';
 import { getContractExpectation, evaluateOffer } from '../lib/game/contracts';
+import { deriveFighterAchievements } from '../lib/game/fighterAchievements';
 import { deriveFighterTimeline } from '../lib/game/timeline';
+import { CountryFlag } from '../components/CountryFlag';
+import { FighterAvatar } from '../components/FighterAvatar';
+import { Button, PageHeader, Panel } from '../components/ui';
+
+const tabs = [
+  { id: 'overview', label: 'Overview' },
+  { id: 'achievements', label: 'Achievements' },
+  { id: 'contract', label: 'Contract' },
+  { id: 'fights', label: 'Fight Log' },
+  { id: 'timeline', label: 'Timeline' }
+] as const;
+
+type FighterTab = typeof tabs[number]['id'];
 
 export default function FighterDetail() {
   const state = useGameStore();
-  const { selectedFighterId, fighters, setView, signFighter, renewFighter, releaseFighter, promotion, fightArchive, titleHistory, news } = state;
+  const { selectedFighterId, fighters, setView, goBack, signFighter, renewFighter, releaseFighter, promotion, fightArchive } = state;
   const f = selectedFighterId ? fighters[selectedFighterId] : null;
-
+  const [activeTab, setActiveTab] = useState<FighterTab>('overview');
   const [offerPay, setOfferPay] = useState(10000);
   const [offerBonus, setOfferBonus] = useState(10000);
   const [offerFights, setOfferFights] = useState(3);
   const [negotiationResult, setNegotiationResult] = useState<{ accepted: boolean; reason: string } | null>(null);
 
   useEffect(() => {
-    if (f) {
-      const exp = getContractExpectation(f, promotion);
-      setOfferPay(exp.basePay);
-      setOfferBonus(exp.winBonus);
-      setOfferFights(exp.fights);
-    }
-  }, [f?.id, promotion]);
+    if (!f) return;
+    const expectation = getContractExpectation(f, promotion);
+    setOfferPay(expectation.basePay);
+    setOfferBonus(expectation.winBonus);
+    setOfferFights(expectation.fights);
+    setNegotiationResult(null);
+    setActiveTab(f.contract ? 'overview' : 'contract');
+  }, [f?.id]);
 
-  if (!f) {
-    return <div>Fighter not found.</div>;
-  }
+  if (!f) return <div>Fighter not found.</div>;
+
+  const fighterFights = Object.values(fightArchive)
+    .filter(fight => fight.redFighterId === f.id || fight.blueFighterId === f.id)
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  const titleFights = fighterFights.filter(fight => fight.isTitleFight).length;
+  const kos = fighterFights.filter(fight => fight.winnerId === f.id && fight.method.includes('KO')).length;
+  const subs = fighterFights.filter(fight => fight.winnerId === f.id && fight.method.includes('Submission')).length;
+  const decWins = fighterFights.filter(fight => fight.winnerId === f.id && fight.method.includes('Decision')).length;
+  const decLosses = fighterFights.filter(fight => fight.winnerId !== f.id && fight.winnerId !== null && fight.method.includes('Decision')).length;
+  const averagePerformance = fighterFights.length ? Math.floor(fighterFights.reduce((total, fight) => total + (fight.performanceRating || 0), 0) / fighterFights.length) : 0;
+  const tournaments = Object.values(state.tournaments || {});
+  const gpWins4Man = tournaments.filter(tournament => tournament.winnerId === f.id && tournament.status === 'completed' && tournament.format === 'four_man').length;
+  const gpWins8Man = tournaments.filter(tournament => tournament.winnerId === f.id && tournament.status === 'completed' && tournament.format === 'eight_man').length;
+  const gpFinals = tournaments.filter(tournament => tournament.status === 'completed' && tournament.fights.some(fight => fight.round === 'final' && (fight.redFighterId === f.id || fight.blueFighterId === f.id))).length;
+  const gpRecord = tournaments.reduce((record, tournament) => tournament.fights.reduce((total, fight) => {
+    if (!fight.isCompleted || (fight.redFighterId !== f.id && fight.blueFighterId !== f.id)) return total;
+    if (fight.winnerId === f.id) total.wins += 1;
+    else if (fight.winnerId) total.losses += 1;
+    return total;
+  }, record), { wins: 0, losses: 0 });
+  const reverseFights = [...fighterFights].reverse();
+  const longestStreak = reverseFights.reduce((result, fight) => {
+    result.current = fight.winnerId === f.id ? result.current + 1 : 0;
+    result.longest = Math.max(result.longest, result.current);
+    return result;
+  }, { current: 0, longest: 0 }).longest;
+  const currentStreak = fighterFights.reduce((streak, fight) => streak === -1 ? -1 : fight.winnerId === f.id ? streak + 1 : -1, 0);
+  const timeline = deriveFighterTimeline(state, f.id);
+  const achievements = deriveFighterAchievements(state, f.id);
 
   const handleSign = () => {
     setNegotiationResult(null);
     const result = evaluateOffer(f, promotion, offerPay, offerBonus, offerFights);
     setNegotiationResult(result);
-    
     if (result.accepted) {
-      if (f.contract) {
-        renewFighter(f.id, offerPay, offerBonus, offerFights);
-      } else {
-        signFighter(f.id, offerPay, offerBonus, offerFights);
-      }
+      if (f.contract) renewFighter(f.id, offerPay, offerBonus, offerFights);
+      else signFighter(f.id, offerPay, offerBonus, offerFights);
     }
   };
 
   const handleRelease = () => {
     if (window.confirm(`Are you sure you want to release ${f.lastName}?`)) {
       releaseFighter(f.id);
-      setView('roster');
+      setView('roster', undefined, { replace: true });
     }
   };
 
-  return (
-    <div className="max-w-4xl mx-auto space-y-6">
-      <button onClick={() => setView(f.contract ? 'roster' : 'free-agents')} className="flex items-center gap-2 text-neutral-400 hover:text-white transition-colors">
-        <ArrowLeft size={16} /> Back
-      </button>
+  const selectTab = (tab: FighterTab) => setActiveTab(tab);
+  const handleTabKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>, index: number) => {
+    const nextIndex = event.key === 'ArrowRight' ? (index + 1) % tabs.length : event.key === 'ArrowLeft' ? (index - 1 + tabs.length) % tabs.length : event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : null;
+    if (nextIndex === null) return;
+    event.preventDefault();
+    selectTab(tabs[nextIndex].id);
+    document.getElementById(`fighter-tab-${tabs[nextIndex].id}`)?.focus();
+  };
+  const openFight = (fightArchiveId: string) => setView('fight-detail', { fightArchiveId });
 
-      <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-6 flex flex-col md:flex-row gap-6">
-        <div className="flex-1">
-          <div className="mb-4">
-            <h1 className="text-3xl font-black text-white uppercase">{f.firstName} {f.lastName}</h1>
-            {f.nickname && <p className="text-xl text-neutral-400 font-medium italic">"{f.nickname}"</p>}
-          </div>
-          
-          <div className="grid grid-cols-2 gap-4 mb-6 text-sm">
-            <div>
-              <p className="text-neutral-500">Weight Class</p>
-              <p className="text-white font-bold">{f.weightClass}</p>
-            </div>
-            <div>
-              <p className="text-neutral-500">Record</p>
-              <p className="text-white font-bold">{f.record.wins}-{f.record.losses}-{f.record.draws} ({f.record.kos} KO, {f.record.subs} SUB)</p>
-            </div>
-            <div>
-              <p className="text-neutral-500">Age / Nationality</p>
-              <p className="text-white font-bold">{f.age} / {f.nationality}</p>
-            </div>
-            <div>
-              <p className="text-neutral-500">Style</p>
-              <p className="text-white font-bold">{f.style}</p>
-            </div>
-          </div>
+  return <div className="mx-auto max-w-4xl space-y-6 pb-12">
+    <PageHeader eyebrow={f.weightClass} title={`${f.firstName} ${f.lastName}`} actions={<Button variant="quiet" onClick={() => goBack(f.contract ? 'roster' : 'free-agents')} className="inline-flex items-center gap-2"><ArrowLeft size={16} /> Back</Button>} />
 
-          <div className="grid grid-cols-3 gap-2 text-center mb-6">
-            <div className="bg-neutral-950 p-2 rounded">
-              <p className="text-xs text-neutral-500">Popularity</p>
-              <p className="text-lg font-bold text-white">{f.popularity}</p>
-            </div>
-            <div className="bg-neutral-950 p-2 rounded">
-              <p className="text-xs text-neutral-500">Momentum</p>
-              <p className="text-lg font-bold text-white">{f.momentum}</p>
-            </div>
-            <div className="bg-neutral-950 p-2 rounded">
-              <p className="text-xs text-neutral-500">Status</p>
-              <div className="text-sm font-bold mt-1">
-                {f.injuryStatus ? (
-                  <span className="text-red-400">{f.injuryStatus.type} (Out {f.injuryStatus.daysRemaining} days)</span>
-                ) : f.medicalSuspension ? (
-                  <div className="text-purple-400">
-                    <p>Suspended ({f.medicalSuspension.daysRemaining} days)</p>
-                    <p className="text-[10px] font-normal mt-0.5 uppercase tracking-wide opacity-80">
-                      Reason: {f.medicalSuspension.reason.replace('_', ' ')}
-                      {f.medicalSuspension.sourceEventId ? ` • Event: ${state.events[f.medicalSuspension.sourceEventId]?.name || state.eventArchive?.[f.medicalSuspension.sourceEventId]?.name || 'Unknown Event'}` : ''}
-                    </p>
-                  </div>
-                ) : f.fatigue > 50 ? (
-                  <span className="text-orange-400">Fatigued</span>
-                ) : (
-                  <span className="text-green-400">Ready</span>
-                )}
-              </div>
-            </div>
+    <Panel>
+      <div className="flex flex-col gap-6 md:flex-row md:items-start">
+        <div className="flex min-w-0 flex-1 items-center gap-4">
+          <FighterAvatar id={f.id} name={`${f.firstName} ${f.lastName}`} nationality={f.nationality} className="h-20 w-20 border border-neutral-700" />
+          <div className="min-w-0">
+            <h2 className="text-2xl font-normal tracking-[-0.03em] text-white sm:text-3xl">{f.firstName} {f.lastName}</h2>
+            <div className="mt-1 flex items-center gap-2 text-sm text-neutral-400"><CountryFlag nationality={f.nationality} className="text-base" /><span>{f.nationality} · {f.age} years</span></div>
+            {f.nickname && <p className="mt-1 text-sm italic text-neutral-400">“{f.nickname}”</p>}
           </div>
         </div>
-
-        <div className="flex-1 bg-neutral-950 p-4 rounded border border-neutral-800">
-          <h2 className="text-lg font-bold text-white mb-4">Attributes</h2>
-          <div className="space-y-2">
-            <AttrBar label="Striking" value={f.attributes.striking} />
-            <AttrBar label="Grappling" value={f.attributes.grappling} />
-            <AttrBar label="Wrestling" value={f.attributes.wrestling} />
-            <AttrBar label="Submissions" value={f.attributes.submissions} />
-            <AttrBar label="Cardio" value={f.attributes.cardio} />
-            <AttrBar label="Chin" value={f.attributes.chin} />
-            <AttrBar label="Power" value={f.attributes.power} />
-            <AttrBar label="Speed" value={f.attributes.speed} />
-            <AttrBar label="Defense" value={f.attributes.defense} />
-            <AttrBar label="Fight IQ" value={f.attributes.fightIq} />
-          </div>
+        <div className="grid grid-cols-3 gap-3 text-center md:min-w-72">
+          <ProfileStat label="Record" value={`${f.record.wins}-${f.record.losses}-${f.record.draws}`} detail={`${f.record.kos} KO · ${f.record.subs} SUB`} />
+          <ProfileStat label="Style" value={f.style} />
+          <ProfileStat label="Status" value={f.injuryStatus ? 'Injured' : f.medicalSuspension ? 'Suspended' : f.fatigue > 50 ? 'Fatigued' : 'Ready'} tone={f.injuryStatus ? 'danger' : f.medicalSuspension || f.fatigue > 50 ? 'warning' : 'success'} />
         </div>
       </div>
+    </Panel>
 
-      <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-bold text-white">
-            {f.contract ? 'Contract & Extension' : 'Negotiate Contract'}
-          </h2>
-          {f.contract && (
-            <button onClick={handleRelease} className="bg-red-500/10 hover:bg-red-500/20 text-red-500 px-4 py-2 rounded text-sm font-bold flex items-center gap-2 transition-colors">
-              <UserMinus size={16} /> Release Fighter
-            </button>
-          )}
-        </div>
-        
-        {f.contract && (
-          <div className="mb-6 bg-neutral-950 p-4 rounded border border-neutral-800 flex justify-between items-center">
-            <div>
-              <p className="text-sm text-neutral-400">Current Deal: <span className="text-white font-bold">${f.contract.payPerFight.toLocaleString()}</span> to show, <span className="text-white font-bold">${f.contract.winBonus.toLocaleString()}</span> to win</p>
-              <p className={`text-sm font-bold mt-1 ${f.contract.fightsRemaining <= 1 ? 'text-red-400' : 'text-neutral-400'}`}>
-                Fights Remaining: {f.contract.fightsRemaining}
-              </p>
-            </div>
-            {f.isChampion && f.contract.fightsRemaining === 0 && (
-              <div className="text-red-400 text-sm font-bold animate-pulse text-right">
-                Champion contract expired!<br/>Renew immediately or vacate title.
-              </div>
-            )}
-          </div>
-        )}
-
-        {negotiationResult && (
-          <div className={`p-4 mb-4 rounded border ${negotiationResult.accepted ? 'bg-green-500/10 border-green-500/20 text-green-400' : 'bg-red-500/10 border-red-500/20 text-red-400'}`}>
-            <p className="font-bold">{negotiationResult.accepted ? 'Offer Accepted!' : 'Offer Rejected'}</p>
-            <p className="text-sm mt-1">{negotiationResult.reason}</p>
-          </div>
-        )}
-
-        <div className="mb-4">
-          <p className="text-sm text-neutral-400">
-            Expected Base: <span className="text-white">${getContractExpectation(f, promotion).basePay.toLocaleString()}</span> | 
-            Expected Bonus: <span className="text-white">${getContractExpectation(f, promotion).winBonus.toLocaleString()}</span> | 
-            Interest: <span className="text-white">{getContractExpectation(f, promotion).interestLabel}</span>
-          </p>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-          <div>
-            <label className="block text-xs text-neutral-400 mb-1">Pay per Fight ($)</label>
-            <input type="number" step="1000" value={offerPay} onChange={e => setOfferPay(Number(e.target.value))} className="w-full bg-neutral-950 border border-neutral-800 rounded px-3 py-2 text-white" />
-          </div>
-          <div>
-            <label className="block text-xs text-neutral-400 mb-1">Win Bonus ($)</label>
-            <input type="number" step="1000" value={offerBonus} onChange={e => setOfferBonus(Number(e.target.value))} className="w-full bg-neutral-950 border border-neutral-800 rounded px-3 py-2 text-white" />
-          </div>
-          <div>
-            <label className="block text-xs text-neutral-400 mb-1">Fights</label>
-            <input type="number" min="1" max="8" value={offerFights} onChange={e => setOfferFights(Number(e.target.value))} className="w-full bg-neutral-950 border border-neutral-800 rounded px-3 py-2 text-white" />
-          </div>
-        </div>
-        
-        {!negotiationResult?.accepted && (
-          <button onClick={handleSign} className="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded text-sm font-bold flex items-center gap-2 transition-colors">
-            <UserCheck size={16} /> {f.contract ? 'Offer Extension' : 'Offer Contract'}
-          </button>
-        )}
-      </div>
-
-      {(() => {
-        const fighterFights = Object.values(fightArchive)
-          .filter(a => a.redFighterId === f.id || a.blueFighterId === f.id)
-          .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-          
-        if (fighterFights.length > 0) {
-          const finishes = fighterFights.filter(a => a.winnerId === f.id && !a.method.includes('Decision')).length;
-          const kos = fighterFights.filter(a => a.winnerId === f.id && a.method.includes('KO')).length;
-          const subs = fighterFights.filter(a => a.winnerId === f.id && a.method.includes('Submission')).length;
-          const decWins = fighterFights.filter(a => a.winnerId === f.id && a.method.includes('Decision')).length;
-          const decLosses = fighterFights.filter(a => a.winnerId !== f.id && a.winnerId !== null && a.method.includes('Decision')).length;
-          const titleFights = fighterFights.filter(a => a.isTitleFight).length;
-          const avgPerf = Math.floor(fighterFights.reduce((acc, a) => acc + (a.performanceRating || 0), 0) / fighterFights.length);
-          
-          // Grand Prix Stats
-          const tournamentsList = Object.values(state.tournaments || {});
-          const gpWins4Man = tournamentsList.filter(t => t.winnerId === f.id && t.status === 'completed' && t.format === 'four_man').length;
-          const gpWins8Man = tournamentsList.filter(t => t.winnerId === f.id && t.status === 'completed' && t.format === 'eight_man').length;
-          const gpFinals = tournamentsList.filter(t => t.status === 'completed' && t.fights.some(fight => fight.round === 'final' && (fight.redFighterId === f.id || fight.blueFighterId === f.id))).length;
-          let gpRecordWins = 0;
-          let gpRecordLosses = 0;
-          tournamentsList.forEach(t => {
-            t.fights.forEach(fight => {
-              if (fight.isCompleted) {
-                if (fight.redFighterId === f.id || fight.blueFighterId === f.id) {
-                  if (fight.winnerId === f.id) gpRecordWins++;
-                  else if (fight.winnerId) gpRecordLosses++;
-                }
-              }
-            });
-          });
-          
-          let currentStreak = 0;
-          for (const a of fighterFights) {
-             if (a.winnerId === f.id) currentStreak++;
-             else break;
-          }
-          
-          let maxStreak = 0;
-          let tempStreak = 0;
-          for (let i = fighterFights.length - 1; i >= 0; i--) {
-             if (fighterFights[i].winnerId === f.id) tempStreak++;
-             else { maxStreak = Math.max(maxStreak, tempStreak); tempStreak = 0; }
-          }
-          maxStreak = Math.max(maxStreak, tempStreak);
-          
-          return (
-            <div className="space-y-6">
-              <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-6">
-                <h2 className="text-lg font-bold text-white mb-4">Career Summary (In-Game)</h2>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                   <div className="bg-neutral-950 p-3 rounded border border-neutral-800 text-center">
-                      <div className="text-xs text-neutral-500 uppercase tracking-widest mb-1">Title Fights</div>
-                      <div className="text-xl font-bold text-yellow-500">{titleFights}</div>
-                   </div>
-                   <div className="bg-neutral-950 p-3 rounded border border-neutral-800 text-center">
-                      <div className="text-xs text-neutral-500 uppercase tracking-widest mb-1">Current Streak</div>
-                      <div className="text-xl font-bold text-white">{currentStreak} {currentStreak > 0 ? 'W' : ''}</div>
-                   </div>
-                   <div className="bg-neutral-950 p-3 rounded border border-neutral-800 text-center">
-                      <div className="text-xs text-neutral-500 uppercase tracking-widest mb-1">Longest Win Streak</div>
-                      <div className="text-xl font-bold text-white">{maxStreak}</div>
-                   </div>
-                   <div className="bg-neutral-950 p-3 rounded border border-neutral-800 text-center">
-                      <div className="text-xs text-neutral-500 uppercase tracking-widest mb-1">Avg Performance</div>
-                      <div className="text-xl font-bold text-blue-400">{avgPerf}</div>
-                   </div>
-                </div>
-                
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
-                   <div className="bg-neutral-950 p-3 rounded border border-neutral-800 text-center">
-                      <div className="text-xs text-neutral-500 uppercase tracking-widest mb-1">KO/TKO Wins</div>
-                      <div className="text-xl font-bold text-red-400">{kos}</div>
-                   </div>
-                   <div className="bg-neutral-950 p-3 rounded border border-neutral-800 text-center">
-                      <div className="text-xs text-neutral-500 uppercase tracking-widest mb-1">Sub Wins</div>
-                      <div className="text-xl font-bold text-purple-400">{subs}</div>
-                   </div>
-                   <div className="bg-neutral-950 p-3 rounded border border-neutral-800 text-center">
-                      <div className="text-xs text-neutral-500 uppercase tracking-widest mb-1">Dec Wins</div>
-                      <div className="text-xl font-bold text-neutral-300">{decWins}</div>
-                   </div>
-                   <div className="bg-neutral-950 p-3 rounded border border-neutral-800 text-center">
-                      <div className="text-xs text-neutral-500 uppercase tracking-widest mb-1">Dec Losses</div>
-                      <div className="text-xl font-bold text-neutral-500">{decLosses}</div>
-                   </div>
-                </div>
-                 
-                 <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mt-4">
-                    <div className="bg-neutral-950 p-3 rounded border border-neutral-800 text-center">
-                       <div className="text-xs text-neutral-500 uppercase tracking-widest mb-1">4-Man GP Wins</div>
-                       <div className="text-xl font-bold text-purple-400">{gpWins4Man}</div>
-                    </div>
-                    <div className="bg-neutral-950 p-3 rounded border border-neutral-800 text-center">
-                       <div className="text-xs text-neutral-500 uppercase tracking-widest mb-1">8-Man GP Wins</div>
-                       <div className="text-xl font-bold text-fuchsia-400">{gpWins8Man}</div>
-                    </div>
-                    <div className="bg-neutral-950 p-3 rounded border border-neutral-800 text-center">
-                       <div className="text-xs text-neutral-500 uppercase tracking-widest mb-1">GP Finals</div>
-                       <div className="text-xl font-bold text-blue-400">{gpFinals}</div>
-                    </div>
-                    <div className="bg-neutral-950 p-3 rounded border border-neutral-800 text-center">
-                       <div className="text-xs text-neutral-500 uppercase tracking-widest mb-1">GP Record</div>
-                       <div className="text-xl font-bold text-white">{gpRecordWins} - {gpRecordLosses}</div>
-                    </div>
-                    <div className="bg-neutral-950 p-3 rounded border border-neutral-800 text-center">
-                       <div className="text-xs text-neutral-500 uppercase tracking-widest mb-1">Promised Title Shot</div>
-                       <div className={`text-xl font-bold ${f.titleShotPromised ? 'text-green-400' : 'text-neutral-500'}`}>
-                         {f.titleShotPromised ? 'YES' : 'NO'}
-                       </div>
-                    </div>
-                 </div>
-              </div>
-
-              <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-6">
-                <h2 className="text-lg font-bold text-white mb-4">Fight Log</h2>
-                <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm whitespace-nowrap">
-                  <thead>
-                    <tr className="border-b border-neutral-800 text-neutral-500 uppercase tracking-wider text-xs">
-                      <th className="pb-2 font-bold">Date</th>
-                      <th className="pb-2 font-bold">Event</th>
-                      <th className="pb-2 font-bold">Opponent</th>
-                      <th className="pb-2 font-bold">Result</th>
-                      <th className="pb-2 font-bold">Method</th>
-                      <th className="pb-2 font-bold">Round</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-neutral-800/50">
-                    {fighterFights.map(a => {
-                      const isRed = a.redFighterId === f.id;
-                      const opponentId = isRed ? a.blueFighterId : a.redFighterId;
-                      const opponent = fighters[opponentId];
-                      const opponentName = opponent ? `${opponent.firstName} ${opponent.lastName}` : 'Unknown';
-                      const isWinner = a.winnerId === f.id;
-                      const isDraw = a.winnerId === null;
-                      
-                      return (
-                        <tr 
-                          key={a.id} 
-                          className="hover:bg-neutral-800/50 cursor-pointer transition-colors"
-                          onClick={() => setView('fight-detail', { fightArchiveId: a.id })}
-                        >
-                          <td className="py-3 text-neutral-400 font-mono text-xs">{a.date}</td>
-                          <td className="py-3 text-neutral-300 truncate max-w-[150px]">{a.eventName}</td>
-                          <td className="py-3 text-white">vs. {opponentName} {a.isTitleFight && <span className="text-yellow-500 text-xs ml-1 font-bold">★</span>}</td>
-                          <td className="py-3">
-                             {isDraw ? <span className="text-neutral-400 font-bold">DRAW</span> : isWinner ? <span className="text-green-500 font-bold">WIN</span> : <span className="text-red-500 font-bold">LOSS</span>}
-                          </td>
-                          <td className="py-3 text-neutral-400">{a.method}</td>
-                          <td className="py-3 text-neutral-400 font-mono text-xs">{a.round} ({a.time})</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-            
-            <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-6">
-              <h2 className="text-lg font-bold text-white mb-4">Career Timeline</h2>
-              <div className="relative border-l border-neutral-800 ml-3 space-y-6">
-                {(() => {
-                  const timeline = deriveFighterTimeline(state, f.id);
-
-                  return timeline.map((item, idx) => (
-                    <div key={idx} className="relative pl-6">
-                      <div className={`absolute -left-1.5 top-1.5 w-3 h-3 rounded-full ${
-                        item.type.includes('win') || item.type === 'title_defense' || item.type === 'unification' ? 'bg-green-500' :
-                        item.type.includes('loss') ? 'bg-red-500' :
-                        item.type.includes('draw') ? 'bg-neutral-500' :
-                        item.type === 'injury' ? 'bg-orange-500' :
-                        'bg-blue-500'
-                      }`} />
-                      <div className="flex flex-col md:flex-row md:items-baseline md:justify-between gap-1 mb-1">
-                        <span 
-                          className={`font-bold text-sm ${item.fightId ? 'cursor-pointer hover:underline text-white' : 'text-white'}`}
-                          onClick={() => item.fightId && setView('fight-detail', { fightArchiveId: item.fightId })}
-                        >
-                          {item.title}
-                          {item.type.includes('title') || item.type === 'unification' ? <span className="text-yellow-500 ml-1">★</span> : null}
-                        </span>
-                        <span className="text-xs text-neutral-500 font-mono">{item.date}</span>
-                      </div>
-                      <p className="text-xs text-neutral-400">{item.description}</p>
-                    </div>
-                  ));
-                })()}
-              </div>
-            </div>
-
-            </div>
-          );
-        }
-        
-        return f.history.length > 0 ? (
-          <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-6">
-            <h2 className="text-lg font-bold text-white mb-4">Recent Fights (Legacy)</h2>
-            <div className="space-y-2">
-              {f.history.map((h, i) => (
-                <div key={i} className="text-sm bg-neutral-950 p-2 rounded border border-neutral-800 text-neutral-300">
-                  {h}
-                </div>
-              ))}
-            </div>
-          </div>
-        ) : null;
-      })()}
+    <div role="tablist" aria-label="Fighter detail sections" className="custom-scrollbar flex overflow-x-auto border-b border-[#2a2c31]">
+      {tabs.map((tab, index) => <button key={tab.id} id={`fighter-tab-${tab.id}`} type="button" role="tab" aria-selected={activeTab === tab.id} aria-controls={`fighter-panel-${tab.id}`} tabIndex={activeTab === tab.id ? 0 : -1} onClick={() => selectTab(tab.id)} onKeyDown={event => handleTabKeyDown(event, index)} className={`shrink-0 border-b-2 px-4 py-3 font-mono text-[11px] uppercase tracking-[0.14em] transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-3px] focus-visible:outline-white ${activeTab === tab.id ? 'border-white text-white' : 'border-transparent text-neutral-500 hover:text-neutral-200'}`}>{tab.label}</button>)}
     </div>
-  );
+
+    <section id={`fighter-panel-${activeTab}`} role="tabpanel" aria-labelledby={`fighter-tab-${activeTab}`} tabIndex={0}>
+      {activeTab === 'overview' && <div className="space-y-6">
+        <Panel>
+          <h2 className="mb-4 text-lg font-medium tracking-tight text-white">Attributes</h2>
+          <div className="grid gap-x-6 gap-y-2 sm:grid-cols-2"><AttrBar label="Striking" value={f.attributes.striking} /><AttrBar label="Grappling" value={f.attributes.grappling} /><AttrBar label="Wrestling" value={f.attributes.wrestling} /><AttrBar label="Submissions" value={f.attributes.submissions} /><AttrBar label="Cardio" value={f.attributes.cardio} /><AttrBar label="Chin" value={f.attributes.chin} /><AttrBar label="Power" value={f.attributes.power} /><AttrBar label="Speed" value={f.attributes.speed} /><AttrBar label="Defense" value={f.attributes.defense} /><AttrBar label="Fight IQ" value={f.attributes.fightIq} /></div>
+        </Panel>
+        <Panel>
+          <h2 className="mb-4 text-lg font-medium tracking-tight text-white">Career Summary</h2>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4"><CareerStat label="Title Fights" value={titleFights} tone="warning" /><CareerStat label="Current Streak" value={currentStreak > 0 ? `${currentStreak} W` : '—'} /><CareerStat label="Best Streak" value={longestStreak} /><CareerStat label="Avg. Performance" value={averagePerformance} /></div>
+          <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4"><CareerStat label="KO/TKO Wins" value={kos} tone="danger" /><CareerStat label="Submission Wins" value={subs} tone="warning" /><CareerStat label="Decision Wins" value={decWins} /><CareerStat label="Decision Losses" value={decLosses} /></div>
+          <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-5"><CareerStat label="4-Man GP" value={gpWins4Man} tone="warning" /><CareerStat label="8-Man GP" value={gpWins8Man} tone="warning" /><CareerStat label="GP Finals" value={gpFinals} /><CareerStat label="GP Record" value={`${gpRecord.wins}-${gpRecord.losses}`} /><CareerStat label="Title Shot" value={f.titleShotPromised ? 'Pending' : '—'} tone={f.titleShotPromised ? 'success' : 'neutral'} /></div>
+        </Panel>
+      </div>}
+
+      {activeTab === 'achievements' && <Panel>
+        <h2 className="text-lg font-medium tracking-tight text-white">Achievements</h2>
+        <p className="mt-1 text-sm text-neutral-500">Titles, Grand Prix results, annual awards, and promotion milestones.</p>
+        {achievements.length === 0 ? <p className="py-10 text-center text-sm text-neutral-500">No achievements yet. Win title fights, Grand Prix tournaments, or yearly awards to fill this section.</p> : <div className="mt-5 space-y-6">{['Titles', 'Grand Prix', 'Awards', 'Milestones'].map(category => {
+          const items = achievements.filter(item => item.category === category);
+          if (!items.length) return null;
+          return <section key={category}><h3 className="font-mono text-[10px] uppercase tracking-[0.14em] text-neutral-500">{category}</h3><div className="mt-3 grid gap-3 sm:grid-cols-2">{items.map((item, index) => {
+            const className = `rounded-lg border bg-neutral-950 p-4 text-left ${item.tone === 'success' ? 'border-emerald-900' : item.tone === 'warning' ? 'border-amber-900' : item.tone === 'danger' ? 'border-red-900' : 'border-[#2a2c31]'}`;
+            const content = <><div className="flex items-start justify-between gap-3"><h4 className="font-medium text-white">{item.title}</h4><span className="shrink-0 font-mono text-[10px] text-neutral-500">{item.date}</span></div><p className="mt-2 text-sm text-neutral-400">{item.description}</p></>;
+            return item.fightArchiveId ? <button key={`${item.title}-${index}`} type="button" onClick={() => openFight(item.fightArchiveId!)} className={`${className} transition-colors hover:bg-[#1b1c20] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white`}>{content}</button> : <div key={`${item.title}-${index}`} className={className}>{content}</div>;
+          })}</div></section>;
+        })}</div>}
+      </Panel>}
+
+      {activeTab === 'contract' && <Panel>
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3"><h2 className="text-lg font-medium tracking-tight text-white">{f.contract ? 'Contract & Extension' : 'Negotiate Contract'}</h2>{f.contract && <Button variant="danger" onClick={handleRelease} className="inline-flex items-center gap-2"><UserMinus size={16} /> Release Fighter</Button>}</div>
+        {f.contract && <div className="mb-6 flex flex-col justify-between gap-3 rounded-lg border border-[#2a2c31] bg-neutral-950 p-4 sm:flex-row sm:items-center"><div><p className="text-sm text-neutral-400">Current deal: <span className="text-white">${f.contract.payPerFight.toLocaleString()}</span> to show, <span className="text-white">${f.contract.winBonus.toLocaleString()}</span> to win</p><p className={`mt-1 text-sm ${f.contract.fightsRemaining <= 1 ? 'text-red-300' : 'text-neutral-400'}`}>Fights remaining: {f.contract.fightsRemaining}</p></div>{f.isChampion && f.contract.fightsRemaining === 0 && <p className="text-sm text-red-300">Champion contract expired. Renew immediately or vacate the title.</p>}</div>}
+        {negotiationResult && <div className={`mb-4 rounded-lg border p-4 ${negotiationResult.accepted ? 'border-emerald-900 text-emerald-300' : 'border-red-900 text-red-300'}`}><p className="font-medium">{negotiationResult.accepted ? 'Offer Accepted' : 'Offer Rejected'}</p><p className="mt-1 text-sm">{negotiationResult.reason}</p></div>}
+        <p className="mb-4 text-sm text-neutral-400">Expected: <span className="text-white">${getContractExpectation(f, promotion).basePay.toLocaleString()}</span> to show · <span className="text-white">${getContractExpectation(f, promotion).winBonus.toLocaleString()}</span> to win · <span className="text-white">{getContractExpectation(f, promotion).interestLabel}</span></p>
+        <div className="grid gap-4 md:grid-cols-3"><ContractInput label="Pay per Fight ($)" value={offerPay} onChange={setOfferPay} step={1000} /><ContractInput label="Win Bonus ($)" value={offerBonus} onChange={setOfferBonus} step={1000} /><ContractInput label="Fights" value={offerFights} onChange={setOfferFights} min={1} max={8} /></div>
+        {!negotiationResult?.accepted && <Button variant="primary" onClick={handleSign} className="mt-5 inline-flex items-center gap-2"><UserCheck size={16} /> {f.contract ? 'Offer Extension' : 'Offer Contract'}</Button>}
+      </Panel>}
+
+      {activeTab === 'fights' && <Panel>
+        <h2 className="mb-4 text-lg font-medium tracking-tight text-white">Fight Log</h2>
+        {fighterFights.length ? <div className="overflow-x-auto custom-scrollbar"><table className="min-w-[640px] w-full text-left text-sm"><thead className="border-b border-[#2a2c31] font-mono text-[10px] uppercase tracking-[0.14em] text-neutral-500"><tr><th className="pb-3 font-normal">Date</th><th className="pb-3 font-normal">Event</th><th className="pb-3 font-normal">Opponent</th><th className="pb-3 font-normal">Result</th><th className="pb-3 font-normal">Method</th><th className="pb-3 font-normal">Round</th></tr></thead><tbody className="divide-y divide-[#2a2c31]">{fighterFights.map(fight => {
+          const opponentId = fight.redFighterId === f.id ? fight.blueFighterId : fight.redFighterId;
+          const opponent = fighters[opponentId];
+          const opponentName = opponent ? `${opponent.firstName} ${opponent.lastName}` : 'Unknown';
+          const result = fight.winnerId === null ? 'Draw' : fight.winnerId === f.id ? 'Win' : 'Loss';
+          return <tr key={fight.id} tabIndex={0} role="button" aria-label={`View fight details against ${opponentName} on ${fight.date}`} onClick={() => openFight(fight.id)} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openFight(fight.id); } }} className="cursor-pointer transition-colors hover:bg-white/[0.02] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-white"><td className="py-3 font-mono text-xs text-neutral-500">{fight.date}</td><td className="py-3 text-neutral-300">{fight.eventName}</td><td className="py-3 text-white">vs. {opponentName}{fight.isTitleFight && <span className="ml-2 text-amber-300">Title</span>}</td><td className={`py-3 font-medium ${result === 'Win' ? 'text-emerald-300' : result === 'Loss' ? 'text-red-300' : 'text-neutral-400'}`}>{result}</td><td className="py-3 text-neutral-400">{fight.method}</td><td className="py-3 font-mono text-xs text-neutral-400">{fight.round} ({fight.time})</td></tr>;
+        })}</tbody></table></div> : <div className="space-y-3 text-center"><p className="py-6 text-sm text-neutral-500">No archived fights yet.</p>{f.history.length > 0 && <div className="text-left"><h3 className="mb-2 font-mono text-[10px] uppercase tracking-[0.14em] text-neutral-500">Legacy history</h3>{f.history.map((entry, index) => <p key={index} className="border-t border-[#2a2c31] py-2 text-sm text-neutral-300">{entry}</p>)}</div>}</div>}
+      </Panel>}
+
+      {activeTab === 'timeline' && <Panel>
+        <h2 className="mb-4 text-lg font-medium tracking-tight text-white">Career Timeline</h2>
+        {timeline.length ? <div className="space-y-4 border-l border-[#2a2c31] pl-5">{timeline.map((item, index) => <div key={`${item.date}-${index}`} className="relative"><span className={`absolute -left-[1.62rem] top-1.5 h-2.5 w-2.5 rounded-full ${item.type.includes('win') || item.type === 'title_defense' || item.type === 'unification' ? 'bg-emerald-400' : item.type.includes('loss') ? 'bg-red-400' : item.type === 'injury' ? 'bg-amber-300' : 'bg-neutral-500'}`} />{item.fightId ? <button type="button" onClick={() => openFight(item.fightId!)} className="text-left text-sm font-medium text-white hover:text-neutral-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">{item.title}</button> : <p className="text-sm font-medium text-white">{item.title}</p>}<p className="mt-1 font-mono text-[10px] text-neutral-500">{item.date}</p><p className="mt-1 text-sm text-neutral-400">{item.description}</p></div>)}</div> : <p className="py-8 text-center text-sm text-neutral-500">No career timeline entries yet.</p>}
+      </Panel>}
+    </section>
+  </div>;
 }
 
-function AttrBar({ label, value }: { label: string, value: number }) {
-  const colorClass = value > 80 ? 'bg-green-500' : value > 60 ? 'bg-yellow-500' : 'bg-red-500';
-  return (
-    <div className="flex items-center justify-between text-xs">
-      <span className="w-24 text-neutral-400">{label}</span>
-      <div className="flex-1 bg-neutral-900 rounded-full h-2 mx-2 overflow-hidden">
-        <div className={`${colorClass} h-full`} style={{ width: `${value}%` }} />
-      </div>
-      <span className="w-6 text-right font-mono text-white">{value}</span>
-    </div>
-  );
+function ProfileStat({ label, value, detail, tone = 'neutral' }: { label: string; value: string; detail?: string; tone?: 'neutral' | 'success' | 'warning' | 'danger' }) {
+  const toneClass = tone === 'success' ? 'text-emerald-300' : tone === 'warning' ? 'text-amber-300' : tone === 'danger' ? 'text-red-300' : 'text-white';
+  return <div className="min-w-0 border-l border-[#2a2c31] pl-3 text-left"><p className="font-mono text-[9px] uppercase tracking-[0.12em] text-neutral-500">{label}</p><p className={`mt-1 truncate text-sm font-medium ${toneClass}`}>{value}</p>{detail && <p className="mt-1 text-[10px] text-neutral-500">{detail}</p>}</div>;
+}
+
+function CareerStat({ label, value, tone = 'neutral' }: { label: string; value: string | number; tone?: 'neutral' | 'success' | 'warning' | 'danger' }) {
+  const toneClass = tone === 'success' ? 'text-emerald-300' : tone === 'warning' ? 'text-amber-300' : tone === 'danger' ? 'text-red-300' : 'text-white';
+  return <div className="rounded-lg border border-[#2a2c31] bg-neutral-950 p-3"><p className="font-mono text-[9px] uppercase tracking-[0.12em] text-neutral-500">{label}</p><p className={`mt-2 text-xl font-normal tracking-[-0.03em] ${toneClass}`}>{value}</p></div>;
+}
+
+function ContractInput({ label, value, onChange, min, max, step }: { label: string; value: number; onChange: (value: number) => void; min?: number; max?: number; step?: number }) {
+  return <label className="block"><span className="mb-1 block text-xs text-neutral-400">{label}</span><input type="number" value={value} min={min} max={max} step={step} onChange={event => onChange(Number(event.target.value))} className="w-full rounded-lg border border-[#2a2c31] bg-neutral-950 px-3 py-2 text-white focus:border-neutral-500 focus:ring-1 focus:ring-neutral-500" /></label>;
+}
+
+function AttrBar({ label, value }: { label: string; value: number }) {
+  const color = value > 80 ? 'bg-emerald-400' : value > 60 ? 'bg-amber-300' : 'bg-red-400';
+  return <div className="flex items-center text-xs"><span className="w-24 text-neutral-400">{label}</span><div className="mx-2 h-2 flex-1 overflow-hidden rounded-full bg-neutral-900"><div className={`h-full ${color}`} style={{ width: `${value}%` }} /></div><span className="w-6 text-right font-mono text-white">{value}</span></div>;
 }

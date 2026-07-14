@@ -413,12 +413,13 @@ export function applyFightResult(state: GameState, eventId: string, fightIndex: 
       });
   }
 
+  let redTitleShotPromised = red.titleShotPromised;
+  let blueTitleShotPromised = blue.titleShotPromised;
   if (updatedMatchup.isTitleFight) {
      if (!newState.tournaments) newState.tournaments = {};
-     
+
      const checkAndClearShot = (f: Fighter, fId: string) => {
         if (f.titleShotPromised) {
-           newState.fighters[fId] = { ...newState.fighters[fId], titleShotPromised: false };
             const wcTourneys = Object.values(newState.tournaments)
               .filter(t => t.weightClass === f.weightClass && t.winnerId === fId && t.status === 'completed' && t.titleShotPromised && !t.titleShotUsed)
               .sort((a, b) => new Date(a.createdDate).getTime() - new Date(b.createdDate).getTime());
@@ -426,16 +427,18 @@ export function applyFightResult(state: GameState, eventId: string, fightIndex: 
                const targetGp = wcTourneys[0];
                newState.tournaments[targetGp.id] = { ...targetGp, titleShotUsed: true };
             }
+            if (fId === red.id) redTitleShotPromised = false;
+            if (fId === blue.id) blueTitleShotPromised = false;
         }
      };
-     
+
      checkAndClearShot(red, updatedMatchup.redCornerId);
      checkAndClearShot(blue, updatedMatchup.blueCornerId);
   }
 
   // Apply result to fighters
-  const newRed = { ...red, record: { ...red.record } };
-  const newBlue = { ...blue, record: { ...blue.record } };
+  const newRed = { ...red, titleShotPromised: redTitleShotPromised, record: { ...red.record } };
+  const newBlue = { ...blue, titleShotPromised: blueTitleShotPromised, record: { ...blue.record } };
 
   newRed.fatigue += 50;
   newBlue.fatigue += 50;

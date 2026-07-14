@@ -3,10 +3,17 @@ import { useGameStore } from '../store/gameStore';
 import { WeightClass } from '../types/game';
 import { WEIGHT_CLASSES } from '../lib/game/constants';
 import { Award, Plus, Calendar, AlertTriangle, X, Check, ArrowRight } from 'lucide-react';
+import { getTournamentBranding } from '../lib/branding';
+import { diagnoseActiveTournaments } from '../lib/game/tournament';
+import { getGrandPrixExplanation } from '../lib/game/insights';
+import { CountryFlag } from '../components/CountryFlag';
+import { FighterAvatar } from '../components/FighterAvatar';
+import { Button, Panel, PageHeader } from '../components/ui';
 
 export default function Tournaments() {
-  const { 
-    tournaments = {}, 
+  const gameState = useGameStore();
+  const {
+    tournaments = {},
     fighters, 
     events, 
     currentDate,
@@ -43,6 +50,8 @@ export default function Tournaments() {
     return true;
   });
   const selectedTourney = selectedTourneyId ? tournaments[selectedTourneyId] : null;
+  const selectedDiagnosis = selectedTourney ? diagnoseActiveTournaments(gameState).find(diagnosis => diagnosis.tournamentId === selectedTourney.id) : undefined;
+  const selectedExplanation = selectedTourney ? getGrandPrixExplanation({ id: selectedTourney.id, year: new Date(currentDate).getFullYear(), date: currentDate, type: 'grand_prix_round', status: 'planned', priority: 1, tournamentId: selectedTourney.id }, selectedDiagnosis) : null;
 
   // Filter signed, healthy, same-class, unbooked fighters for the GP creation form
   const eligibleFighters = Object.values(fighters).filter(f => 
@@ -85,7 +94,7 @@ export default function Tournaments() {
       return;
     }
     
-    const gpName = name.trim() || `${weightClass} ${format === 'eight_man' ? '8-Man' : '4-Man'} Grand Prix`;
+    const gpName = name.trim() || getTournamentBranding(weightClass, format).name;
     createTournament({
       weightClass,
       name: gpName,
@@ -121,37 +130,21 @@ export default function Tournaments() {
   const upcomingEvents = Object.values(events).filter(e => !e.isCompleted && e.date >= currentDate);
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-2xl font-black text-white flex items-center gap-2">
-            <Award className="text-purple-400" /> GRAND PRIX TOURNAMENTS
-          </h1>
-          <p className="text-neutral-400 text-sm">Organize 4-man elimination brackets to determine number one contenders.</p>
-        </div>
-        {!isCreating && (
-          <button 
-            onClick={() => {
-              setIsCreating(true);
-              setSelectedTourneyId(null);
-            }} 
-            className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded flex items-center gap-1 transition-colors"
-          >
-            <Plus size={16} /> Create Grand Prix
-          </button>
-        )}
-      </div>
+    <div className="space-y-6 pb-12">
+      <PageHeader
+        eyebrow="Competition format"
+        title="Grand Prix Tournaments"
+        description="Organize 4-man and 8-man elimination brackets to determine number one contenders."
+        actions={!isCreating ? <Button variant="primary" onClick={() => { setIsCreating(true); setSelectedTourneyId(null); }} className="inline-flex items-center gap-1"><Plus size={16} /> Create Grand Prix</Button> : undefined}
+      />
 
       {isCreating ? (
-        <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-6 max-w-4xl">
-          <div className="flex justify-between items-center mb-6">
-            <h2 className="text-lg font-bold text-white">New Grand Prix Tournament</h2>
-            <button 
-              onClick={() => setIsCreating(false)} 
-              className="text-neutral-400 hover:text-white"
-            >
+        <Panel className="max-w-4xl">
+          <div className="mb-6 flex items-center justify-between">
+            <h2 className="text-lg font-medium tracking-tight text-white">New Grand Prix Tournament</h2>
+            <Button variant="quiet" onClick={() => setIsCreating(false)} aria-label="Close tournament form">
               <X size={20} />
-            </button>
+            </Button>
           </div>
 
           <form onSubmit={handleCreate} className="space-y-6">
@@ -162,8 +155,8 @@ export default function Tournaments() {
                   type="text" 
                   value={name}
                   onChange={e => setName(e.target.value)}
-                  placeholder="e.g. Lightweight Road to Gold" 
-                  className="w-full bg-neutral-950 border border-neutral-800 rounded p-2 text-white text-sm"
+                  placeholder={getTournamentBranding(weightClass, format).name}
+                  className="w-full bg-black/10 border border-[#2a2c31] rounded p-2 text-white text-sm"
                 />
               </div>
 
@@ -176,7 +169,7 @@ export default function Tournaments() {
                     setSelectedParticipants([]);
                     setSelectedReserves([]);
                   }}
-                  className="w-full bg-neutral-950 border border-neutral-800 rounded p-2 text-white text-sm"
+                  className="w-full bg-black/10 border border-[#2a2c31] rounded p-2 text-white text-sm"
                 >
                   {WEIGHT_CLASSES.map(wc => (
                     <option key={wc} value={wc}>{wc}</option>
@@ -193,7 +186,7 @@ export default function Tournaments() {
                     setSelectedParticipants([]);
                     setSelectedReserves([]);
                   }}
-                  className="w-full bg-neutral-950 border border-neutral-800 rounded p-2 text-white text-sm font-semibold text-purple-400"
+                  className="w-full bg-black/10 border border-[#2a2c31] rounded p-2 text-white text-sm font-semibold text-purple-400"
                 >
                   <option value="four_man">4-Man Grand Prix</option>
                   <option value="eight_man">8-Man Grand Prix</option>
@@ -208,7 +201,7 @@ export default function Tournaments() {
                   onChange={e => setTitleShotPromised(e.target.checked)}
                   className="w-4 h-4 accent-purple-600 rounded bg-neutral-950 border-neutral-800"
                 />
-                <label htmlFor="titleShot" className="text-sm font-semibold text-neutral-300">
+                <label htmlFor="titleShot" title="Grand Prix winner is owed an undisputed title fight." className="text-sm font-semibold text-neutral-300">
                   Promise Undisputed Title Shot
                 </label>
               </div>
@@ -224,7 +217,7 @@ export default function Tournaments() {
               <p className="text-xs text-neutral-500 mb-4">Only signed, healthy, unbooked fighters in this division are eligible. Seeded by ELO ranking score.</p>
               
               {eligibleFighters.length === 0 ? (
-                <div className="bg-neutral-950 border border-neutral-800 p-6 rounded text-center">
+                <div className="bg-black/10 border border-[#2a2c31] p-6 rounded text-center">
                   <p className="text-sm text-neutral-400 italic">No eligible fighters in the {weightClass} division. Sign new fighters or free up booked ones.</p>
                 </div>
               ) : (
@@ -243,9 +236,12 @@ export default function Tournaments() {
                           'bg-neutral-950 border-neutral-800 text-neutral-300 hover:border-neutral-700'
                         }`}
                       >
-                        <div>
-                          <p className="font-bold text-sm">{f.firstName} {f.lastName}</p>
-                          <p className="text-xs text-neutral-500 font-mono">Elo: {Math.floor(f.rankingScore || 1000)} • Pop: {f.popularity}</p>
+                        <div className="flex items-center gap-2">
+                          <FighterAvatar id={f.id} name={`${f.firstName} ${f.lastName}`} nationality={f.nationality} className="h-8 w-8" />
+                          <div>
+                            <p className="font-bold text-sm">{f.firstName} {f.lastName} <CountryFlag nationality={f.nationality} className="text-xs" /></p>
+                            <p className="text-xs text-neutral-500 font-mono">Elo: {Math.floor(f.rankingScore || 1000)} • Pop: {f.popularity}</p>
+                          </div>
                         </div>
                         <div className="flex gap-2">
                           <button 
@@ -253,7 +249,7 @@ export default function Tournaments() {
                             onClick={() => handleToggleParticipant(f.id)}
                             disabled={!isPart && selectedParticipants.length >= partLimit}
                             className={`px-2 py-1 rounded text-xs font-bold ${
-                              isPart ? 'bg-purple-600 text-white' : 'bg-neutral-800 text-neutral-400 hover:bg-neutral-700 hover:text-white disabled:opacity-50'
+                              isPart ? 'bg-purple-600 text-white' : 'bg-neutral-800 text-neutral-300 hover:bg-neutral-700 hover:text-white disabled:opacity-50'
                             }`}
                           >
                             Participant
@@ -263,7 +259,7 @@ export default function Tournaments() {
                             onClick={() => handleToggleReserve(f.id)}
                             disabled={!isRes && selectedReserves.length >= resLimit}
                             className={`px-2 py-1 rounded text-xs font-bold ${
-                              isRes ? 'bg-yellow-600 text-white' : 'bg-neutral-800 text-neutral-400 hover:bg-neutral-700 hover:text-white disabled:opacity-50'
+                              isRes ? 'bg-yellow-600 text-white' : 'bg-neutral-800 text-neutral-300 hover:bg-neutral-700 hover:text-white disabled:opacity-50'
                             }`}
                           >
                             Reserve ({selectedReserves.length}/{resLimit})
@@ -277,36 +273,24 @@ export default function Tournaments() {
             </div>
 
             <div className="flex justify-end gap-2 border-t border-neutral-800 pt-4">
-              <button 
-                type="button"
-                onClick={() => setIsCreating(false)} 
-                className="bg-neutral-800 hover:bg-neutral-700 text-white px-4 py-2 rounded text-sm font-bold"
-              >
-                Cancel
-              </button>
-              <button 
-                type="submit"
-                disabled={selectedParticipants.length !== (format === 'eight_man' ? 8 : 4)}
-                className="bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white px-4 py-2 rounded text-sm font-bold"
-              >
-                Create Tournament
-              </button>
+              <Button variant="secondary" type="button" onClick={() => setIsCreating(false)}>Cancel</Button>
+              <Button variant="primary" type="submit" disabled={selectedParticipants.length !== (format === 'eight_man' ? 8 : 4)}>Create Tournament</Button>
             </div>
           </form>
-        </div>
+        </Panel>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Tournament List */}
           <div className="lg:col-span-1 space-y-4">
             <h2 className="text-sm font-bold text-neutral-400 uppercase tracking-wider">Tournament List</h2>
             
-            <div className="flex gap-1 bg-neutral-950 p-1 rounded-lg border border-neutral-800">
+            <div className="flex gap-1 rounded-lg border border-[#2a2c31] bg-black/10 p-1">
               {(['All', 'Active', 'Completed', 'Cancelled'] as const).map(f => (
                 <button
                   key={f}
                   onClick={() => setStatusFilter(f)}
-                  className={`flex-1 text-[10px] uppercase font-bold py-1 px-1 rounded transition-all ${
-                    statusFilter === f ? 'bg-purple-600 text-white' : 'text-neutral-400 hover:text-white'
+                  className={`flex-1 rounded px-1 py-1 text-[10px] font-bold uppercase transition-colors ${
+                    statusFilter === f ? 'bg-white text-black' : 'text-neutral-300 hover:bg-[#1b1c20] hover:text-white'
                   }`}
                 >
                   {f}
@@ -315,7 +299,7 @@ export default function Tournaments() {
             </div>
 
             {activeTourneyList.length === 0 ? (
-              <div className="bg-neutral-900 border border-neutral-800 p-6 rounded-lg text-center">
+              <div className="bg-[#101114] border border-[#2a2c31] p-6 rounded-lg text-center">
                 <p className="text-sm text-neutral-400 italic">No tournaments found matching filter.</p>
               </div>
             ) : (
@@ -361,7 +345,7 @@ export default function Tournaments() {
           <div className="lg:col-span-2 space-y-4">
             <h2 className="text-sm font-bold text-neutral-400 uppercase tracking-wider">Bracket & Details</h2>
             {selectedTourney ? (
-              <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-6 space-y-6">
+              <Panel className="space-y-6">
                 <div className="flex justify-between items-start border-b border-neutral-800 pb-4">
                   <div>
                     <div className="flex items-center gap-2">
@@ -377,54 +361,59 @@ export default function Tournaments() {
                   <div className="flex gap-2">
                     {selectedTourney.status === 'planned' && (
                       selectedTourney.format === 'eight_man' ? (
-                        <button 
+                        <Button
+                          variant="primary"
+                          className="min-h-9 px-3 text-xs"
                           onClick={() => setSchedulingSlot({ tourneyId: selectedTourney.id, round: 'quarterfinal' })}
-                          className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-1.5 px-3 rounded text-xs transition-colors"
                         >
                           Schedule Quarterfinals
-                        </button>
+                        </Button>
                       ) : (
-                        <button 
+                        <Button
+                          variant="primary"
+                          className="min-h-9 px-3 text-xs"
                           onClick={() => setSchedulingSlot({ tourneyId: selectedTourney.id, round: 'semifinal' })}
-                          className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-1.5 px-3 rounded text-xs transition-colors"
                         >
                           Schedule Semifinals
-                        </button>
+                        </Button>
                       )
                     )}
                     {selectedTourney.status === 'active' && 
                       selectedTourney.format === 'eight_man' && 
                       selectedTourney.fights.filter(f => f.round === 'quarterfinal').every(q => q.isCompleted) && 
                       !selectedTourney.fights.find(f => f.round === 'semifinal')?.eventId && (
-                        <button 
+                        <Button
+                          variant="primary"
+                          className="min-h-9 px-3 text-xs"
                           onClick={() => setSchedulingSlot({ tourneyId: selectedTourney.id, round: 'semifinal' })}
-                          className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-1.5 px-3 rounded text-xs transition-colors"
                         >
                           Schedule Semifinals
-                        </button>
+                        </Button>
                     )}
                     {selectedTourney.status === 'active' && 
                       selectedTourney.fights.filter(f => f.round === 'semifinal').every(s => s.isCompleted) && 
                       !selectedTourney.fights.find(f => f.round === 'final')?.eventId && (
-                        <button 
+                        <Button
+                          variant="primary"
+                          className="min-h-9 px-3 text-xs"
                           onClick={() => setSchedulingSlot({ tourneyId: selectedTourney.id, round: 'final' })}
-                          className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-1.5 px-3 rounded text-xs transition-colors"
                         >
                           Schedule Final
-                        </button>
+                        </Button>
                     )}
                     {!selectedTourney.fights.some(f => f.isCompleted) && selectedTourney.status !== 'cancelled' && (
-                      <button 
+                      <Button
+                        variant="danger"
+                        className="min-h-9 px-3 text-xs"
                         onClick={() => {
                           if (window.confirm("Cancel this tournament? Scheduled fights will be removed.")) {
                             cancelTournament(selectedTourney.id);
                             setSelectedTourneyId(null);
                           }
                         }}
-                        className="bg-red-950 text-red-400 border border-red-900 hover:bg-red-900/20 py-1.5 px-3 rounded text-xs transition-colors"
                       >
                         Cancel GP
-                      </button>
+                      </Button>
                     )}
                   </div>
                 </div>
@@ -469,7 +458,7 @@ export default function Tournaments() {
                             const blueSeed = selectedTourney.participants.find(p => p.fighterId === slot.blueFighterId)?.seed;
                             
                             return (
-                              <div key={slot.id} className="bg-neutral-900 border border-neutral-800 rounded p-3 space-y-2 text-left">
+                              <div key={slot.id} className="bg-[#101114] border border-[#2a2c31] rounded p-3 space-y-2 text-left">
                                 <p className="text-[10px] text-neutral-500 uppercase font-mono flex justify-between">
                                   <span>Quarterfinal {idx + 1}</span>
                                   {slot.eventId && (
@@ -483,11 +472,11 @@ export default function Tournaments() {
                                 </p>
                                 <div className="space-y-1">
                                   <div className={`flex justify-between items-center text-sm p-1 rounded ${slot.winnerId === slot.redFighterId ? 'bg-green-500/10 font-bold text-green-400' : ''}`}>
-                                    <span>({redSeed}) {redF ? `${redF.firstName} ${redF.lastName}` : 'TBD'}</span>
+                                    <span className="flex items-center gap-1">({redSeed}) {redF && <><FighterAvatar id={redF.id} name={`${redF.firstName} ${redF.lastName}`} nationality={redF.nationality} className="h-5 w-5" /><CountryFlag nationality={redF.nationality} className="text-xs" /></>}{redF ? `${redF.firstName} ${redF.lastName}` : 'TBD'}</span>
                                     {slot.winnerId === slot.redFighterId && <Check size={14} />}
                                   </div>
                                   <div className={`flex justify-between items-center text-sm p-1 rounded ${slot.winnerId === slot.blueFighterId ? 'bg-green-500/10 font-bold text-green-400' : ''}`}>
-                                    <span>({blueSeed}) {blueF ? `${blueF.firstName} ${blueF.lastName}` : 'TBD'}</span>
+                                    <span className="flex items-center gap-1">({blueSeed}) {blueF && <><FighterAvatar id={blueF.id} name={`${blueF.firstName} ${blueF.lastName}`} nationality={blueF.nationality} className="h-5 w-5" /><CountryFlag nationality={blueF.nationality} className="text-xs" /></>}{blueF ? `${blueF.firstName} ${blueF.lastName}` : 'TBD'}</span>
                                     {slot.winnerId === slot.blueFighterId && <Check size={14} />}
                                   </div>
                                 </div>
@@ -509,7 +498,7 @@ export default function Tournaments() {
                           const blueSeed = selectedTourney.participants.find(p => p.fighterId === slot.blueFighterId)?.seed;
                           
                           return (
-                            <div key={slot.id} className="bg-neutral-900 border border-neutral-800 rounded p-3 space-y-2 text-left">
+                            <div key={slot.id} className="bg-[#101114] border border-[#2a2c31] rounded p-3 space-y-2 text-left">
                               <p className="text-[10px] text-neutral-500 uppercase font-mono flex justify-between">
                                 <span>Semifinal Match {idx + 1}</span>
                                 {slot.eventId && (
@@ -582,25 +571,12 @@ export default function Tournaments() {
                                 </div>
                               </div>
                               
-                              {/* Generalized Round Delay Alerts */}
-                              {selectedTourney.roundDelayReason && (
-                                <div className="bg-red-950/25 border border-red-900/40 p-3 rounded text-xs text-red-300 space-y-1.5 mt-2 text-left">
-                                  <p className="font-bold flex items-center gap-1 text-red-400">
-                                    <AlertTriangle size={14} />
-                                    Grand Prix Delayed ({selectedTourney.delayedRound})
-                                  </p>
-                                  <p>{selectedTourney.roundDelayReason}</p>
-                                  <p className="text-[10px] text-neutral-400 font-mono">
-                                    Earliest reschedule date: <span className="text-neutral-200 font-semibold">{selectedTourney.earliestRoundDate}</span>
-                                  </p>
-                                  {currentDate >= (selectedTourney.earliestRoundDate || '') && (
-                                    <button
-                                      onClick={() => setSchedulingSlot({ tourneyId: selectedTourney.id, round: selectedTourney.delayedRound! })}
-                                      className="mt-2 bg-purple-600 hover:bg-purple-500 text-white font-bold py-1 px-2.5 rounded text-[10px] uppercase transition-colors"
-                                    >
-                                      Retry Scheduling {selectedTourney.delayedRound}
-                                    </button>
-                                  )}
+                              {selectedExplanation && selectedExplanation.details.length > 0 && (
+                                <div className="mt-2 space-y-1.5 rounded border border-purple-900/50 bg-purple-950/20 p-3 text-left text-xs text-purple-100" title={selectedExplanation.details.join('\n')}>
+                                  <p className="flex items-center gap-1 font-bold text-purple-300"><AlertTriangle size={14} /> GP status: {selectedExplanation.status}</p>
+                                  {selectedExplanation.details.map(detail => <p key={detail}>{detail}</p>)}
+                                  {selectedExplanation.retryDate && <p className="font-mono text-[10px] text-neutral-400">Earliest retry: <span className="font-semibold text-neutral-200">{selectedExplanation.retryDate}</span></p>}
+                                  {selectedDiagnosis?.canScheduleNow && selectedDiagnosis.currentRoundNeeded !== 'none' && <button onClick={() => setSchedulingSlot({ tourneyId: selectedTourney.id, round: selectedDiagnosis.currentRoundNeeded })} className="mt-2 rounded bg-purple-600 px-2.5 py-1 text-[10px] font-bold uppercase text-white transition-colors hover:bg-purple-500">Schedule {selectedDiagnosis.currentRoundNeeded}</button>}
                                 </div>
                               )}
                               
@@ -635,26 +611,26 @@ export default function Tournaments() {
                     )}
                     {selectedTourney.titleShotPromised && (
                       <div className="bg-purple-950/20 border border-purple-800/40 p-3 rounded mt-4">
-                        <p className="text-xs font-bold text-purple-400 flex items-center gap-1">
+                        <p title="Grand Prix winner is owed an undisputed title fight." className="text-xs font-bold text-purple-300 flex items-center gap-1">
                           🛡 Title Shot Promised
                         </p>
-                        <p className="text-[10px] text-neutral-400 mt-1">Winner earns guaranteed undisputed title shot against the division champion.</p>
+                        <p className="text-[10px] text-purple-200 mt-1">Winner earns guaranteed undisputed title shot against the division champion.</p>
                       </div>
                     )}
                   </div>
 
                   <div className="space-y-2">
                     <h3 className="font-bold text-white uppercase tracking-wider text-xs">Tournament History & Logs</h3>
-                    <div className="bg-neutral-950 border border-neutral-800 rounded p-3 h-40 overflow-y-auto font-mono text-xs text-neutral-400 space-y-1">
+                    <div className="bg-black/10 border border-[#2a2c31] rounded p-3 h-40 overflow-y-auto font-mono text-xs text-neutral-400 space-y-1">
                       {selectedTourney.notes?.map((log, idx) => (
                         <p key={idx}>• {log}</p>
                       ))}
                     </div>
                   </div>
                 </div>
-              </div>
+              </Panel>
             ) : (
-              <div className="bg-neutral-900 border border-neutral-800 p-8 rounded-lg text-center h-64 flex flex-col justify-center items-center">
+              <div className="bg-[#101114] border border-[#2a2c31] p-8 rounded-lg text-center h-64 flex flex-col justify-center items-center">
                 <Award size={48} className="text-neutral-600 mb-2" />
                 <p className="text-neutral-400">Select a tournament from the list or create a new one to view brackets and details.</p>
               </div>
@@ -666,7 +642,7 @@ export default function Tournaments() {
       {/* Scheduling Modal */}
       {schedulingSlot && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50">
-          <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-6 max-w-md w-full">
+          <div className="bg-[#101114] border border-[#2a2c31] rounded-lg p-6 max-w-md w-full">
             <h2 className="text-lg font-bold text-white mb-4">
               Schedule {schedulingSlot.round === 'semifinal' ? 'Semifinal Matches' : 'Grand Prix Final'}
             </h2>
@@ -686,7 +662,7 @@ export default function Tournaments() {
                 <select 
                   value={selectedEventId}
                   onChange={e => setSelectedEventId(e.target.value)}
-                  className="w-full bg-neutral-950 border border-neutral-800 rounded p-2 text-white text-sm"
+                  className="w-full bg-black/10 border border-[#2a2c31] rounded p-2 text-white text-sm"
                 >
                   <option value="">-- Select Event --</option>
                   {upcomingEvents.map(e => (
@@ -697,19 +673,8 @@ export default function Tournaments() {
             )}
 
             <div className="flex justify-end gap-2 border-t border-neutral-800 pt-4">
-              <button 
-                onClick={() => setSchedulingSlot(null)} 
-                className="bg-neutral-800 hover:bg-neutral-700 text-white px-4 py-2 rounded text-sm font-bold"
-              >
-                Cancel
-              </button>
-              <button 
-                onClick={handleScheduleSubmit}
-                disabled={!selectedEventId}
-                className="bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white px-4 py-2 rounded text-sm font-bold"
-              >
-                Confirm Scheduling
-              </button>
+              <Button variant="secondary" onClick={() => setSchedulingSlot(null)}>Cancel</Button>
+              <Button variant="primary" onClick={handleScheduleSubmit} disabled={!selectedEventId}>Confirm Scheduling</Button>
             </div>
           </div>
         </div>

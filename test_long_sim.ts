@@ -1,9 +1,9 @@
 import { generateInitialWorld } from './src/lib/game/generator';
-import { autoBookEventsAndContracts, maintainDeals, repairEventAvailability, repairFutureEventAvailability } from './src/lib/game/autobooker';
+import { autoBookEventsAndContracts, maintainDeals, repairEventAvailability, repairFutureEventAvailability, repairPastScheduledEvents, simulateDueEvents } from './src/lib/game/autobooker';
 import { runAutopilotTournaments, syncTournamentTitleShotFlags, validateTournamentState, validateTitleShotDebtState } from './src/lib/game/tournament';
-import { advanceTime, quickSimulateEvent } from './src/lib/engine';
-import { validateSeasonCalendarState } from './src/lib/game/season';
-import { GameState } from './src/types/game';
+import { advanceTime, applyFightResult } from './src/lib/engine';
+import { syncCalendarSlots, validateSeasonCalendarState } from './src/lib/game/season';
+import { GameState, GrandPrixTournament } from './src/types/game';
 
 function runDaysSimulation(initialState: GameState, days: number): { state: GameState; crashCount: number; errorMessage?: string } {
   let state = { ...initialState };
@@ -12,30 +12,20 @@ function runDaysSimulation(initialState: GameState, days: number): { state: Game
 
   for (let i = 0; i < days; i++) {
     try {
-      // 1. Auto-book
+      state = syncCalendarSlots(state);
+      state = repairPastScheduledEvents(state);
+      state = simulateDueEvents(state, false).state;
+      state = syncCalendarSlots(state);
       state = autoBookEventsAndContracts(state);
       state = runAutopilotTournaments(state);
-
-      // 2. Advance 1 day
+      state = repairFutureEventAvailability(state);
       state = advanceTime(state, 1);
       state = maintainDeals(state);
       state = repairFutureEventAvailability(state);
       state = syncTournamentTitleShotFlags(state);
-
-      // 3. Simulate today's events
-      let todayEvents = Object.values(state.events).filter(e => e.date === state.currentDate && !e.isCompleted);
-      while (todayEvents.length > 0) {
-        const event = todayEvents[0];
-        state = repairEventAvailability(state, event.id);
-        const recheckedEvent = state.events[event.id];
-        if (recheckedEvent && recheckedEvent.date === state.currentDate) {
-          state = quickSimulateEvent(state, recheckedEvent.id);
-          todayEvents = Object.values(state.events).filter(e => e.date === state.currentDate && !e.isCompleted);
-        } else {
-          // If postponed, get remaining today events
-          todayEvents = Object.values(state.events).filter(e => e.date === state.currentDate && !e.isCompleted);
-        }
-      }
+      state = repairPastScheduledEvents(state);
+      state = simulateDueEvents(state, false).state;
+      state = syncCalendarSlots(state);
     } catch (err: any) {
       crashCount++;
       errorMessage = err.message || String(err);
@@ -104,9 +94,17 @@ function computeDiagnostics(state: GameState, crashCount: number) {
   let slotEventDateMismatches = 0;
   let fakeGPSlots = 0;
   let stalePlannedSlots = 0;
+  let duplicateGpRetries = 0;
 
   if (state.seasonPlans) {
     Object.values(state.seasonPlans).forEach(plan => {
+      const retrySlots = plan.slots.filter(slot =>
+        slot.type === 'grand_prix_window' &&
+        slot.status === 'planned' &&
+        (slot.notes || []).some(note => note.startsWith('Rescheduled Grand Prix Window'))
+      );
+      if (retrySlots.length > 1) duplicateGpRetries += retrySlots.length - 1;
+
       plan.slots.forEach(slot => {
         if (slot.eventId) {
           const event = state.events[slot.eventId] || state.eventArchive?.[slot.eventId];
@@ -182,6 +180,7 @@ function computeDiagnostics(state: GameState, crashCount: number) {
     doubleBookedCount,
     slotEventDateMismatches,
     stalePlannedSlots,
+    duplicateGpRetries,
     fakeGPCount: fakeGPSlots + fakeGPEvents,
     calendarIntegrityErrors,
     tournamentInvariantErrors,
@@ -205,6 +204,7 @@ function printReport(label: string, d: ReturnType<typeof computeDiagnostics>) {
   console.log(`- Double-Booked Future Fighters Count: ${d.doubleBookedCount}`);
   console.log(`- Slot/Event Date Mismatch Count: ${d.slotEventDateMismatches}`);
   console.log(`- Stale Planned Slot Count: ${d.stalePlannedSlots}`);
+  console.log(`- Duplicate GP Retry Count: ${d.duplicateGpRetries}`);
   console.log(`- Fake GP Slot/Event Count: ${d.fakeGPCount}`);
   console.log(`- Calendar Integrity Errors: ${d.calendarIntegrityErrors}`);
   console.log(`- Tournament Invariant Errors: ${d.tournamentInvariantErrors}`);
@@ -215,8 +215,271 @@ function printReport(label: string, d: ReturnType<typeof computeDiagnostics>) {
   console.log(`=======================================`);
 }
 
+function createDeterministicEvent(state: GameState, date: string, name = 'Deterministic Test Event') {
+  const fighters = Object.values(state.fighters).filter(f => f.contract && !f.injuryStatus && !f.medicalSuspension);
+  const fights = [0, 2, 4].map((idx) => ({
+    id: `det-fight-${idx}`,
+    redCornerId: fighters[idx].id,
+    blueCornerId: fighters[idx + 1].id,
+    weightClass: fighters[idx].weightClass,
+    isTitleFight: false,
+    rounds: 3
+  }));
+  const venue = Object.values(state.venues)[0];
+  return {
+    id: 'det-event',
+    name,
+    date,
+    venueId: venue.id,
+    ticketPrice: 20,
+    marketingSpend: 500,
+    fights,
+    isCompleted: false
+  };
+}
+
+function runDeterministicOverdueEventTest() {
+  let state = generateInitialWorld();
+  state.currentDate = '2026-03-01';
+  const event = createDeterministicEvent(state, '2026-02-01');
+  state.events[event.id] = event;
+
+  state = repairPastScheduledEvents(state);
+  state = simulateDueEvents(state, false).state;
+
+  const stale = Object.values(state.events).filter(e => !e.isCompleted && e.date < state.currentDate);
+  if (stale.length > 0) {
+    throw new Error(`Deterministic overdue event test failed: ${stale.length} stale events remain.`);
+  }
+}
+
+function runDeterministicFakeGpValidatorTest() {
+  const state = generateInitialWorld();
+  const event = createDeterministicEvent(state, state.currentDate, 'CD GP Semifinal Deterministic Fake');
+  state.events[event.id] = event;
+
+  const errors = validateSeasonCalendarState(state);
+  if (!errors.some(e => e.includes('GP event has no tournament fights/metadata'))) {
+    throw new Error('Deterministic fake GP validator test failed.');
+  }
+}
+
+function runDeterministicRepairReplacementSelfFightTest() {
+  let state = generateInitialWorld();
+  state.currentDate = '2026-01-01';
+  const fighters = Object.values(state.fighters).filter(f => f.contract && f.weightClass === 'Welterweight');
+  const unavailable = fighters[0];
+  const opponent = fighters[1];
+  const event = createDeterministicEvent(state, '2026-01-20', 'Deterministic Repair Self Fight Event');
+  state.fighters[unavailable.id] = {
+    ...unavailable,
+    medicalSuspension: {
+      id: 'det-suspension',
+      reason: 'hard_fight',
+      daysRemaining: 10,
+      sourceFightId: 'det-source',
+      severity: 'minor'
+    }
+  };
+  state.events[event.id] = {
+    ...event,
+    fights: [{
+      id: 'det-repair-fight',
+      redCornerId: unavailable.id,
+      blueCornerId: opponent.id,
+      weightClass: 'Welterweight',
+      isTitleFight: false,
+      rounds: 3
+    }]
+  };
+
+  state = repairEventAvailability(state, event.id);
+  const repairedFight = state.events[event.id]?.fights.find(f => f.id === 'det-repair-fight');
+  if (repairedFight?.redCornerId === repairedFight?.blueCornerId) {
+    throw new Error('Deterministic repair replacement self-fight test failed.');
+  }
+}
+
+function runDeterministicGpWinnerChampionSelfFightTest() {
+  let state = generateInitialWorld();
+  state.currentDate = '2026-01-01';
+
+  const fighters = Object.values(state.fighters).filter(f => f.contract && f.weightClass === 'Middleweight');
+  const champ = fighters[0];
+  const contender = fighters[1];
+  const event = createDeterministicEvent(state, '2026-01-10', 'Deterministic GP Title Shot Event');
+  state.titles.Middleweight = {
+    ...state.titles.Middleweight,
+    undisputedChampionId: champ.id,
+    interimChampionId: null,
+    status: 'active'
+  };
+  state.fighters[champ.id] = { ...champ, isChampion: true, titleShotPromised: true };
+  state.fighters[contender.id] = { ...contender, titleShotPromised: true };
+  state.tournaments['det-used-gp'] = {
+    id: 'det-used-gp',
+    name: 'Used Middleweight GP',
+    shortName: 'Used MW GP',
+    weightClass: 'Middleweight',
+    status: 'completed',
+    format: 'four_man',
+    createdDate: '2025-01-01',
+    completedDate: '2025-03-01',
+    participants: [],
+    reserveFighterIds: [],
+    usedReserveFighterIds: [],
+    fights: [],
+    titleShotPromised: true,
+    titleShotUsed: true,
+    winnerId: champ.id,
+    prestige: 70,
+    notes: []
+  } as GrandPrixTournament;
+  state.tournaments['det-open-gp'] = {
+    ...state.tournaments['det-used-gp'],
+    id: 'det-open-gp',
+    name: 'Open Middleweight GP',
+    titleShotUsed: false,
+    winnerId: contender.id
+  } as GrandPrixTournament;
+  state.events = {};
+  state.events[event.id] = { ...event, fights: [] };
+  state.seasonPlans = {
+    2026: {
+      year: 2026,
+      createdDate: state.currentDate,
+      targetEvents: 1,
+      targetTentpoles: 0,
+      targetGrandPrix: 0,
+      status: 'active',
+      slots: [{
+        id: 'det-slot',
+        year: 2026,
+        date: event.date,
+        type: 'title_fight_card',
+        status: 'planned',
+        priority: 1,
+        eventId: event.id
+      }]
+    }
+  };
+
+  state = autoBookEventsAndContracts(state);
+  const bookedEvent = state.events[event.id];
+  const selfFight = bookedEvent?.fights.find(f => f.redCornerId === f.blueCornerId);
+  if (selfFight) {
+    throw new Error('Deterministic GP winner champion self-fight test failed.');
+  }
+}
+
+function runDeterministicUsedTitleShotFlagCleanupTest() {
+  let state = generateInitialWorld();
+  state.currentDate = '2026-01-01';
+  const fighters = Object.values(state.fighters).filter(f => f.contract && f.weightClass === 'Middleweight');
+  const champ = fighters[0];
+  const challenger = fighters[1];
+  const event = createDeterministicEvent(state, state.currentDate, 'Deterministic Title Shot Cleanup Event');
+  const fight = {
+    ...event.fights[0],
+    redCornerId: champ.id,
+    blueCornerId: challenger.id,
+    weightClass: 'Middleweight' as const,
+    isTitleFight: true,
+    titleFightType: 'undisputed' as const,
+    rounds: 5
+  };
+
+  state.titles.Middleweight = {
+    ...state.titles.Middleweight,
+    undisputedChampionId: champ.id,
+    interimChampionId: null,
+    status: 'active'
+  };
+  state.fighters[champ.id] = { ...champ, isChampion: true };
+  state.fighters[challenger.id] = { ...challenger, titleShotPromised: true };
+  state.tournaments['det-open-gp'] = {
+    id: 'det-open-gp',
+    name: 'Open Middleweight GP',
+    shortName: 'Open MW GP',
+    weightClass: 'Middleweight',
+    status: 'completed',
+    format: 'four_man',
+    createdDate: '2025-01-01',
+    completedDate: '2025-03-01',
+    participants: [],
+    reserveFighterIds: [],
+    usedReserveFighterIds: [],
+    fights: [],
+    titleShotPromised: true,
+    titleShotUsed: false,
+    winnerId: challenger.id,
+    prestige: 70,
+    notes: []
+  } as GrandPrixTournament;
+  state.events[event.id] = { ...event, fights: [fight] };
+
+  state = applyFightResult(state, event.id, 0, {
+    winnerId: champ.id,
+    loserId: challenger.id,
+    method: 'Unanimous Decision',
+    round: 5,
+    time: '5:00',
+    commentary: [],
+    performanceRating: 80
+  });
+
+  if (state.fighters[challenger.id].titleShotPromised || !state.tournaments['det-open-gp'].titleShotUsed) {
+    throw new Error('Deterministic used title-shot flag cleanup test failed.');
+  }
+}
+
+function assertAcceptanceReports(reports: Array<{ label: string; diagnostics: ReturnType<typeof computeDiagnostics> }>) {
+  const failures: string[] = [];
+  const hardFailKeys: Array<keyof ReturnType<typeof computeDiagnostics>> = [
+    'crashCount',
+    'pastScheduledEvents',
+    'scheduledEventsWith0Fights',
+    'upcomingUnavailableFighters',
+    'doubleBookedCount',
+    'slotEventDateMismatches',
+    'duplicateGpRetries',
+    'fakeGPCount',
+    'calendarIntegrityErrors',
+    'tournamentInvariantErrors',
+    'titleShotDebtErrors',
+    'roundStatsErrors',
+    'completedEventMissingResult'
+  ];
+
+  reports.forEach(({ label, diagnostics }) => {
+    hardFailKeys.forEach(key => {
+      const value = diagnostics[key];
+      if (typeof value === 'number' && value > 0) failures.push(`${label}: ${String(key)} = ${value}`);
+    });
+
+    if (label === '365 Days' && diagnostics.completedEvents < 3) {
+      failures.push(`${label}: completedEvents = ${diagnostics.completedEvents}`);
+    }
+  });
+
+  if (failures.length > 0) {
+    throw new Error(`Long-sim acceptance failed:\n${failures.join('\n')}`);
+  }
+}
+
 async function runTests() {
   console.log("Starting Long-Simulation Acceptance Tests...");
+  runDeterministicOverdueEventTest();
+  runDeterministicFakeGpValidatorTest();
+  runDeterministicRepairReplacementSelfFightTest();
+  runDeterministicGpWinnerChampionSelfFightTest();
+  runDeterministicUsedTitleShotFlagCleanupTest();
+
+  const reports: Array<{ label: string; diagnostics: ReturnType<typeof computeDiagnostics> }> = [];
+  const recordReport = (label: string, diagnostics: ReturnType<typeof computeDiagnostics>) => {
+    printReport(label, diagnostics);
+    reports.push({ label, diagnostics });
+  };
 
   const makeFreshWorld = () => {
     const w = generateInitialWorld();
@@ -228,38 +491,38 @@ async function runTests() {
   console.log("\nRunning 365-day simulation...");
   const sim365 = runDaysSimulation(makeFreshWorld(), 365);
   const diag365 = computeDiagnostics(sim365.state, sim365.crashCount);
-  printReport("365 Days", diag365);
+  recordReport("365 Days", diag365);
 
   // Run 730 Days
   console.log("\nRunning 730-day simulation...");
   const sim730 = runDaysSimulation(makeFreshWorld(), 730);
   const diag730 = computeDiagnostics(sim730.state, sim730.crashCount);
-  printReport("730 Days", diag730);
+  recordReport("730 Days", diag730);
 
   // Run 1095 Days
   console.log("\nRunning 1095-day simulation...");
   const sim1095 = runDaysSimulation(makeFreshWorld(), 1095);
   const diag1095 = computeDiagnostics(sim1095.state, sim1095.crashCount);
-  printReport("1095 Days", diag1095);
+  recordReport("1095 Days", diag1095);
 
   // Run 1460 Days
   console.log("\nRunning 1460-day simulation...");
   const sim1460 = runDaysSimulation(makeFreshWorld(), 1460);
   const diag1460 = computeDiagnostics(sim1460.state, sim1460.crashCount);
-  printReport("1460 Days", diag1460);
+  recordReport("1460 Days", diag1460);
 
   // Run 1825 Days
   console.log("\nRunning 1825-day simulation...");
   const sim1825 = runDaysSimulation(makeFreshWorld(), 1825);
   const diag1825 = computeDiagnostics(sim1825.state, sim1825.crashCount);
-  printReport("1825 Days", diag1825);
+  recordReport("1825 Days", diag1825);
 
   // Run 5-Run Sample for 1460 Days
   console.log("\nRunning 5-run sample of 1460 days...");
   for (let run = 1; run <= 5; run++) {
     const simSample = runDaysSimulation(makeFreshWorld(), 1460);
     const diagSample = computeDiagnostics(simSample.state, simSample.crashCount);
-    printReport(`1460 Days - Run #${run}`, diagSample);
+    recordReport(`1460 Days - Run #${run}`, diagSample);
   }
 
   // Run 5-Run Sample for 1825 Days
@@ -267,8 +530,10 @@ async function runTests() {
   for (let run = 1; run <= 5; run++) {
     const simSample = runDaysSimulation(makeFreshWorld(), 1825);
     const diagSample = computeDiagnostics(simSample.state, simSample.crashCount);
-    printReport(`1825 Days - Run #${run}`, diagSample);
+    recordReport(`1825 Days - Run #${run}`, diagSample);
   }
+
+  assertAcceptanceReports(reports);
 }
 
 runTests().catch(err => {

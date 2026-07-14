@@ -1,10 +1,11 @@
-import React, { useEffect, useRef, Suspense } from 'react';
+import React, { useEffect, useRef, Suspense, useMemo, useState } from 'react';
 import { useGameStore } from './store/gameStore';
-import { 
-  Users, UserPlus, Calendar, Trophy, Newspaper, 
-  Settings, Play, Save, Download, LayoutDashboard, Upload, FileJson, Award, PlusCircle
-} from 'lucide-react';
+import { Download, FileJson, Save, Upload } from 'lucide-react';
+import { AppShell } from './components/AppShell';
+import { Button } from './components/ui';
 import Dashboard from './pages/Dashboard';
+
+const FREE_AGENTS_NAV_LABEL = 'Sign Fighters';
 
 const Roster = React.lazy(() => import('./pages/Roster'));
 const FreeAgents = React.lazy(() => import('./pages/FreeAgents'));
@@ -18,10 +19,17 @@ const HistoryStats = React.lazy(() => import('./pages/HistoryStats'));
 const FightDetail = React.lazy(() => import('./pages/FightDetail').then(module => ({ default: module.FightDetail })));
 const Tournaments = React.lazy(() => import('./pages/Tournaments'));
 const CalendarPage = React.lazy(() => import('./pages/Calendar'));
+const MmaGuide = React.lazy(() => import('./pages/MmaGuide'));
 
 function App() {
-  const { currentView, setView, promotion, currentDate, advanceDays, newGame, saveGame, loadGame, exportGame, importGame } = useGameStore();
+  const { currentView, setView, promotion, currentDate, fighters, events, advanceDays, newGame, saveGame, loadGame, exportGame, importGame } = useGameStore();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [search, setSearch] = useState('');
+  const query = search.trim().toLowerCase();
+  const searchResults = useMemo(() => query ? [
+    ...Object.values(fighters).filter(fighter => `${fighter.firstName} ${fighter.lastName} ${fighter.nickname}`.toLowerCase().includes(query)).slice(0, 4).map(fighter => ({ id: fighter.id, label: `${fighter.firstName} ${fighter.lastName}`, type: 'Fighter' as const })),
+    ...Object.values(events).filter(event => !event.isCompleted && event.name.toLowerCase().includes(query)).slice(0, 4).map(event => ({ id: event.id, label: event.name, type: 'Event' as const }))
+  ] : [], [query, fighters, events]);
 
   const handleImportClick = () => {
     fileInputRef.current?.click();
@@ -59,6 +67,7 @@ function App() {
                case 'tournaments': return <Tournaments />;
                case 'debug': return <DebugSim />;
                case 'calendar': return <CalendarPage />;
+               case 'mma-guide': return <MmaGuide />;
                default: return <Dashboard />;
              }
           })()}
@@ -66,100 +75,29 @@ function App() {
     );
   };
 
-  return (
-    <div className="flex h-screen bg-neutral-950 text-neutral-200 font-sans overflow-hidden">
-      {/* Sidebar */}
-      <aside className="w-64 bg-neutral-900 border-r border-neutral-800 flex flex-col">
-        <div className="p-4 border-b border-neutral-800">
-          <h1 className="text-xl font-black tracking-tight text-white uppercase">{promotion.name}</h1>
-          <p className="text-sm text-neutral-400 font-mono mt-1">Rep: {promotion.reputation} | Fans: {promotion.fanbase.toLocaleString()}</p>
-        </div>
-        
-        <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
-          <NavItem icon={<LayoutDashboard size={18} />} label="Dashboard" active={currentView === 'dashboard'} onClick={() => setView('dashboard')} />
-          <NavItem icon={<Users size={18} />} label="Roster" active={currentView === 'roster'} onClick={() => setView('roster')} />
-          <NavItem icon={<Calendar size={18} />} label="Calendar" active={currentView === 'calendar'} onClick={() => setView('calendar')} />
-          <NavItem icon={<PlusCircle size={18} />} label="Book Event" active={currentView === 'event-builder'} onClick={() => setView('event-builder')} />
-          <NavItem icon={<Trophy size={18} />} label="Rankings" active={currentView === 'rankings'} onClick={() => setView('rankings')} />
-          <NavItem icon={<Award size={18} />} label="Tournaments" active={currentView === 'tournaments'} onClick={() => setView('tournaments')} />
-          <NavItem icon={<UserPlus size={18} />} label="Free Agents" active={currentView === 'free-agents'} onClick={() => setView('free-agents')} />
-          <NavItem icon={<Newspaper size={18} />} label="News" active={currentView === 'news'} onClick={() => setView('news')} />
-          <NavItem icon={<Download size={18} />} label="History & Stats" active={currentView === 'history'} onClick={() => setView('history')} />
-          <NavItem icon={<Settings size={18} />} label="Debug Sim" active={currentView === 'debug'} onClick={() => setView('debug')} />
-        </nav>
-
-        <div className="p-4 border-t border-neutral-800 space-y-2">
-          <button onClick={() => advanceDays(7)} className="w-full flex items-center justify-center gap-2 bg-neutral-100 hover:bg-white text-neutral-900 px-4 py-2 rounded-md font-bold text-sm transition-colors">
-            <Play size={16} /> Advance Week
-          </button>
-          <div className="flex gap-2">
-            <button onClick={saveGame} className="flex-1 flex items-center justify-center gap-1 bg-neutral-800 hover:bg-neutral-700 text-white px-2 py-2 rounded-md font-medium text-xs transition-colors">
-              <Save size={14} /> Save
-            </button>
-            <button onClick={loadGame} className="flex-1 flex items-center justify-center gap-1 bg-neutral-800 hover:bg-neutral-700 text-white px-2 py-2 rounded-md font-medium text-xs transition-colors">
-              <Download size={14} /> Load
-            </button>
-          </div>
-          <div className="flex gap-2">
-            <button onClick={exportGame} className="flex-1 flex items-center justify-center gap-1 bg-neutral-800 hover:bg-neutral-700 text-white px-2 py-2 rounded-md font-medium text-xs transition-colors">
-              <FileJson size={14} /> Export
-            </button>
-            <button onClick={handleImportClick} className="flex-1 flex items-center justify-center gap-1 bg-neutral-800 hover:bg-neutral-700 text-white px-2 py-2 rounded-md font-medium text-xs transition-colors">
-              <Upload size={14} /> Import
-            </button>
-            <input 
-              type="file" 
-              accept=".json" 
-              ref={fileInputRef} 
-              onChange={handleFileChange} 
-              className="hidden" 
-            />
-          </div>
-          <button onClick={() => { if(window.confirm('Start new game? Unsaved progress will be lost.')) newGame() }} className="w-full text-center text-xs text-neutral-500 hover:text-white pt-2">
-            New Game
-          </button>
-        </div>
-      </aside>
-
-      {/* Main Content */}
-      <main className="flex-1 flex flex-col h-full relative overflow-hidden">
-        {/* Topbar */}
-        <header className="h-14 bg-neutral-900/50 border-b border-neutral-800 flex items-center justify-between px-6 shrink-0">
-          <div className="flex items-center gap-4">
-            <span className="font-mono text-sm text-neutral-400 bg-neutral-800/50 px-2 py-1 rounded">
-              {currentDate}
-            </span>
-          </div>
-          <div className="flex items-center gap-4">
-            <div className="text-sm font-medium text-green-400 font-mono bg-green-400/10 px-3 py-1 rounded">
-              ${promotion.money.toLocaleString()}
-            </div>
-          </div>
-        </header>
-
-        {/* View Area */}
-        <div className="flex-1 overflow-auto bg-neutral-950 p-6">
-          <div className="max-w-7xl mx-auto">
-            {renderView()}
-          </div>
-        </div>
-      </main>
-    </div>
-  );
-}
-
-function NavItem({ icon, label, active, onClick }: { icon: React.ReactNode, label: string, active: boolean, onClick: () => void }) {
-  return (
-    <button
-      onClick={onClick}
-      className={`w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-        active ? 'bg-neutral-800 text-white' : 'text-neutral-400 hover:bg-neutral-800/50 hover:text-neutral-200'
-      }`}
-    >
-      {icon}
-      {label}
-    </button>
-  );
+  return <AppShell
+    currentView={currentView}
+    onNavigate={view => setView(view)}
+    title={promotion.name}
+    date={currentDate}
+    money={promotion.money}
+    reputation={promotion.reputation}
+    freeAgentsLabel={FREE_AGENTS_NAV_LABEL}
+    onAdvanceWeek={() => advanceDays(7)}
+    utilities={<div className="space-y-2">
+      <div className="relative"><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Find fighter or event" aria-label="Quick search" className="h-10 w-full rounded border border-neutral-800 bg-neutral-950 px-3 text-xs text-white outline-none focus:border-neutral-500" />{searchResults.length > 0 && <div className="absolute bottom-11 z-20 w-full overflow-hidden rounded border border-neutral-700 bg-[#101114] shadow-xl">{searchResults.map(result => <button key={`${result.type}-${result.id}`} type="button" onClick={() => { setView(result.type === 'Fighter' ? 'fighter-detail' : 'event-builder', result.type === 'Fighter' ? { fighterId: result.id } : { eventId: result.id }); setSearch(''); }} className="block w-full border-b border-neutral-800 px-3 py-2 text-left text-xs text-neutral-300 last:border-0 hover:bg-white/5 hover:text-white"><span className="mr-2 font-mono text-[9px] uppercase text-neutral-500">{result.type}</span>{result.label}</button>)}</div>}</div>
+      <div className="grid grid-cols-2 gap-2">
+        <Button variant="secondary" onClick={saveGame} className="flex min-h-10 items-center justify-center gap-1 px-2 text-xs"><Save size={14} /> Save</Button>
+        <Button variant="secondary" onClick={loadGame} className="flex min-h-10 items-center justify-center gap-1 px-2 text-xs"><Download size={14} /> Load</Button>
+        <Button variant="secondary" onClick={exportGame} className="flex min-h-10 items-center justify-center gap-1 px-2 text-xs"><FileJson size={14} /> Export</Button>
+        <Button variant="secondary" onClick={handleImportClick} className="flex min-h-10 items-center justify-center gap-1 px-2 text-xs"><Upload size={14} /> Import</Button>
+      </div>
+      <input type="file" accept=".json" ref={fileInputRef} onChange={handleFileChange} className="hidden" />
+      <Button variant="quiet" onClick={() => { if (window.confirm('Start new game? Unsaved progress will be lost.')) newGame(); }} className="w-full text-xs">New Game</Button>
+    </div>}
+  >
+    {renderView()}
+  </AppShell>;
 }
 
 export default App;

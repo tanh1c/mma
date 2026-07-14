@@ -1,5 +1,5 @@
 import { generateInitialWorld } from './src/lib/game/generator';
-import { createGrandPrixTournament, scheduleQuarterfinals, scheduleSemifinals, scheduleFinal, applyTournamentProgression, cancelTournament } from './src/lib/game/tournament';
+import { createGrandPrixTournament, scheduleQuarterfinals, scheduleSemifinals, scheduleFinal, applyTournamentProgression, cancelTournament, validateTournamentState } from './src/lib/game/tournament';
 import { applyFightResult } from './src/lib/engine';
 import { simulateFight } from './src/lib/game/fightSimulator';
 import { FightMatchup } from './src/types/game';
@@ -261,6 +261,64 @@ try {
   console.log("Case C Passed!");
   
   console.log("✅ ALL TOURNAMENT WORKFLOW TESTS PASSED!");
+
+  console.log("\n=== RUNNING DRAWN GRAND PRIX PROGRESSION TESTS ===");
+  let drawState = generateInitialWorld();
+  const drawCandidates = Object.values(drawState.fighters)
+    .filter(f => f.weightClass === 'Lightweight' && !f.isChampion)
+    .slice(0, 4)
+    .map(f => ({
+      ...f,
+      contract: f.contract || { fightsRemaining: 3, payPerFight: 10000, winBonus: 10000, exclusivity: true },
+      injuryStatus: null,
+      medicalSuspension: null,
+      fatigue: 0
+    }));
+
+  drawCandidates.forEach(fighter => { drawState.fighters[fighter.id] = fighter; });
+  drawState = createGrandPrixTournament(drawState, {
+    weightClass: 'Lightweight',
+    name: 'Draw Progression Grand Prix',
+    titleShotPromised: false,
+    participantIds: drawCandidates.map(fighter => fighter.id),
+    reserveIds: []
+  });
+
+  const drawTourneyId = Object.keys(drawState.tournaments).find(id => drawState.tournaments[id].name === 'Draw Progression Grand Prix')!;
+  const drawSemifinals = drawState.tournaments[drawTourneyId].fights.filter(fight => fight.round === 'semifinal');
+  drawState = applyTournamentProgression(drawState, drawTourneyId, drawSemifinals[0].id, null, null);
+  drawState = applyTournamentProgression(drawState, drawTourneyId, drawSemifinals[1].id, null, null);
+  const completedDrawSemis = drawState.tournaments[drawTourneyId].fights.filter(fight => fight.round === 'semifinal');
+  const drawFinal = drawState.tournaments[drawTourneyId].fights.find(fight => fight.round === 'final')!;
+  if (completedDrawSemis.some(fight => !fight.winnerId) || !drawFinal.redFighterId || !drawFinal.blueFighterId || drawFinal.redFighterId === drawFinal.blueFighterId) {
+    throw new Error('Drawn semifinals must produce two distinct finalists.');
+  }
+  if (validateTournamentState(drawState).some(error => error.includes('missing winnerId'))) {
+    throw new Error('Drawn semifinals must not leave a missing tournament winner invariant.');
+  }
+
+  drawState = applyTournamentProgression(drawState, drawTourneyId, drawFinal.id, null, null);
+  const completedDrawTourney = drawState.tournaments[drawTourneyId];
+  const completedDrawFinal = completedDrawTourney.fights.find(fight => fight.round === 'final')!;
+  if (completedDrawTourney.status !== 'completed' || !completedDrawTourney.winnerId || !completedDrawFinal.winnerId) {
+    throw new Error('A drawn GP final must complete with a bracket winner.');
+  }
+  if (validateTournamentState(drawState).length > 0) {
+    throw new Error(`Drawn GP progression left invariants: ${validateTournamentState(drawState).join('; ')}`);
+  }
+
+  let explicitState = generateInitialWorld();
+  const explicitCandidates = Object.values(explicitState.fighters).filter(f => f.weightClass === 'Lightweight' && !f.isChampion).slice(0, 4).map(f => ({ ...f, contract: f.contract || { fightsRemaining: 3, payPerFight: 10000, winBonus: 10000, exclusivity: true }, injuryStatus: null, medicalSuspension: null, fatigue: 0 }));
+  explicitCandidates.forEach(fighter => { explicitState.fighters[fighter.id] = fighter; });
+  explicitState = createGrandPrixTournament(explicitState, { weightClass: 'Lightweight', name: 'Explicit Winner Grand Prix', titleShotPromised: false, participantIds: explicitCandidates.map(fighter => fighter.id), reserveIds: [] });
+  const explicitTourneyId = Object.keys(explicitState.tournaments).find(id => explicitState.tournaments[id].name === 'Explicit Winner Grand Prix')!;
+  const explicitSemifinal = explicitState.tournaments[explicitTourneyId].fights.find(fight => fight.round === 'semifinal')!;
+  const explicitWinnerId = explicitSemifinal.blueFighterId!;
+  explicitState = applyTournamentProgression(explicitState, explicitTourneyId, explicitSemifinal.id, explicitWinnerId, explicitSemifinal.redFighterId!);
+  if (explicitState.tournaments[explicitTourneyId].fights.find(fight => fight.id === explicitSemifinal.id)?.winnerId !== explicitWinnerId) {
+    throw new Error('Explicit GP winners must advance unchanged.');
+  }
+  console.log("✅ DRAWN GRAND PRIX PROGRESSION TESTS PASSED!");
 
   // CANCELLATION TEST
   console.log("\n=== RUNNING CANCEL TOURNAMENT TESTS ===");

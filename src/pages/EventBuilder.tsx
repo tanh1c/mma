@@ -4,16 +4,22 @@ import { WeightClass, FightMatchup } from '../types/game';
 import { v4 as uuidv4 } from 'uuid';
 import { addDays, format } from 'date-fns';
 import { calculateEventProjections } from '../lib/game/economy';
+import { compareFighters, getFighterReadiness, recommendMatchups } from '../lib/game/insights';
 import { ArrowUp, ArrowDown, Trash2, AlertTriangle, Info } from 'lucide-react';
 import { Select } from '../components/Select';
+import { getEventName } from '../lib/branding';
+import { CountryFlag } from '../components/CountryFlag';
+import { FighterAvatar } from '../components/FighterAvatar';
+import { Button, Panel, PageHeader } from '../components/ui';
 
 export default function EventBuilder() {
-  const { fighters, venues, promotion, currentDate, storylines, titles, belts, createEvent, updateEvent, setView, selectedEventId, selectedCalendarSlotId, seasonPlans = {}, events, tournaments = {} } = useGameStore();
+  const gameState = useGameStore();
+  const { fighters, venues, promotion, currentDate, storylines, titles, belts, createEvent, updateEvent, setView, goBack, selectedEventId, selectedCalendarSlotId, seasonPlans = {}, events, tournaments = {} } = gameState;
   
   const isEditing = Boolean(selectedEventId && events[selectedEventId] && !events[selectedEventId].isCompleted);
   const editingEvent = isEditing ? events[selectedEventId!] : null;
 
-  const [eventName, setEventName] = useState(editingEvent ? editingEvent.name : `Cage Dynasty ${Object.keys(events).length + 1}`);
+  const [eventName, setEventName] = useState(editingEvent ? editingEvent.name : getEventName('regular', Object.keys(events).length + 1));
   const [eventDate, setEventDate] = useState(editingEvent ? editingEvent.date : format(addDays(new Date(currentDate), 28), 'yyyy-MM-dd'));
   const [venueId, setVenueId] = useState(editingEvent ? editingEvent.venueId : Object.keys(venues)[0]);
   const [ticketPrice, setTicketPrice] = useState(editingEvent ? editingEvent.ticketPrice : 50);
@@ -30,17 +36,18 @@ export default function EventBuilder() {
       if (slot) {
         setEventDate(slot.date);
         
-        let initialName = `Cage Dynasty ${Object.keys(events).length + 1}`;
+        const eventIndex = Object.keys(events).length + 1;
+        const initialName = slot.type === 'tentpole_event'
+          ? getEventName('tentpole', eventIndex)
+          : slot.type === 'title_fight_card'
+            ? getEventName('title', eventIndex)
+            : slot.type === 'grand_prix_round'
+              ? getEventName('grand_prix', eventIndex, slot.tournamentRound)
+              : getEventName('regular', eventIndex);
         if (slot.type === 'tentpole_event') {
-          initialName = `CD Mega Showdown ${Object.keys(events).length + 1}`;
           setMarketingSpend(25000);
           const largeVenue = Object.values(venues).sort((a, b) => b.capacity - a.capacity)[0];
           if (largeVenue) setVenueId(largeVenue.id);
-        } else if (slot.type === 'title_fight_card') {
-          initialName = `CD Championship Special ${Object.keys(events).length + 1}`;
-        } else if (slot.type === 'grand_prix_round') {
-          const roundLabel = slot.tournamentRound ? slot.tournamentRound.charAt(0).toUpperCase() + slot.tournamentRound.slice(1) : '';
-          initialName = `CD GP ${roundLabel} ${Object.keys(events).length + 1}`;
         }
         setEventName(initialName);
 
@@ -81,6 +88,8 @@ export default function EventBuilder() {
 
   const [redFighter, setRedFighter] = useState('');
   const [blueFighter, setBlueFighter] = useState('');
+  const [fighterSearch, setFighterSearch] = useState('');
+  const [readinessFilter, setReadinessFilter] = useState<'All' | 'Ready' | 'Risky'>('All');
   const [isTitleFight, setIsTitleFight] = useState(false);
   const [rounds, setRounds] = useState('3');
 
@@ -90,6 +99,17 @@ export default function EventBuilder() {
   // Filter out fighters already booked
   const bookedFighterIds = fights.flatMap(f => [f.redCornerId, f.blueCornerId]);
   const availableWcFighters = wcFighters.filter(f => !bookedFighterIds.includes(f.id));
+  const fighterOptions = availableWcFighters.filter(fighter => {
+    const query = fighterSearch.trim().toLowerCase();
+    const matchesSearch = !query || `${fighter.firstName} ${fighter.lastName} ${fighter.nickname}`.toLowerCase().includes(query);
+    const readiness = getFighterReadiness(fighter);
+    return matchesSearch && (readinessFilter === 'All' || (readinessFilter === 'Ready' ? readiness.status === 'ready' : readiness.status === 'fatigued'));
+  }).map(fighter => {
+    const readiness = getFighterReadiness(fighter);
+    return { value: fighter.id, label: `${fighter.firstName} ${fighter.lastName} (${fighter.record.wins}-${fighter.record.losses}) ${fighter.isChampion ? '👑' : ''}${readiness.status === 'ready' ? '' : ` [${readiness.label.toUpperCase()}]`}`, disabled: !readiness.eligible };
+  });
+  const recommendations = useMemo(() => recommendMatchups(gameState, selectedWC as WeightClass, bookedFighterIds), [gameState, selectedWC, fights]);
+  const comparison = redFighter && blueFighter && fighters[redFighter] && fighters[blueFighter] ? compareFighters(fighters[redFighter], fighters[blueFighter]) : null;
 
   const projections = useMemo(() => {
     return calculateEventProjections(
@@ -109,7 +129,7 @@ export default function EventBuilder() {
     return (
       <div className="text-center p-10 text-neutral-400">
         <h2 className="text-xl mb-4">Event is already completed and cannot be edited.</h2>
-        <button onClick={() => setView('dashboard')} className="bg-neutral-800 text-white px-4 py-2 rounded">Return to Dashboard</button>
+        <Button variant="secondary" onClick={() => goBack('dashboard')}>Back</Button>
       </div>
     );
   }
@@ -331,7 +351,7 @@ export default function EventBuilder() {
       });
     }
 
-    setView('dashboard');
+    setView('dashboard', undefined, { replace: true });
   };
 
   const venueOptions = Object.values(venues).map(v => ({
@@ -348,29 +368,15 @@ export default function EventBuilder() {
     { value: 'Bantamweight', label: 'Bantamweight' }
   ];
 
-  const fighterOptions = availableWcFighters.map(f => {
-    let status = '';
-    if (f.injuryStatus) status = ' [INJURED]';
-    else if (f.medicalSuspension) status = ` [SUSPENDED: ${f.medicalSuspension.daysRemaining}d]`;
-    else if (f.fatigue > 50) status = ' [TIRED]';
-    
-    const isDisabled = f.injuryStatus !== null || !!f.medicalSuspension || f.fatigue >= 80;
-    return {
-      value: f.id,
-      label: `${f.firstName} ${f.lastName} (${f.record.wins}-${f.record.losses}) ${f.isChampion ? '👑' : ''}${status}`,
-      disabled: isDisabled
-    };
-  });
-
   return (
-    <div className="space-y-6 max-w-6xl mx-auto pb-10">
-      <h1 className="text-2xl font-black text-white uppercase">{isEditing ? 'Edit Event' : 'Book Event'}</h1>
+    <div className="mx-auto max-w-6xl space-y-6 pb-10">
+      <PageHeader eyebrow="Promotion operations" title={isEditing ? 'Edit Event' : 'Book Event'} description={isEditing ? 'Review the existing card, projections and logistics.' : 'Build a card, review projections, then confirm the event.'} />
       
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         
         {/* Left Column - Details & Booking */}
         <div className="lg:col-span-5 space-y-6">
-          <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-5 space-y-4 shadow-sm">
+          <Panel className="space-y-4">
             <h2 className="text-lg font-bold text-white flex items-center gap-2">
               <span className="w-6 h-6 rounded bg-neutral-800 flex items-center justify-center text-xs">1</span>
               Event Details
@@ -378,7 +384,7 @@ export default function EventBuilder() {
             
             <div>
               <label className="block text-xs text-neutral-400 mb-1">Event Name</label>
-              <input type="text" value={eventName} onChange={e => setEventName(e.target.value)} className="w-full bg-neutral-950 border border-neutral-800 rounded px-3 py-2 text-white text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-colors" />
+              <input type="text" value={eventName} onChange={e => setEventName(e.target.value)} className="w-full bg-neutral-950 border border-neutral-800 rounded px-3 py-2 text-white text-sm focus:border-neutral-500 focus:ring-1 focus:ring-neutral-500 outline-none transition-colors" />
             </div>
             
             <div className="grid grid-cols-2 gap-4">
@@ -402,20 +408,17 @@ export default function EventBuilder() {
                 <input type="number" min="0" step="1000" value={marketingSpend} onChange={e => setMarketingSpend(Number(e.target.value))} className="w-full bg-neutral-950 border border-neutral-800 rounded px-3 py-2 text-white text-sm focus:border-blue-500 outline-none" />
               </div>
             </div>
-          </div>
+          </Panel>
 
-          <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-5 space-y-4 shadow-sm">
+          <Panel className="space-y-4">
             <div className="flex justify-between items-center">
               <h2 className="text-lg font-bold text-white flex items-center gap-2">
                 <span className="w-6 h-6 rounded bg-neutral-800 flex items-center justify-center text-xs">2</span>
                 Matchmaking
               </h2>
-              <button 
-                onClick={handleAutoFill}
-                className="bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold px-3 py-1.5 rounded transition-colors"
-              >
+              <Button variant="secondary" className="min-h-9 px-3 text-xs" onClick={handleAutoFill}>
                 Auto Fill
-              </button>
+              </Button>
             </div>
             
             <div>
@@ -425,6 +428,11 @@ export default function EventBuilder() {
                 onChange={val => { setSelectedWC(val); setRedFighter(''); setBlueFighter(''); }} 
                 options={wcOptions} 
               />
+            </div>
+
+            <div className="grid grid-cols-[1fr_auto] gap-2">
+              <input value={fighterSearch} onChange={event => setFighterSearch(event.target.value)} placeholder="Search fighter" aria-label="Search fighters" className="min-w-0 rounded border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-white outline-none focus:border-neutral-500" />
+              <Select value={readinessFilter} onChange={value => setReadinessFilter(value as typeof readinessFilter)} options={[{ value: 'All', label: 'All readiness' }, { value: 'Ready', label: 'Ready' }, { value: 'Risky', label: 'Tired' }]} className="w-32" />
             </div>
 
             <div className="space-y-3">
@@ -451,6 +459,10 @@ export default function EventBuilder() {
               </div>
             </div>
 
+            {comparison && <div className="rounded border border-blue-900/50 bg-blue-950/20 p-3 text-xs text-neutral-300" title="Advisory estimate only. The actual fight simulation remains unpredictable."><div className="flex items-center justify-between gap-3"><p className="font-mono uppercase tracking-[0.12em] text-blue-300">Matchup comparison</p><p><span className="font-semibold text-white">{comparison.red.firstName} {comparison.red.lastName} {comparison.redChance}%</span> · <span className="font-semibold text-white">{comparison.blueChance}% {comparison.blue.firstName} {comparison.blue.lastName}</span></p></div><p className="mt-2">{comparison.red.style} vs {comparison.blue.style} · {comparison.red.record.wins}-{comparison.red.record.losses} vs {comparison.blue.record.wins}-{comparison.blue.record.losses}</p><p className="mt-1 text-neutral-400">{comparison.styleNote} {comparison.readiness.red.label} / {comparison.readiness.blue.label}.</p></div>}
+
+            {recommendations.length > 0 && <div className="rounded border border-neutral-800 bg-neutral-950 p-3"><p className="mb-2 font-mono text-[10px] uppercase tracking-[0.12em] text-neutral-500">Recommended matchups</p><div className="space-y-2">{recommendations.slice(0, 3).map(recommendation => <div key={`${recommendation.red.id}-${recommendation.blue.id}`} className="flex items-center justify-between gap-2 text-xs"><div className="min-w-0"><p className="truncate text-neutral-200">{recommendation.red.firstName} {recommendation.red.lastName} vs {recommendation.blue.firstName} {recommendation.blue.lastName} <span title="Match quality estimate based on ranking, popularity, rivalry, and readiness." className="text-blue-300">{recommendation.score}</span></p><p className="truncate text-neutral-500">{recommendation.reasons.slice(0, 2).join(' · ')}</p></div><Button variant="quiet" onClick={() => { setRedFighter(recommendation.red.id); setBlueFighter(recommendation.blue.id); }} className="min-h-8 px-2 text-[10px]">Use</Button></div>)}</div></div>}
+
             <div className="flex items-center gap-4 bg-neutral-950 p-3 rounded border border-neutral-800">
               <label className="flex items-center gap-2 text-sm text-neutral-300 cursor-pointer">
                 <input type="checkbox" checked={isTitleFight} onChange={e => setIsTitleFight(e.target.checked)} className="bg-neutral-900 border-neutral-700 rounded text-blue-500 focus:ring-blue-500 focus:ring-offset-neutral-950" />
@@ -468,17 +480,17 @@ export default function EventBuilder() {
               </label>
             </div>
 
-            <button onClick={addFight} className="w-full bg-neutral-100 hover:bg-white text-black font-bold py-2.5 rounded text-sm transition-colors mt-2">
-              Add Fight to Card
-            </button>
-          </div>
+            <Button variant="primary" onClick={addFight} className="mt-2 w-full">
+              Add fight to card
+            </Button>
+          </Panel>
         </div>
 
         {/* Middle/Right Column - Projections & Card */}
         <div className="lg:col-span-7 flex flex-col gap-6">
           
           {/* Projections Panel */}
-          <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-5 shadow-sm">
+          <Panel>
             <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
               <span className="w-6 h-6 rounded bg-neutral-800 flex items-center justify-center text-xs">3</span>
               Event Projections
@@ -529,10 +541,10 @@ export default function EventBuilder() {
                 <Info size={16} /> Card looks good!
               </div>
             )}
-          </div>
+          </Panel>
 
           {/* Fight Card */}
-          <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-5 flex-1 flex flex-col min-h-[400px]">
+          <Panel className="flex min-h-[400px] flex-1 flex-col">
             <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
               <span className="w-6 h-6 rounded bg-neutral-800 flex items-center justify-center text-xs">4</span>
               Fight Card ({fights.length})
@@ -598,13 +610,13 @@ export default function EventBuilder() {
                               const isGpTitleShotMatch = (isRedChamp && isBlueGPWinner) || (isBlueChamp && isRedGPWinner);
                               
                               return isGpTitleShotMatch && (
-                                <span className="text-purple-400 ml-1 font-bold">
+                                <span title="Grand Prix winner is owed an undisputed title fight." className="text-purple-400 ml-1 font-bold">
                                   🛡 GP Title Shot
                                 </span>
                               );
                             })()}
                             {(fight as any).tournamentId && (
-                              <span className="text-purple-400 ml-1 font-bold text-xs uppercase">
+                              <span title="A scheduled Grand Prix bracket stage." className="text-purple-400 ml-1 font-bold text-xs uppercase">
                                 🛡 {((fight as any).tournamentRound === 'quarterfinal') ? 'GP Quarterfinal' : ((fight as any).tournamentRound === 'semifinal') ? 'GP Semifinal' : 'GP Final'}
                               </span>
                             )}
@@ -613,11 +625,15 @@ export default function EventBuilder() {
                         <div className="flex justify-between items-center text-sm font-bold text-white bg-neutral-900/50 p-2 rounded">
                           <div className="w-[45%] text-right flex items-center justify-end gap-2 truncate">
                             <span className="truncate">{red.firstName} <span className="text-neutral-400">{red.lastName}</span></span>
+                            <CountryFlag nationality={red.nationality} className="text-xs" />
+                            <FighterAvatar id={red.id} name={`${red.firstName} ${red.lastName}`} nationality={red.nationality} className="h-6 w-6" />
                             <span className="text-[10px] font-normal text-neutral-500 min-w-[30px]">({red.popularity})</span>
                           </div>
                           <span className="w-[10%] text-center text-neutral-600 text-xs italic">vs</span>
                           <div className="w-[45%] text-left flex items-center gap-2 truncate">
                             <span className="text-[10px] font-normal text-neutral-500 min-w-[30px]">({blue.popularity})</span>
+                            <FighterAvatar id={blue.id} name={`${blue.firstName} ${blue.lastName}`} nationality={blue.nationality} className="h-6 w-6" />
+                            <CountryFlag nationality={blue.nationality} className="text-xs" />
                             <span className="truncate">{blue.firstName} <span className="text-neutral-400">{blue.lastName}</span></span>
                           </div>
                         </div>
@@ -632,15 +648,11 @@ export default function EventBuilder() {
             </div>
             
             <div className="mt-4 pt-4 border-t border-neutral-800">
-              <button 
-                onClick={handleBook}
-                disabled={fights.length === 0}
-                className={`w-full py-4 rounded font-black uppercase tracking-wider transition-all ${fights.length > 0 ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-900/20' : 'bg-neutral-800 text-neutral-500 cursor-not-allowed'}`}
-              >
-                {isEditing ? 'Update Event' : 'Confirm & Book Event'}
-              </button>
+              <Button variant="primary" onClick={handleBook} disabled={fights.length === 0} className="w-full">
+                {isEditing ? 'Update event' : 'Confirm & book event'}
+              </Button>
             </div>
-          </div>
+          </Panel>
 
         </div>
       </div>

@@ -1,308 +1,114 @@
 import React, { useState } from 'react';
-import { useGameStore } from '../store/gameStore';
 import { ChevronDown, ChevronUp } from 'lucide-react';
+import { useGameStore } from '../store/gameStore';
 import { formatRankDisplay } from '../lib/game/rankings';
+import { summarizeCompletedEvent } from '../lib/game/insights';
+import { Button, DataSurface, PageHeader, Panel, Stat, StatusBadge } from '../components/ui';
 import FightBattle from './FightBattle';
+import { CountryFlag } from '../components/CountryFlag';
+import { FighterAvatar } from '../components/FighterAvatar';
 
 export default function EventSimulation() {
-  const { selectedEventId, events, fighters, startEventSimulation, setView, activeEventSimulation } = useGameStore();
+  const { selectedEventId, events, fighters, startEventSimulation, goBack, activeEventSimulation } = useGameStore();
   const event = selectedEventId ? events[selectedEventId] : null;
+  const recap = event?.isCompleted ? summarizeCompletedEvent({ fighters }, event) : null;
   const [expandedFights, setExpandedFights] = useState<Record<number, boolean>>({});
 
   if (!event) return <div>Event not found</div>;
 
   const isSimulating = activeEventSimulation?.eventId === event.id && !event.isCompleted;
+  const toggleFight = (idx: number) => setExpandedFights(prev => ({ ...prev, [idx]: !prev[idx] }));
 
-  const toggleFight = (idx: number) => {
-    setExpandedFights(prev => ({ ...prev, [idx]: !prev[idx] }));
-  };
-
-  if (isSimulating) {
-    return <FightBattle />;
-  }
+  if (isSimulating) return <FightBattle />;
 
   if (!event.isCompleted) {
     const hasStarted = event.fights.some(f => f.result);
-    return (
-      <div className="max-w-4xl mx-auto space-y-8 mt-10">
-        <div className="text-center">
-          <h1 className="text-4xl font-black text-white uppercase">{event.name}</h1>
-          <p className="text-neutral-400 mt-2">{event.fights.length} Fights • {event.date}</p>
-        </div>
-        
-        <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-6 max-w-2xl mx-auto space-y-3 shadow-lg">
-          <h3 className="text-white font-bold mb-4 uppercase tracking-wider text-sm border-b border-neutral-800 pb-2">Fight Card</h3>
-          {event.fights.map((f, i) => {
-            const red = fighters[f.redCornerId];
-            const blue = fighters[f.blueCornerId];
-            const isMain = i === 0;
-            const isCoMain = i === 1;
-            
-            let label = `Bout ${event.fights.length - i}`;
-            if (isMain) label = 'Main Event';
-            else if (isCoMain) label = 'Co-Main Event';
-            
-            return (
-              <div key={i} className={`p-4 flex flex-col sm:flex-row justify-between items-center rounded border ${isMain ? 'bg-neutral-800 border-neutral-600' : 'bg-neutral-950 border-neutral-800'}`}>
-                <div className="w-full sm:w-auto text-center sm:text-left text-xs font-bold text-neutral-500 uppercase tracking-wider mb-2 sm:mb-0 min-w-[100px]">
-                  <div className={isMain || isCoMain ? 'text-yellow-500' : ''}>{label}</div>
-                  <div className="mt-1">{f.weightClass} {f.isTitleFight && '🏆'}</div>
-                  {f.result && <div className="mt-1 text-green-500">✓ Completed</div>}
-                </div>
-                
-                <div className="flex-1 flex justify-between items-center w-full">
-                  <span className="font-bold text-white w-[45%] text-right truncate text-sm sm:text-base">{red.firstName} {red.lastName}</span>
-                  <span className="text-xs text-neutral-600 italic px-2">vs</span>
-                  <span className="font-bold text-white w-[45%] text-left truncate text-sm sm:text-base">{blue.firstName} {blue.lastName}</span>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-
-        <div className="text-center pt-6">
-          <button 
-            onClick={() => {
-              startEventSimulation(event.id);
-            }}
-            className="bg-blue-600 text-white px-10 py-5 rounded-md font-black uppercase tracking-widest text-lg hover:bg-blue-500 transition-colors shadow-xl shadow-blue-900/20"
-          >
-            {hasStarted ? 'Resume Event' : 'Start Event'}
-          </button>
-          <p className="text-xs text-neutral-500 mt-4">Simulate fights one by one.</p>
-        </div>
-      </div>
-    );
-  }
-
-  // Completed Event View
-  return (
-    <div className="max-w-4xl mx-auto space-y-6 pb-12">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4 border-b border-neutral-800 pb-4">
-        <div>
-          <h1 className="text-3xl font-black text-white uppercase">{event.name} Results</h1>
-          <p className="text-neutral-400 mt-1">{event.date} • Simulated</p>
-        </div>
-        <button onClick={() => setView('dashboard')} className="bg-neutral-800 hover:bg-neutral-700 text-white px-4 py-2 rounded text-sm font-bold transition-colors">
-          Return to Dashboard
-        </button>
-      </div>
-
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="bg-neutral-900 p-4 rounded-lg border border-neutral-800 shadow-sm">
-          <p className="text-xs text-neutral-500 uppercase tracking-wider font-bold mb-1">Attendance</p>
-          <p className="text-xl font-bold text-white">{event.results?.attendance.toLocaleString()}</p>
-        </div>
-        <div className="bg-neutral-900 p-4 rounded-lg border border-neutral-800 shadow-sm">
-          <p className="text-xs text-neutral-500 uppercase tracking-wider font-bold mb-1">Total Revenue</p>
-          <p className="text-xl font-bold text-green-400">${event.results?.totalRevenue?.toLocaleString() || event.results?.gateRevenue?.toLocaleString()}</p>
-        </div>
-        <div className="bg-neutral-900 p-4 rounded-lg border border-neutral-800 shadow-sm">
-          <p className="text-xs text-neutral-500 uppercase tracking-wider font-bold mb-1">Total Cost</p>
-          <p className="text-xl font-bold text-red-400">${event.results?.totalCost?.toLocaleString() || 'N/A'}</p>
-        </div>
-        <div className="bg-neutral-900 p-4 rounded-lg border border-neutral-800 shadow-sm">
-          <p className="text-xs text-neutral-500 uppercase tracking-wider font-bold mb-1">Net Profit</p>
-          <p className={`text-xl font-bold ${event.results && event.results.profit >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-            ${event.results?.profit.toLocaleString()}
-          </p>
-        </div>
-      </div>
-
-      {event.results?.titleChanges && event.results.titleChanges.length > 0 && (
-        <div className="bg-yellow-900/20 p-4 rounded-lg border border-yellow-700/50">
-          <h3 className="text-yellow-500 font-black uppercase tracking-wider mb-2">Title Fights Summary</h3>
-          {event.results.titleChanges.map((tc, idx) => {
-            const fighter = tc.fighterId ? fighters[tc.fighterId] : null;
-            
-            if (tc.type === 'no_change') {
-               return <p key={idx} className="text-white text-sm font-bold">🤝 {tc.weightClass} Title Unchanged (Draw)</p>;
-            }
-            if (!fighter) return null;
-
-            if (tc.type === 'title_defense') {
-               return <p key={idx} className="text-white text-sm font-bold">🛡️ {fighter.firstName} {fighter.lastName} defended the {tc.weightClass} Title!</p>;
-            }
-            if (tc.type === 'new_champion') {
-               return <p key={idx} className="text-white text-sm font-bold">🏆 {fighter.firstName} {fighter.lastName} is the NEW {tc.weightClass} Champion!</p>;
-            }
-            if (tc.type === 'vacant_title_won') {
-               return <p key={idx} className="text-white text-sm font-bold">🏆 {fighter.firstName} {fighter.lastName} won the vacant {tc.weightClass} Title!</p>;
-            }
-            return null;
-          })}
-        </div>
-      )}
-      
-      {event.results?.totalRevenue && (
-        <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-4 space-y-4">
-           <h3 className="text-white font-bold uppercase tracking-wider text-sm border-b border-neutral-800 pb-2">Event P&L Breakdown</h3>
-           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-             <div className="bg-neutral-950 p-3 rounded border border-neutral-800">
-                <p className="text-xs text-neutral-500 mb-1">Gate Revenue</p>
-                <p className="text-green-400 font-mono">+${event.results.gateRevenue.toLocaleString()}</p>
-             </div>
-             <div className="bg-neutral-950 p-3 rounded border border-neutral-800">
-                <p className="text-xs text-neutral-500 mb-1">TV & Sponsor Revenue</p>
-                <p className="text-green-400 font-mono">+${event.results.broadcastRevenue.toLocaleString()}</p>
-             </div>
-             <div className="bg-neutral-950 p-3 rounded border border-neutral-800">
-                <p className="text-xs text-neutral-500 mb-1">Venue Cost</p>
-                <p className="text-red-400 font-mono">-${event.results.venueCost.toLocaleString()}</p>
-             </div>
-             <div className="bg-neutral-950 p-3 rounded border border-neutral-800">
-                <p className="text-xs text-neutral-500 mb-1">Marketing Cost</p>
-                <p className="text-red-400 font-mono">-${event.results.marketingCost.toLocaleString()}</p>
-             </div>
-             <div className="bg-neutral-950 p-3 rounded border border-neutral-800">
-                <p className="text-xs text-neutral-500 mb-1">Fighter Base Pay</p>
-                <p className="text-red-400 font-mono">-${event.results.fighterBasePay.toLocaleString()}</p>
-             </div>
-             <div className="bg-neutral-950 p-3 rounded border border-neutral-800">
-                <p className="text-xs text-neutral-500 mb-1">Win Bonuses</p>
-                <p className="text-red-400 font-mono">-${event.results.fighterWinBonuses.toLocaleString()}</p>
-             </div>
-             <div className="bg-neutral-950 p-3 rounded border border-neutral-800">
-                <p className="text-xs text-neutral-500 mb-1">Fan Reaction</p>
-                <p className="text-white font-mono">{Math.round(event.results.fanReaction)}/100</p>
-             </div>
-             <div className="bg-neutral-950 p-3 rounded border border-neutral-800 flex flex-col justify-center items-center">
-                <p className="text-xs text-neutral-500 mb-1">Net Profit</p>
-                <p className={`font-mono font-bold ${event.results.profit >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                   {event.results.profit >= 0 ? '+' : ''}${event.results.profit.toLocaleString()}
-                </p>
-             </div>
-           </div>
-        </div>
-      )}
-
-      <div className="space-y-4 pt-4">
-        <h2 className="text-xl font-bold text-white flex items-center gap-2 border-b border-neutral-800 pb-2">
-          Fight Results
-        </h2>
-        
-        {event.fights.map((fight, idx) => {
+    return <div className="mx-auto mt-6 max-w-4xl space-y-6 pb-12">
+      <PageHeader eyebrow="Event simulation" title={event.name} description={`${event.fights.length} fights · ${event.date}`} />
+      <Panel className="mx-auto max-w-2xl space-y-2">
+        <h2 className="border-b border-[#2a2c31] pb-3 font-mono text-[11px] uppercase tracking-[0.16em] text-neutral-500">Fight card</h2>
+        {event.fights.map((fight, index) => {
           const red = fighters[fight.redCornerId];
           const blue = fighters[fight.blueCornerId];
-          const res = fight.result;
-          
-          if (!res) return null;
-
-          const isDraw = res.method === 'Draw';
-          const winnerId = res.winnerId;
-          const isExpanded = expandedFights[idx] || false;
-          
-          const isDecision = res.method.includes('Decision');
-
-          return (
-            <div key={idx} className="bg-neutral-900 border border-neutral-800 rounded-lg overflow-hidden shadow-sm transition-all relative">
-              <div 
-                className="bg-neutral-950 p-4 border-b border-neutral-800 flex flex-col sm:flex-row justify-between items-center cursor-pointer hover:bg-neutral-800/50 transition-colors relative"
-                onClick={() => toggleFight(idx)}
-              >
-                <div className={`flex-1 w-full text-center sm:text-right font-black text-lg sm:text-xl truncate ${winnerId === red.id ? 'text-green-400' : isDraw ? 'text-yellow-400' : 'text-neutral-500'}`}>
-                  {red.firstName} {red.lastName} {winnerId === red.id && '👑'}
-                </div>
-                
-                <div className="w-full sm:w-40 text-center text-xs text-neutral-500 px-2 py-3 sm:py-0">
-                  <div className="text-[10px] uppercase tracking-wider font-bold mb-1">{fight.weightClass} {fight.isTitleFight && '🏆 TITLE'}</div>
-                  <div className="font-black text-white text-sm bg-neutral-900 inline-block px-2 py-1 rounded">{res.method}</div>
-                  <div className="mt-1">R{res.round} • {res.time}</div>
-                </div>
-                
-                <div className={`flex-1 w-full text-center sm:text-left font-black text-lg sm:text-xl truncate ${winnerId === blue.id ? 'text-green-400' : isDraw ? 'text-yellow-400' : 'text-neutral-500'}`}>
-                  {winnerId === blue.id && '👑'} {blue.firstName} {blue.lastName}
-                </div>
-
-                <div className="absolute right-4 hidden sm:block text-neutral-600">
-                  {isExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
-                </div>
-              </div>
-              
-              {isExpanded && (
-                <div className="p-4 bg-neutral-900 text-sm text-neutral-300">
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <div className="md:col-span-2 space-y-2">
-                      <h4 className="text-xs font-bold text-neutral-500 uppercase tracking-wider mb-3">Round-by-Round Play-by-Play</h4>
-                      <div className="max-h-64 overflow-y-auto pr-2 space-y-1.5 custom-scrollbar text-xs">
-                        {res.commentary.map((line, i) => {
-                          const isHeading = line.startsWith('---');
-                          const isEnd = line.startsWith('End of');
-                          return (
-                            <p key={i} className={`
-                              ${isHeading ? 'text-white font-bold mt-4 mb-2 text-sm border-b border-neutral-800 pb-1' : ''}
-                              ${isEnd ? 'text-blue-400 italic mt-2 mb-4' : ''}
-                            `}>
-                              {line}
-                            </p>
-                          );
-                        })}
-                      </div>
-                    </div>
-                    
-                    <div className="space-y-6">
-                      <div className="bg-neutral-950 p-4 rounded border border-neutral-800">
-                         <h4 className="text-xs font-bold text-neutral-500 uppercase tracking-wider mb-2">Fight Metrics</h4>
-                         <div className="flex justify-between text-xs mb-1">
-                           <span className="text-neutral-400">Action Rating:</span>
-                           <span className="text-white font-bold">{res.performanceRating}/100</span>
-                         </div>
-                         
-                         {isDecision && res.scorecards && (
-                           <div className="mt-4 pt-4 border-t border-neutral-800">
-                             <span className="text-xs text-neutral-400 block mb-2">Judges' Scorecards:</span>
-                             {res.scorecards.map((score, idx) => (
-                               <div key={idx} className="flex justify-between text-xs font-mono mb-1">
-                                 <span>Judge {idx+1}:</span>
-                                 <span className="text-white">{score}</span>
-                               </div>
-                             ))}
-                           </div>
-                         )}
-
-                         {event.results?.rankingChanges && (event.results.rankingChanges[red.id] || event.results.rankingChanges[blue.id]) && (
-                           <div className="mt-4 pt-4 border-t border-neutral-800">
-                             <span className="text-xs text-neutral-400 block mb-2">Ranking Updates:</span>
-                             {[red, blue].map(f => {
-                               const change = event.results?.rankingChanges?.[f.id];
-                               if (!change) return null;
-                               const movedUp = change.oldRank > change.newRank;
-                               const oldIsChamp = change.oldRank === 0 && f.isChampion; // heuristic, as we might not know previous status perfectly, but works for UI
-                               const newIsChamp = change.newRank === 0 && f.isChampion;
-                               return (
-                                 <div key={f.id} className="flex justify-between text-xs mb-1">
-                                   <span>{f.lastName}:</span>
-                                   <span className={movedUp ? 'text-green-400' : 'text-red-400'}>
-                                     {formatRankDisplay(change.oldRank, oldIsChamp)} → {formatRankDisplay(change.newRank, newIsChamp)}
-                                   </span>
-                                 </div>
-                               );
-                             })}
-                           </div>
-                         )}
-                      </div>
-
-                      {res.injuries && res.injuries.length > 0 && (
-                        <div className="bg-red-950/20 p-4 rounded border border-red-900/30">
-                          <h4 className="text-xs font-bold text-red-500 uppercase tracking-wider mb-2">Injuries Sustained</h4>
-                          {res.injuries.map((inj, i) => {
-                            const injuredFighter = inj.fighterId === red.id ? red : blue;
-                            return (
-                              <div key={i} className="text-xs text-red-400 mb-1">
-                                <span className="font-bold">{injuredFighter.lastName}</span>: {inj.type} ({inj.daysRemaining} days)
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )}
+          const label = index === 0 ? 'Main event' : index === 1 ? 'Co-main event' : `Bout ${event.fights.length - index}`;
+          return <div key={index} className={`flex flex-col gap-3 border-l-2 p-3 sm:flex-row sm:items-center ${index === 0 ? 'border-amber-900 bg-white/[0.02]' : 'border-[#2a2c31]'}`}>
+            <div className="min-w-28 font-mono text-[10px] uppercase tracking-[0.14em] text-neutral-500"><p className={index < 2 ? 'text-amber-300' : ''}>{label}</p><p className="mt-1">{fight.weightClass}{fight.isTitleFight && ' · Title'}</p>{fight.result && <p className="mt-1 text-emerald-300">Completed</p>}</div>
+            <div className="flex flex-1 items-center justify-between gap-2 text-sm text-white">
+              <span className="flex w-[45%] items-center justify-end gap-1 text-right font-medium"><span className="truncate">{red.firstName} {red.lastName}</span><CountryFlag nationality={red.nationality} className="text-xs" /><FighterAvatar id={red.id} name={`${red.firstName} ${red.lastName}`} nationality={red.nationality} className="h-6 w-6" /></span>
+              <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-neutral-600">vs</span>
+              <span className="flex w-[45%] items-center gap-1 font-medium"><FighterAvatar id={blue.id} name={`${blue.firstName} ${blue.lastName}`} nationality={blue.nationality} className="h-6 w-6" /><CountryFlag nationality={blue.nationality} className="text-xs" /><span className="truncate">{blue.firstName} {blue.lastName}</span></span>
             </div>
-          );
+          </div>;
         })}
+      </Panel>
+      <div className="text-center"><Button variant="primary" onClick={() => startEventSimulation(event.id)} className="px-8">{hasStarted ? 'Resume event' : 'Start event'}</Button><p className="mt-3 text-xs text-neutral-500">Simulate fights one by one.</p></div>
+    </div>;
+  }
+
+  return <div className="mx-auto max-w-4xl space-y-6 pb-12">
+    <PageHeader eyebrow="Completed event" title={`${event.name} Results`} description={`${event.date} · Simulated`} actions={<Button variant="secondary" onClick={() => goBack('dashboard')}>Back</Button>} />
+
+    <Panel className="grid grid-cols-2 gap-5 md:grid-cols-4">
+      <Stat label="Attendance" value={event.results?.attendance.toLocaleString()} />
+      <Stat label="Total revenue" value={<span className="text-emerald-300">${event.results?.totalRevenue?.toLocaleString() || event.results?.gateRevenue?.toLocaleString()}</span>} />
+      <Stat label="Total cost" value={<span className="text-red-300">${event.results?.totalCost?.toLocaleString() || 'N/A'}</span>} />
+      <Stat label="Net profit" value={<span className={event.results && event.results.profit >= 0 ? 'text-emerald-300' : 'text-red-300'}>${event.results?.profit.toLocaleString()}</span>} />
+    </Panel>
+
+    {recap && <Panel className="border-blue-900/50"><h2 className="font-mono text-[11px] uppercase tracking-[0.16em] text-blue-300">Event recap</h2><div className="mt-4 grid gap-4 text-sm md:grid-cols-2"><div className="space-y-1"><p className="font-mono text-[10px] uppercase tracking-[0.12em] text-neutral-500">Fight of the night</p>{recap.bestFight && <p className="text-white">{recap.bestFight.red.firstName} {recap.bestFight.red.lastName} vs {recap.bestFight.blue.firstName} {recap.bestFight.blue.lastName} <span title="Performance rating" className="text-blue-300">{recap.bestFight.rating}/100</span> · {recap.bestFight.method}</p>}</div>{recap.rankingChanges.length > 0 && <div className="space-y-1"><p className="font-mono text-[10px] uppercase tracking-[0.12em] text-neutral-500">Ranking impact</p>{recap.rankingChanges.slice(0, 3).map(change => <p key={change.fighter.id} title="Ranking movement after this event.">{change.fighter.firstName} {change.fighter.lastName}: {change.oldRank} → {change.newRank}</p>)}</div>}{recap.financial && <div className="space-y-1"><p className="font-mono text-[10px] uppercase tracking-[0.12em] text-neutral-500">Financial result</p><p title="Net event profit after venue, marketing, and fighter costs." className={recap.financial.profit >= 0 ? 'text-emerald-300' : 'text-red-300'}>{recap.financial.profit >= 0 ? '+' : ''}${recap.financial.profit.toLocaleString()} · Fans {Math.round(recap.financial.fanReaction)}/100</p></div>}{recap.medical.length > 0 && <div className="space-y-1"><p className="font-mono text-[10px] uppercase tracking-[0.12em] text-neutral-500">Medical report</p>{recap.medical.slice(0, 3).map(item => <p key={`${item.fighter.id}-${item.detail}`} className="text-amber-300">{item.fighter.firstName} {item.fighter.lastName}: {item.detail}</p>)}</div>}{recap.nextBookingLead && <div className="space-y-1"><p className="font-mono text-[10px] uppercase tracking-[0.12em] text-neutral-500">Next booking lead</p><p className="text-white">{recap.nextBookingLead.firstName} {recap.nextBookingLead.lastName} is ready for another high-value matchup.</p></div>}</div></Panel>}
+
+    {event.results?.titleChanges && event.results.titleChanges.length > 0 && <Panel className="border-amber-900">
+      <h2 className="font-mono text-[11px] uppercase tracking-[0.16em] text-amber-300">Title fights summary</h2>
+      <div className="mt-3 space-y-2 text-sm text-white">{event.results.titleChanges.map((change, index) => {
+        const fighter = change.fighterId ? fighters[change.fighterId] : null;
+        if (change.type === 'no_change') return <p key={index}>🤝 {change.weightClass} Title Unchanged (Draw)</p>;
+        if (!fighter) return null;
+        if (change.type === 'title_defense') return <p key={index}>🛡️ {fighter.firstName} {fighter.lastName} defended the {change.weightClass} Title!</p>;
+        if (change.type === 'new_champion') return <p key={index}>🏆 {fighter.firstName} {fighter.lastName} is the NEW {change.weightClass} Champion!</p>;
+        if (change.type === 'vacant_title_won') return <p key={index}>🏆 {fighter.firstName} {fighter.lastName} won the vacant {change.weightClass} Title!</p>;
+        return null;
+      })}</div>
+    </Panel>}
+
+    {event.results?.totalRevenue && <Panel>
+      <h2 className="border-b border-[#2a2c31] pb-3 font-mono text-[11px] uppercase tracking-[0.16em] text-neutral-500">Event P&amp;L breakdown</h2>
+      <div className="mt-4 grid grid-cols-2 gap-4 text-sm md:grid-cols-4">
+        <Stat label="Gate revenue" value={<span className="font-mono text-emerald-300">+${event.results.gateRevenue.toLocaleString()}</span>} />
+        <Stat label="TV & sponsor" value={<span className="font-mono text-emerald-300">+${event.results.broadcastRevenue.toLocaleString()}</span>} />
+        <Stat label="Venue cost" value={<span className="font-mono text-red-300">-${event.results.venueCost.toLocaleString()}</span>} />
+        <Stat label="Marketing" value={<span className="font-mono text-red-300">-${event.results.marketingCost.toLocaleString()}</span>} />
+        <Stat label="Fighter base pay" value={<span className="font-mono text-red-300">-${event.results.fighterBasePay.toLocaleString()}</span>} />
+        <Stat label="Win bonuses" value={<span className="font-mono text-red-300">-${event.results.fighterWinBonuses.toLocaleString()}</span>} />
+        <Stat label="Fan reaction" value={`${Math.round(event.results.fanReaction)}/100`} />
+        <Stat label="Net profit" value={<span className={`font-mono ${event.results.profit >= 0 ? 'text-emerald-300' : 'text-red-300'}`}>{event.results.profit >= 0 ? '+' : ''}${event.results.profit.toLocaleString()}</span>} />
       </div>
-    </div>
-  );
+    </Panel>}
+
+    <section className="space-y-4"><h2 className="font-mono text-[11px] uppercase tracking-[0.16em] text-neutral-500">Fight results</h2>
+      {event.fights.map((fight, index) => {
+        const red = fighters[fight.redCornerId];
+        const blue = fighters[fight.blueCornerId];
+        const result = fight.result;
+        if (!result) return null;
+        const isDraw = result.method === 'Draw';
+        const winnerId = result.winnerId;
+        const isExpanded = expandedFights[index] || false;
+        const isDecision = result.method.includes('Decision');
+        return <DataSurface key={index}>
+          <button type="button" onClick={() => toggleFight(index)} className="flex w-full flex-col items-center gap-3 border-b border-[#2a2c31] bg-black/10 p-4 text-center transition-colors hover:bg-white/[0.02] sm:flex-row">
+            <span className={`flex-1 truncate text-lg font-medium ${winnerId === red.id ? 'text-emerald-300' : isDraw ? 'text-amber-300' : 'text-neutral-500'}`}>{red.firstName} {red.lastName} {winnerId === red.id && '👑'}</span>
+            <span className="w-40"><span className="block font-mono text-[10px] uppercase tracking-[0.14em] text-neutral-500">{fight.weightClass} {fight.isTitleFight && '· Title'}</span><span className="mt-1 inline-block text-sm text-white">{result.method}</span><span className="mt-1 block text-xs text-neutral-500">R{result.round} · {result.time}</span></span>
+            <span className={`flex-1 truncate text-lg font-medium ${winnerId === blue.id ? 'text-emerald-300' : isDraw ? 'text-amber-300' : 'text-neutral-500'}`}>{winnerId === blue.id && '👑'} {blue.firstName} {blue.lastName}</span>
+            {isExpanded ? <ChevronUp size={18} className="text-neutral-500" /> : <ChevronDown size={18} className="text-neutral-500" />}
+          </button>
+          {isExpanded && <div className="grid gap-6 p-4 text-sm text-neutral-300 md:grid-cols-3">
+            <div className="space-y-3 md:col-span-2"><h3 className="font-mono text-[10px] uppercase tracking-[0.14em] text-neutral-500">Round-by-round play-by-play</h3><div className="max-h-64 space-y-1.5 overflow-y-auto pr-2 text-xs custom-scrollbar">{result.commentary.map((line, lineIndex) => <p key={lineIndex} className={line.startsWith('---') ? 'mb-2 mt-4 border-b border-[#2a2c31] pb-1 text-sm font-medium text-white' : line.startsWith('End of') ? 'mb-4 mt-2 italic text-neutral-400' : ''}>{line}</p>)}</div></div>
+            <div className="space-y-4"><Panel className="p-4"><h3 className="font-mono text-[10px] uppercase tracking-[0.14em] text-neutral-500">Fight metrics</h3><p className="mt-3 flex justify-between text-xs"><span>Action rating</span><span className="text-white">{result.performanceRating}/100</span></p>{isDecision && result.scorecards && <div className="mt-4 border-t border-[#2a2c31] pt-3 text-xs"><p className="mb-2 text-neutral-400">Judges' scorecards</p>{result.scorecards.map((score, scoreIndex) => <p key={scoreIndex} className="flex justify-between font-mono"><span>Judge {scoreIndex + 1}</span><span className="text-white">{score}</span></p>)}</div>}{event.results?.rankingChanges && (event.results.rankingChanges[red.id] || event.results.rankingChanges[blue.id]) && <div className="mt-4 border-t border-[#2a2c31] pt-3 text-xs"><p className="mb-2 text-neutral-400">Ranking updates</p>{[red, blue].map(fighter => { const change = event.results?.rankingChanges?.[fighter.id]; if (!change) return null; const movedUp = change.oldRank > change.newRank; const oldIsChamp = change.oldRank === 0 && fighter.isChampion; const newIsChamp = change.newRank === 0 && fighter.isChampion; return <p key={fighter.id} className="flex justify-between"><span>{fighter.lastName}</span><span className={movedUp ? 'text-emerald-300' : 'text-red-300'}>{formatRankDisplay(change.oldRank, oldIsChamp)} → {formatRankDisplay(change.newRank, newIsChamp)}</span></p>; })}</div>}</Panel>
+              {result.injuries && result.injuries.length > 0 && <Panel className="border-red-900 p-4"><StatusBadge tone="danger">Injuries sustained</StatusBadge>{result.injuries.map((injury, injuryIndex) => <p key={injuryIndex} className="mt-2 text-xs text-red-300"><span className="font-medium">{injury.fighterId === red.id ? red.lastName : blue.lastName}</span>: {injury.type} ({injury.daysRemaining} days)</p>)}</Panel>}
+            </div>
+          </div>}
+        </DataSurface>;
+      })}
+    </section>
+  </div>;
 }

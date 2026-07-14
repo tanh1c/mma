@@ -1,7 +1,7 @@
 import { generateInitialWorld } from './src/lib/game/generator';
 import { generateSeasonPlan, validateSeasonCalendarState } from './src/lib/game/season';
 import { createGrandPrixTournament, bindTournamentToCalendarSlots, scheduleTournamentRound } from './src/lib/game/tournament';
-import { repairEventAvailability } from './src/lib/game/autobooker';
+import { autoBookEventsAndContracts, repairEventAvailability } from './src/lib/game/autobooker';
 import { WeightClass } from './src/types/game';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -146,8 +146,47 @@ try {
   }
   console.log("✅ Future availability repair test passed.");
 
+  // 5. A blocked GP window must create exactly one retry window.
+  console.log("5. Testing blocked GP window retry...");
+  let retryState = generateInitialWorld();
+  retryState.currentDate = '2026-04-01';
+  retryState.promotion = { ...retryState.promotion, reputation: 50, money: 250000 };
+  const activeParticipants = Object.values(retryState.fighters).filter(f => f.contract && f.weightClass === 'Lightweight' && !f.isChampion).slice(0, 6);
+  activeParticipants.forEach(fighter => {
+    retryState.fighters[fighter.id] = { ...fighter, injuryStatus: null, medicalSuspension: null, fatigue: 0 };
+  });
+  retryState = createGrandPrixTournament(retryState, {
+    weightClass: 'Lightweight',
+    name: 'Blocking Lightweight GP',
+    titleShotPromised: true,
+    format: 'four_man',
+    participantIds: activeParticipants.slice(0, 4).map(fighter => fighter.id),
+    reserveIds: activeParticipants.slice(4).map(fighter => fighter.id)
+  });
+  retryState.seasonPlans = {
+    2026: {
+      ...retryState.seasonPlans[2026],
+      slots: [
+        { id: 'completed-regular-event', year: 2026, date: '2026-03-01', type: 'regular_event', status: 'completed', priority: 1, notes: [] },
+        { id: 'blocked-gp-window', year: 2026, date: '2026-04-02', type: 'grand_prix_window', status: 'planned', priority: 1, notes: [] }
+      ]
+    }
+  };
+  retryState = autoBookEventsAndContracts(retryState);
+  const retryPlan = retryState.seasonPlans[2026];
+  const convertedWindow = retryPlan.slots.find(slot => slot.id === 'blocked-gp-window');
+  const retries = retryPlan.slots.filter(slot => slot.type === 'grand_prix_window' && slot.status === 'planned');
+  if (convertedWindow?.type !== 'regular_event' || retries.length !== 1 || retries[0].date <= retryState.currentDate) {
+    throw new Error(`FAIL: blocked GP window did not create one future retry: ${retryPlan.slots.map(slot => `${slot.id}:${slot.type}:${slot.status}:${slot.date}`).join(', ')}`);
+  }
+  retryState = autoBookEventsAndContracts(retryState);
+  if (retryState.seasonPlans[2026].slots.filter(slot => slot.type === 'grand_prix_window' && slot.status === 'planned').length !== 1) {
+    throw new Error('FAIL: blocked GP window created duplicate retries.');
+  }
+  console.log("✅ Blocked GP window retry verified.");
+
   // 6. Validate calendar integrity
-  console.log("5. Running Calendar Integrity Validator...");
+  console.log("6. Running Calendar Integrity Validator...");
   const errors = validateSeasonCalendarState(state);
   if (errors.length > 0) {
     console.error("FAIL: Calendar integrity validation errors detected:");

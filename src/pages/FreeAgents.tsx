@@ -1,246 +1,86 @@
-import React, { useState, useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
+import { ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-react';
 import { useGameStore } from '../store/gameStore';
-import { WeightClass, FighterStyle } from '../types/game';
 import { getContractExpectation } from '../lib/game/contracts';
 import { Select } from '../components/Select';
-import { ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import { CountryFlag } from '../components/CountryFlag';
+import { FighterAvatar } from '../components/FighterAvatar';
+import { DataSurface, PageHeader, Panel, StatusBadge } from '../components/ui';
 
 type SortKey = 'name' | 'age' | 'weight' | 'record' | 'style' | 'popularity' | 'potential' | 'ask' | 'interest';
 
 export default function FreeAgents() {
   const { fighters, promotion, setView } = useGameStore();
-  const [filterWeight, setFilterWeight] = useState<string>('All');
-  const [filterStyle, setFilterStyle] = useState<string>('All');
-  const [filterArchetype, setFilterArchetype] = useState<string>('All');
-  const [filterMinPop, setFilterMinPop] = useState<string>('0');
-
+  const [search, setSearch] = useState('');
+  const [filterWeight, setFilterWeight] = useState('All');
+  const [filterStyle, setFilterStyle] = useState('All');
+  const [filterArchetype, setFilterArchetype] = useState('All');
+  const [filterMinPop, setFilterMinPop] = useState('0');
   const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ key: 'popularity', direction: 'desc' });
 
-  const handleSort = (key: SortKey) => {
-    setSortConfig(current => ({
-      key,
-      direction: current.key === key && current.direction === 'asc' ? 'desc' : 'asc'
-    }));
-  };
-
-  const SortIcon = ({ sortKey }: { sortKey: SortKey }) => {
-    if (sortConfig.key !== sortKey) return <ArrowUpDown size={14} className="text-neutral-600 inline-block ml-1" />;
-    return sortConfig.direction === 'asc' 
-      ? <ArrowUp size={14} className="text-blue-400 inline-block ml-1" />
-      : <ArrowDown size={14} className="text-blue-400 inline-block ml-1" />;
-  };
+  const handleSort = (key: SortKey) => setSortConfig(current => ({ key, direction: current.key === key && current.direction === 'asc' ? 'desc' : 'asc' }));
+  const SortIcon = ({ sortKey }: { sortKey: SortKey }) => sortConfig.key !== sortKey
+    ? <ArrowUpDown size={14} className="ml-1 inline-block text-neutral-600" />
+    : sortConfig.direction === 'asc' ? <ArrowUp size={14} className="ml-1 inline-block text-neutral-300" /> : <ArrowDown size={14} className="ml-1 inline-block text-neutral-300" />;
 
   const agents = useMemo(() => {
-    let result = Object.values(fighters)
-      .filter(f => f.contract === null)
-      .filter(f => filterWeight === 'All' || f.weightClass === filterWeight)
-      .filter(f => filterStyle === 'All' || f.style === filterStyle)
-      .filter(f => {
-        if (filterArchetype === 'All') return true;
-        if (filterArchetype === 'Star') return f.popularity >= 80;
-        if (filterArchetype === 'Prospect') return f.potential > 80 && f.popularity < 50;
-        if (filterArchetype === 'Veteran') return f.age > 33;
-        return true;
-      })
-      .filter(f => f.popularity >= Number(filterMinPop));
-
+    const result = Object.values(fighters)
+      .filter(fighter => fighter.contract === null)
+      .filter(fighter => !search.trim() || `${fighter.firstName} ${fighter.lastName} ${fighter.nickname}`.toLowerCase().includes(search.trim().toLowerCase()))
+      .filter(fighter => filterWeight === 'All' || fighter.weightClass === filterWeight)
+      .filter(fighter => filterStyle === 'All' || fighter.style === filterStyle)
+      .filter(fighter => filterArchetype === 'All' || (filterArchetype === 'Star' && fighter.popularity >= 80) || (filterArchetype === 'Prospect' && fighter.potential > 80 && fighter.popularity < 50) || (filterArchetype === 'Veteran' && fighter.age > 33))
+      .filter(fighter => fighter.popularity >= Number(filterMinPop));
     result.sort((a, b) => {
-      let aValue: any, bValue: any;
-      const expA = getContractExpectation(a, promotion);
-      const expB = getContractExpectation(b, promotion);
-
-      switch (sortConfig.key) {
-        case 'name':
-          aValue = `${a.firstName} ${a.lastName}`;
-          bValue = `${b.firstName} ${b.lastName}`;
-          break;
-        case 'age':
-          aValue = a.age;
-          bValue = b.age;
-          break;
-        case 'weight':
-          aValue = a.weightClass;
-          bValue = b.weightClass;
-          break;
-        case 'record':
-          aValue = a.record.wins / (a.record.wins + a.record.losses + a.record.draws + 0.001);
-          bValue = b.record.wins / (b.record.wins + b.record.losses + b.record.draws + 0.001);
-          break;
-        case 'style':
-          aValue = a.style;
-          bValue = b.style;
-          break;
-        case 'popularity':
-          aValue = a.popularity;
-          bValue = b.popularity;
-          break;
-        case 'potential':
-          aValue = a.potential;
-          bValue = b.potential;
-          break;
-        case 'ask':
-          aValue = expA.basePay;
-          bValue = expB.basePay;
-          break;
-        case 'interest':
-          aValue = expA.interest;
-          bValue = expB.interest;
-          break;
-        default:
-          aValue = 0; bValue = 0;
-      }
-      if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
-      if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1;
-      return 0;
+      const expectations = [getContractExpectation(a, promotion), getContractExpectation(b, promotion)];
+      const value = (fighter: typeof a, expectation: typeof expectations[number]) => ({
+        name: `${fighter.firstName} ${fighter.lastName}`, age: fighter.age, weight: fighter.weightClass,
+        record: fighter.record.wins / (fighter.record.wins + fighter.record.losses + fighter.record.draws + 0.001),
+        style: fighter.style, popularity: fighter.popularity, potential: fighter.potential, ask: expectation.basePay, interest: expectation.interest
+      }[sortConfig.key]);
+      const [aValue, bValue] = [value(a, expectations[0]), value(b, expectations[1])];
+      return aValue < bValue ? (sortConfig.direction === 'asc' ? -1 : 1) : aValue > bValue ? (sortConfig.direction === 'asc' ? 1 : -1) : 0;
     });
-
     return result;
-  }, [fighters, filterWeight, filterStyle, filterArchetype, filterMinPop, sortConfig, promotion]);
+  }, [fighters, search, filterWeight, filterStyle, filterArchetype, filterMinPop, sortConfig, promotion]);
 
-  const weightOptions = [
-    { value: 'All', label: 'All Weights' },
-    { value: 'Heavyweight', label: 'Heavyweight' },
-    { value: 'Middleweight', label: 'Middleweight' },
-    { value: 'Welterweight', label: 'Welterweight' },
-    { value: 'Lightweight', label: 'Lightweight' },
-    { value: 'Featherweight', label: 'Featherweight' },
-    { value: 'Bantamweight', label: 'Bantamweight' }
-  ];
-
-  const styleOptions = [
-    { value: 'All', label: 'All Styles' },
-    { value: 'Boxer', label: 'Boxer' },
-    { value: 'Wrestler', label: 'Wrestler' },
-    { value: 'BJJ', label: 'BJJ' },
-    { value: 'Kickboxer', label: 'Kickboxer' },
-    { value: 'Muay Thai', label: 'Muay Thai' },
-    { value: 'Sambo', label: 'Sambo' },
-    { value: 'Balanced', label: 'Balanced' }
-  ];
-
-  const archetypeOptions = [
-    { value: 'All', label: 'Any Archetype' },
-    { value: 'Star', label: 'Star' },
-    { value: 'Prospect', label: 'Prospect' },
-    { value: 'Veteran', label: 'Veteran' }
-  ];
-
-  const minPopOptions = [
-    { value: '0', label: 'Any Popularity' },
-    { value: '25', label: 'Pop 25+' },
-    { value: '50', label: 'Pop 50+' },
-    { value: '75', label: 'Pop 75+' }
-  ];
+  const weightOptions = ['All', 'Heavyweight', 'Middleweight', 'Welterweight', 'Lightweight', 'Featherweight', 'Bantamweight'].map(value => ({ value, label: value === 'All' ? 'All Weights' : value }));
+  const styleOptions = ['All', 'Boxer', 'Wrestler', 'BJJ', 'Kickboxer', 'Muay Thai', 'Sambo', 'Balanced'].map(value => ({ value, label: value === 'All' ? 'All Styles' : value }));
+  const archetypeOptions = ['All', 'Star', 'Prospect', 'Veteran'].map(value => ({ value, label: value === 'All' ? 'Any Archetype' : value }));
+  const minPopOptions = [{ value: '0', label: 'Any Popularity' }, { value: '25', label: 'Pop 25+' }, { value: '50', label: 'Pop 50+' }, { value: '75', label: 'Pop 75+' }];
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-4 mb-4">
-        <h1 className="text-2xl font-black text-white uppercase">Free Agents</h1>
-        <div className="flex flex-wrap gap-4">
-          <Select 
-            value={filterWeight} 
-            onChange={setFilterWeight}
-            options={weightOptions}
-            className="w-40"
-          />
-          <Select 
-            value={filterStyle} 
-            onChange={setFilterStyle}
-            options={styleOptions}
-            className="w-40"
-          />
-          <Select 
-            value={filterArchetype} 
-            onChange={setFilterArchetype}
-            options={archetypeOptions}
-            className="w-40"
-          />
-          <Select 
-            value={filterMinPop} 
-            onChange={setFilterMinPop}
-            options={minPopOptions}
-            className="w-40"
-          />
+      <PageHeader eyebrow="Recruitment" title="Free Agents" description={`${agents.length} fighters match the current search`} />
+      <Panel className="flex flex-wrap gap-3 p-4">
+        <input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search fighter" aria-label="Search free agents" className="h-10 w-44 rounded border border-neutral-800 bg-neutral-950 px-3 text-sm text-white outline-none focus:border-neutral-500" />
+        <Select value={filterWeight} onChange={setFilterWeight} options={weightOptions} className="w-40" />
+        <Select value={filterStyle} onChange={setFilterStyle} options={styleOptions} className="w-40" />
+        <Select value={filterArchetype} onChange={setFilterArchetype} options={archetypeOptions} className="w-40" />
+        <Select value={filterMinPop} onChange={setFilterMinPop} options={minPopOptions} className="w-40" />
+      </Panel>
+      <DataSurface>
+        <div className="overflow-x-auto custom-scrollbar">
+          <table className="min-w-[800px] w-full text-left text-sm text-neutral-400">
+            <thead className="border-b border-[#2a2c31] bg-black/10 font-mono text-[10px] uppercase tracking-[0.14em] text-neutral-500"><tr>
+              {([['Fighter', 'name'], ['Age', 'age'], ['Weight', 'weight'], ['Record', 'record'], ['Style', 'style'], ['Pop', 'popularity'], ['Pot', 'potential'], ['Ask Pay/Bonus', 'ask'], ['Interest', 'interest']] as Array<[string, SortKey]>).map(([label, key]) => <th key={key} className="cursor-pointer p-4 font-normal hover:bg-white/[0.03]" onClick={() => handleSort(key)}>{label}<SortIcon sortKey={key} /></th>)}
+            </tr></thead>
+            <tbody className="divide-y divide-[#2a2c31]">
+              {agents.map(fighter => {
+                const expectation = getContractExpectation(fighter, promotion);
+                const interestTone = expectation.interest > 70 ? 'success' : expectation.interest > 40 ? 'warning' : 'danger';
+                return <tr key={fighter.id} onClick={() => setView('fighter-detail', { fighterId: fighter.id })} className="cursor-pointer transition-colors hover:bg-white/[0.02]">
+                  <td className="p-4"><div className="flex items-center gap-2"><FighterAvatar id={fighter.id} name={`${fighter.firstName} ${fighter.lastName}`} nationality={fighter.nationality} className="h-8 w-8" /><div><div className="flex items-center gap-2 font-medium text-white"><span>{fighter.firstName} {fighter.lastName}</span><CountryFlag nationality={fighter.nationality} className="text-sm" /></div>{fighter.nickname && <div className="text-xs text-neutral-500">&quot;{fighter.nickname}&quot;</div>}</div></div></td>
+                  <td className="p-4">{fighter.age}</td><td className="p-4">{fighter.weightClass}</td><td className="p-4">{fighter.record.wins}-{fighter.record.losses}-{fighter.record.draws}</td><td className="p-4">{fighter.style}</td><td className="p-4">{fighter.popularity}</td><td className="p-4">{fighter.potential}</td>
+                  <td className="p-4"><p className="font-mono text-xs text-neutral-200">${expectation.basePay.toLocaleString()} / ${expectation.winBonus.toLocaleString()}</p><p className="mt-1 text-xs text-neutral-500">for {expectation.fights} fights</p></td>
+                  <td className="p-4"><StatusBadge tone={interestTone}>{expectation.interestLabel}</StatusBadge></td>
+                </tr>;
+              })}
+            </tbody>
+          </table>
+          {agents.length === 0 && <div className="p-8 text-center text-neutral-500">No free agents match your filters.</div>}
         </div>
-      </div>
-
-      <div className="bg-neutral-900 border border-neutral-800 rounded-lg overflow-x-auto">
-        <table className="w-full text-left text-sm text-neutral-400 min-w-[800px]">
-          <thead className="bg-neutral-950 text-neutral-300 font-medium border-b border-neutral-800">
-            <tr>
-              <th className="p-4 cursor-pointer hover:bg-neutral-900 transition-colors group" onClick={() => handleSort('name')}>
-                Fighter <SortIcon sortKey="name" />
-              </th>
-              <th className="p-4 cursor-pointer hover:bg-neutral-900 transition-colors group" onClick={() => handleSort('age')}>
-                Age <SortIcon sortKey="age" />
-              </th>
-              <th className="p-4 cursor-pointer hover:bg-neutral-900 transition-colors group" onClick={() => handleSort('weight')}>
-                Weight <SortIcon sortKey="weight" />
-              </th>
-              <th className="p-4 cursor-pointer hover:bg-neutral-900 transition-colors group" onClick={() => handleSort('record')}>
-                Record <SortIcon sortKey="record" />
-              </th>
-              <th className="p-4 cursor-pointer hover:bg-neutral-900 transition-colors group" onClick={() => handleSort('style')}>
-                Style <SortIcon sortKey="style" />
-              </th>
-              <th className="p-4 cursor-pointer hover:bg-neutral-900 transition-colors group" onClick={() => handleSort('popularity')}>
-                Pop <SortIcon sortKey="popularity" />
-              </th>
-              <th className="p-4 cursor-pointer hover:bg-neutral-900 transition-colors group" onClick={() => handleSort('potential')}>
-                Pot <SortIcon sortKey="potential" />
-              </th>
-              <th className="p-4 cursor-pointer hover:bg-neutral-900 transition-colors group" onClick={() => handleSort('ask')}>
-                Ask Pay/Bonus <SortIcon sortKey="ask" />
-              </th>
-              <th className="p-4 cursor-pointer hover:bg-neutral-900 transition-colors group" onClick={() => handleSort('interest')}>
-                Interest <SortIcon sortKey="interest" />
-              </th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-neutral-800">
-            {agents.map(f => {
-              const expectation = getContractExpectation(f, promotion);
-              return (
-                <tr 
-                  key={f.id} 
-                  onClick={() => setView('fighter-detail', { fighterId: f.id })}
-                  className="hover:bg-neutral-800/50 cursor-pointer transition-colors"
-                >
-                  <td className="p-4">
-                    <div>
-                      <div className="font-bold text-white">{f.firstName} {f.lastName}</div>
-                      {f.nickname && <div className="text-xs">"{f.nickname}"</div>}
-                    </div>
-                  </td>
-                  <td className="p-4">{f.age}</td>
-                  <td className="p-4">{f.weightClass}</td>
-                  <td className="p-4">{f.record.wins}-{f.record.losses}-{f.record.draws}</td>
-                  <td className="p-4">{f.style}</td>
-                  <td className="p-4">{f.popularity}</td>
-                  <td className="p-4">{f.potential}</td>
-                  <td className="p-4">
-                    <div className="text-green-400 font-mono text-xs">${expectation.basePay.toLocaleString()} / ${expectation.winBonus.toLocaleString()}</div>
-                    <div className="text-xs text-neutral-500">for {expectation.fights} fights</div>
-                  </td>
-                  <td className="p-4">
-                    <span className={`text-xs font-bold px-2 py-1 rounded ${
-                      expectation.interest > 70 ? 'bg-green-500/10 text-green-400' :
-                      expectation.interest > 40 ? 'bg-yellow-500/10 text-yellow-400' : 'bg-red-500/10 text-red-400'
-                    }`}>
-                      {expectation.interestLabel}
-                    </span>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-        {agents.length === 0 && (
-          <div className="p-8 text-center text-neutral-500">
-            No free agents match your filters.
-          </div>
-        )}
-      </div>
+      </DataSurface>
     </div>
   );
 }

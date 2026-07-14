@@ -5,6 +5,9 @@ import { Select } from '../components/Select';
 import { ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
+import { CountryFlag } from '../components/CountryFlag';
+import { FighterAvatar } from '../components/FighterAvatar';
+import { DataSurface, PageHeader, Panel, StatusBadge } from '../components/ui';
 
 function cn(...inputs: any[]) {
   return twMerge(clsx(inputs));
@@ -14,10 +17,12 @@ type SortKey = 'name' | 'age' | 'weight' | 'record' | 'style' | 'popularity' | '
 
 export default function Roster() {
   const { fighters, setView } = useGameStore();
+  const [search, setSearch] = useState('');
   const [filterWeight, setFilterWeight] = useState<string>('All');
   const [filterStyle, setFilterStyle] = useState<string>('All');
   const [filterStatus, setFilterStatus] = useState<string>('All');
   const [filterArchetype, setFilterArchetype] = useState<string>('All');
+  const [filterContract, setFilterContract] = useState<string>('All');
 
   const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ key: 'popularity', direction: 'desc' });
 
@@ -38,6 +43,8 @@ export default function Roster() {
   const roster = useMemo(() => {
     let result = Object.values(fighters)
       .filter(f => f.contract !== null)
+      .filter(f => !search.trim() || `${f.firstName} ${f.lastName} ${f.nickname}`.toLowerCase().includes(search.trim().toLowerCase()))
+      .filter(f => filterContract === 'All' || (filterContract === 'Expiring' && (f.contract?.fightsRemaining ?? 0) <= 1))
       .filter(f => filterWeight === 'All' || f.weightClass === filterWeight)
       .filter(f => filterStyle === 'All' || f.style === filterStyle)
       .filter(f => {
@@ -102,7 +109,7 @@ export default function Roster() {
     });
 
     return result;
-  }, [fighters, filterWeight, filterStyle, filterStatus, filterArchetype, sortConfig]);
+  }, [fighters, search, filterWeight, filterStyle, filterStatus, filterArchetype, filterContract, sortConfig]);
 
   const weightOptions = [
     { value: 'All', label: 'All Weights' },
@@ -139,43 +146,25 @@ export default function Roster() {
     { value: 'Suspended', label: 'Medically Suspended' },
     { value: 'Fatigued', label: 'Fatigued' }
   ];
+  const contractOptions = [{ value: 'All', label: 'Any Contract' }, { value: 'Expiring', label: 'Expiring Soon' }];
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-4 mb-4">
-        <h1 className="text-2xl font-black text-white uppercase">Promotion Roster</h1>
-        
-        <div className="flex flex-wrap gap-4">
-          <Select 
-            value={filterWeight} 
-            onChange={setFilterWeight}
-            options={weightOptions}
-            className="w-40"
-          />
-          <Select 
-            value={filterStyle} 
-            onChange={setFilterStyle}
-            options={styleOptions}
-            className="w-40"
-          />
-          <Select 
-            value={filterArchetype} 
-            onChange={setFilterArchetype}
-            options={archetypeOptions}
-            className="w-40"
-          />
-          <Select 
-            value={filterStatus} 
-            onChange={setFilterStatus}
-            options={statusOptions}
-            className="w-40"
-          />
-        </div>
-      </div>
+      <PageHeader eyebrow="Competition" title="Promotion Roster" description={`${roster.length} contracted fighters`} />
 
-      <div className="bg-neutral-900 border border-neutral-800 rounded-lg overflow-x-auto">
-        <table className="w-full text-left text-sm text-neutral-400 min-w-[800px]">
-          <thead className="bg-neutral-950 text-neutral-300 font-medium border-b border-neutral-800">
+      <Panel className="flex flex-wrap gap-3 p-4">
+        <input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search fighter" aria-label="Search roster" className="h-10 w-44 rounded border border-neutral-800 bg-neutral-950 px-3 text-sm text-white outline-none focus:border-neutral-500" />
+        <Select value={filterWeight} onChange={setFilterWeight} options={weightOptions} className="w-40" />
+        <Select value={filterStyle} onChange={setFilterStyle} options={styleOptions} className="w-40" />
+        <Select value={filterArchetype} onChange={setFilterArchetype} options={archetypeOptions} className="w-40" />
+        <Select value={filterStatus} onChange={setFilterStatus} options={statusOptions} className="w-40" />
+        <Select value={filterContract} onChange={setFilterContract} options={contractOptions} className="w-40" />
+      </Panel>
+
+      <DataSurface>
+        <div className="overflow-x-auto custom-scrollbar">
+        <table className="min-w-[800px] w-full text-left text-sm text-neutral-400">
+          <thead className="border-b border-[#2a2c31] bg-black/10 font-mono text-[10px] uppercase tracking-[0.14em] text-neutral-500">
             <tr>
               <th className="p-4 cursor-pointer hover:bg-neutral-900 transition-colors group" onClick={() => handleSort('name')}>
                 Fighter <SortIcon sortKey="name" />
@@ -203,7 +192,7 @@ export default function Roster() {
               </th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-neutral-800">
+          <tbody className="divide-y divide-[#2a2c31]">
             {roster.map(f => {
               // Badges
               const isProspect = f.potential > 80 && f.popularity < 50;
@@ -214,20 +203,22 @@ export default function Roster() {
                 <tr 
                   key={f.id} 
                   onClick={() => setView('fighter-detail', { fighterId: f.id })}
-                  className="hover:bg-neutral-800/50 cursor-pointer transition-colors"
+                  className="cursor-pointer transition-colors hover:bg-white/[0.02]"
                 >
                   <td className="p-4">
                     <div className="flex flex-col gap-1">
                       <div className="flex items-center gap-2">
+                        <FighterAvatar id={f.id} name={`${f.firstName} ${f.lastName}`} nationality={f.nationality} className="h-8 w-8" />
                         <div className="font-bold text-white">{f.firstName} {f.lastName}</div>
+                        <CountryFlag nationality={f.nationality} className="text-sm" />
                         {f.isChampion && <span className="text-yellow-500 text-xs font-bold" title="Champion">👑</span>}
                       </div>
                       {f.nickname && <div className="text-xs text-neutral-400">"{f.nickname}"</div>}
                       
-                      <div className="flex gap-1 mt-1">
-                        {isStar && <span className="text-[10px] uppercase font-bold text-yellow-400 bg-yellow-400/10 px-1 rounded">Star</span>}
-                        {isProspect && <span className="text-[10px] uppercase font-bold text-blue-400 bg-blue-400/10 px-1 rounded">Prospect</span>}
-                        {isVeteran && <span className="text-[10px] uppercase font-bold text-purple-400 bg-purple-400/10 px-1 rounded">Veteran</span>}
+                      <div className="mt-1 flex gap-1">
+                        {isStar && <StatusBadge tone="warning">Star</StatusBadge>}
+                        {isProspect && <StatusBadge>Prospect</StatusBadge>}
+                        {isVeteran && <StatusBadge>Veteran</StatusBadge>}
                       </div>
                     </div>
                   </td>
@@ -246,13 +237,13 @@ export default function Roster() {
                   </td>
                   <td className="p-4 text-center">
                     {f.injuryStatus ? (
-                      <span className="text-red-400 text-xs font-bold bg-red-400/10 px-2 py-1 rounded" title={`${f.injuryStatus.daysRemaining} days`}>{f.injuryStatus.type}</span>
+                      <span title={`${f.injuryStatus.daysRemaining} days`}><StatusBadge tone="danger">{f.injuryStatus.type}</StatusBadge></span>
                     ) : f.medicalSuspension ? (
-                      <span className="text-purple-400 text-xs font-bold bg-purple-400/10 px-2 py-1 rounded" title={`${f.medicalSuspension.daysRemaining} days`}>Suspended</span>
+                      <span title={`${f.medicalSuspension.daysRemaining} days`}><StatusBadge tone="warning">Suspended</StatusBadge></span>
                     ) : f.fatigue > 50 ? (
-                      <span className="text-orange-400 text-xs font-bold bg-orange-400/10 px-2 py-1 rounded">Fatigued</span>
+                      <StatusBadge tone="warning">Fatigued</StatusBadge>
                     ) : (
-                      <span className="text-green-400 text-xs font-bold bg-green-400/10 px-2 py-1 rounded">Ready</span>
+                      <StatusBadge tone="success">Ready</StatusBadge>
                     )}
                   </td>
                   <td className="p-4 text-right">
@@ -269,7 +260,8 @@ export default function Roster() {
             No fighters found. Go to Free Agents to sign fighters.
           </div>
         )}
-      </div>
+        </div>
+      </DataSurface>
     </div>
   );
 }

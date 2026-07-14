@@ -11,10 +11,13 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
+    "@dicebear/avataaars": "^9.4.2",
+    "@dicebear/core": "^9.4.3",
     "@tailwindcss/vite": "^4.1.14",
     "@vitejs/plugin-react": "^5.0.4",
     "clsx": "^2.1.1",
     "date-fns": "^4.4.0",
+    "flag-icons": "^7.5.0",
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",
     "react": "^19.0.1",

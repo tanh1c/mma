@@ -6,6 +6,7 @@ import { firstNames, lastNames, nicknames, nationalities } from '../names';
 import { WEIGHT_CLASSES, FIGHTER_STYLES, GAME_CONSTANTS } from './constants';
 import { PRNG } from './rng';
 import { initializeRankingScores, buildPromotionRankings } from './rankings';
+import { getBeltBranding } from '../branding';
 
 type FighterArchetype = 'Champion' | 'Contender' | 'Prospect' | 'Veteran' | 'Journeyman' | 'Can';
 
@@ -208,10 +209,10 @@ export function generateInitialWorld(seed?: number): GameState {
   const belts: Record<string, import('../../types/game').BeltInfo> = {};
   WEIGHT_CLASSES.forEach(wc => {
     const beltId = `belt_${wc.toLowerCase()}`;
+    const branding = getBeltBranding(wc as WeightClass);
     belts[beltId] = {
       id: beltId,
-      name: `Cage Dynasty ${wc} Championship`,
-      shortName: `CD ${wc} Title`,
+      ...branding,
       weightClass: wc as WeightClass,
       type: 'undisputed',
       prestige: rng.randomInt(60, 75)

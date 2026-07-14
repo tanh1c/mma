@@ -8,6 +8,7 @@ import { useGameStore } from '../store/gameStore';
 import { createGrandPrixTournament, scheduleSemifinals, scheduleFinal, validateTournamentState, validateTitleShotDebtState, diagnoseActiveTournaments } from '../lib/game/tournament';
 import { applyFightResult } from '../lib/engine';
 import { validateSeasonCalendarState } from '../lib/game/season';
+import { Button, PageHeader, Panel } from '../components/ui';
 
 const createFighter = (name: string, attrs: Partial<Fighter['attributes']>, age: number = 28): Fighter => {
   const rng = new PRNG(Math.random());
@@ -507,23 +508,27 @@ export default function DebugSim() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-black text-white">SIMULATION DEBUGGER</h1>
-        <div className="flex gap-2">
-          <button onClick={addCash} className="bg-green-600 text-white px-4 py-2 font-bold rounded hover:bg-green-500">+$1M Cash</button>
-          <button onClick={printState} className="bg-blue-600 text-white px-4 py-2 font-bold rounded hover:bg-blue-500">Print State</button>
-          <button onClick={runInvariants} className="bg-purple-600 text-white px-4 py-2 font-bold rounded hover:bg-purple-500">Test Invariants</button>
-          <button onClick={runAll} className="bg-white text-black px-4 py-2 font-bold rounded hover:bg-neutral-200">Run All 200x</button>
-        </div>
-      </div>
+    <div className="mx-auto max-w-6xl space-y-8 pb-12">
+      <PageHeader
+        eyebrow="Diagnostics"
+        title="Simulation Debugger"
+        description="Run deterministic scenario checks and long-term promotion simulations."
+        actions={
+          <div className="flex flex-wrap gap-2">
+            <Button variant="secondary" onClick={addCash}>+$1M Cash</Button>
+            <Button variant="secondary" onClick={printState}>Print State</Button>
+            <Button variant="secondary" onClick={runInvariants}>Test Invariants</Button>
+            <Button variant="primary" onClick={runAll}>Run All 200x</Button>
+          </div>
+        }
+      />
 
-      <div className="grid grid-cols-1 gap-6">
+      <div className="grid grid-cols-1 gap-4">
         {tests.map((test, i) => (
-          <div key={i} className="bg-neutral-900 border border-neutral-800 p-4 rounded-lg">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-lg font-bold text-white">{test.name}</h2>
-              <button onClick={() => runTest(i)} className="bg-neutral-800 text-white px-3 py-1 rounded text-sm hover:bg-neutral-700">Run 200x</button>
+          <Panel key={i} className="p-4">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <h2 className="text-base font-medium tracking-tight text-white">{test.name}</h2>
+              <Button variant="secondary" className="min-h-9 px-3 text-xs" onClick={() => runTest(i)}>Run 200x</Button>
             </div>
             
             <div className="flex gap-4 mb-4">
@@ -599,25 +604,17 @@ export default function DebugSim() {
                 </div>
               </div>
             )}
-          </div>
+          </Panel>
         ))}
       </div>
 
-      <div className="mt-8 bg-neutral-900 border border-neutral-800 rounded-lg p-6">
-        <h2 className="text-xl font-bold text-white mb-4">Autopilot Testing</h2>
-        <div className="flex gap-4 mb-6">
-          <button onClick={() => runAutoSim(180)} className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded">
-            Run 180 Days
-          </button>
-          <button onClick={() => runAutoSim(365)} className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded">
-            Run 365 Days
-          </button>
-          <button onClick={() => runAutoSim(730)} className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded">
-            Run 730 Days
-          </button>
-          <button onClick={runTournamentTestWorkflow} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
-            Run GP Test Workflow
-          </button>
+      <Panel className="mt-8">
+        <h2 className="mb-4 text-lg font-medium tracking-tight text-white">Autopilot Testing</h2>
+        <div className="mb-6 flex flex-wrap gap-2">
+          <Button variant="secondary" onClick={() => runAutoSim(180)}>Run 180 Days</Button>
+          <Button variant="secondary" onClick={() => runAutoSim(365)}>Run 365 Days</Button>
+          <Button variant="secondary" onClick={() => runAutoSim(730)}>Run 730 Days</Button>
+          <Button variant="primary" onClick={runTournamentTestWorkflow}>Run GP Test Workflow</Button>
         </div>
 
         {testLog.length > 0 && (
@@ -930,7 +927,7 @@ export default function DebugSim() {
             )}
           </div>
         )}
-      </div>
+      </Panel>
     </div>
   );
 }
