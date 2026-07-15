@@ -6,11 +6,14 @@ import { advanceTime, simulateSingleFightPreview, applyFightResult, finalizeEven
 import { updateRankings } from '../lib/game/rankings';
 import { v4 as uuidv4 } from 'uuid';
 import { createNewGame, saveGameLocally, loadGameLocally, exportGameToJSON, importGameFromJSON, CURRENT_SAVE_VERSION } from '../lib/game/save';
+import { getContractEndDate } from '../lib/game/contracts';
 
 import { autoBookEventsAndContracts, maintainDeals, repairEventAvailability, repairFutureEventAvailability, repairPastScheduledEvents, simulateDueEvents } from '../lib/game/autobooker';
 import { generateSeasonPlan, syncCalendarSlots } from '../lib/game/season';
 import { createGrandPrixTournament, scheduleQuarterfinals, scheduleSemifinals, scheduleFinal, cancelTournament, runAutopilotTournaments, syncTournamentTitleShotFlags, scheduleTournamentRound } from '../lib/game/tournament';
 import { WeightClass, TournamentFormat } from '../types/game';
+import { applyPromotionSocialAction as applySocialAction, generateScheduledFightSocial } from '../lib/game/social';
+import { runObserverDecisions } from '../lib/game/observer';
 
 export interface ActiveSimulation {
   eventId: string | null;
@@ -20,7 +23,7 @@ export interface ActiveSimulation {
   status: 'idle' | 'replaying' | 'result-ready' | 'completed';
 }
 
-export type GameView = 'dashboard' | 'roster' | 'free-agents' | 'event-builder' | 'simulation' | 'rankings' | 'news' | 'fighter-detail' | 'debug' | 'history' | 'fight-detail' | 'tournaments' | 'calendar' | 'mma-guide';
+export type GameView = 'dashboard' | 'inbox' | 'roster' | 'free-agents' | 'event-builder' | 'simulation' | 'rankings' | 'news' | 'fighter-detail' | 'debug' | 'history' | 'fight-detail' | 'tournaments' | 'calendar' | 'mma-guide' | 'settings';
 
 type ViewData = {
   fighterId?: string;
@@ -58,6 +61,7 @@ interface GameStore extends GameState {
   advanceAutopilot: (targetDays: number, simulateEvents: boolean) => void;
   signFighter: (fighterId: string, pay: number, winBonus: number, fights: number) => void;
   renewFighter: (fighterId: string, pay: number, winBonus: number, fights: number) => void;
+  setCounterOffer: (fighterId: string, counterOffer: GameState['fighters'][string]['counterOffer']) => void;
   releaseFighter: (fighterId: string) => void;
   signSponsorDeal: (templateId: string) => void;
   signMediaDeal: (templateId: string) => void;
@@ -78,6 +82,7 @@ interface GameStore extends GameState {
   cancelTournament: (tournamentId: string) => void;
   generateCurrentYearPlan: () => void;
   cancelCalendarSlot: (slotId: string) => void;
+  applyPromotionSocialAction: (fightId: string, action: 'announce' | 'hype') => void;
 }
 
 export const useGameStore = create<GameStore>((set, get) => ({
@@ -265,6 +270,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
           titles: newState.titles,
           belts: newState.belts,
           news: newState.news,
+          socialFeed: newState.socialFeed,
           storylines: newState.storylines,
           saveVersion: newState.saveVersion,
           mode: newState.mode,
@@ -316,6 +322,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
         gameState = autoBookEventsAndContracts(gameState);
         gameState = runAutopilotTournaments(gameState);
         gameState = repairFutureEventAvailability(gameState);
+        gameState = runObserverDecisions(gameState);
         gameState = advanceTime(gameState, 1);
         gameState = maintainDeals(gameState);
         gameState = repairFutureEventAvailability(gameState);
@@ -457,7 +464,15 @@ export const useGameStore = create<GameStore>((set, get) => ({
       
       const updated = {
         ...f,
-        contract: { fightsRemaining: fights, payPerFight: pay, winBonus, exclusivity: true }
+        contract: {
+          fightsRemaining: fights,
+          payPerFight: pay,
+          winBonus,
+          exclusivity: true,
+          endDate: getContractEndDate(state.currentDate, fights),
+          lastNegotiationDate: state.currentDate
+        },
+        counterOffer: undefined
       };
       
       const newState = {
@@ -483,7 +498,16 @@ export const useGameStore = create<GameStore>((set, get) => ({
       
       const updated = {
         ...f,
-        contract: { ...f.contract, fightsRemaining: fights, payPerFight: pay, winBonus }
+        contract: {
+          ...f.contract,
+          fightsRemaining: fights,
+          payPerFight: pay,
+          winBonus,
+          endDate: getContractEndDate(state.currentDate, fights),
+          lastNegotiationDate: state.currentDate,
+          counterOffer: undefined
+        },
+        counterOffer: undefined
       };
       
       const newState = {
@@ -502,6 +526,12 @@ export const useGameStore = create<GameStore>((set, get) => ({
     });
   },
   
+  setCounterOffer: (fighterId, counterOffer) => set((state) => {
+    const fighter = state.fighters[fighterId];
+    if (!fighter) return state;
+    return { ...state, fighters: { ...state.fighters, [fighterId]: { ...fighter, counterOffer } } };
+  }),
+
   releaseFighter: (fighterId) => {
     set((state) => {
       const f = state.fighters[fighterId];
@@ -722,7 +752,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
         }
       }
 
-      return nextState;
+      return generateScheduledFightSocial(nextState, state.currentDate);
     });
   },
 
@@ -733,10 +763,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
       
       const updatedEvt: Event = { ...existing, ...eventData };
       
-      return {
-        events: { ...state.events, [eventId]: updatedEvt },
-        currentView: 'dashboard'
-      };
+      const nextState = generateScheduledFightSocial({ ...state, events: { ...state.events, [eventId]: updatedEvt } }, state.currentDate);
+      return { events: nextState.events, socialFeed: nextState.socialFeed, currentView: 'dashboard' };
     });
   },
 
@@ -973,5 +1001,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       };
     });
   },
+
+  applyPromotionSocialAction: (fightId, action) => set(state => applySocialAction(state, fightId, action)),
 
 }));

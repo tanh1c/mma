@@ -9,6 +9,7 @@ import { getGrandPrixExplanation } from '../lib/game/insights';
 import { CountryFlag } from '../components/CountryFlag';
 import { FighterAvatar } from '../components/FighterAvatar';
 import { Button, Panel, PageHeader } from '../components/ui';
+import { getFighterOverall } from '../lib/game/fighterRatings';
 
 export default function Tournaments() {
   const gameState = useGameStore();
@@ -214,7 +215,7 @@ export default function Tournaments() {
                   {selectedParticipants.length} / {format === 'eight_man' ? 8 : 4} Selected
                 </span>
               </div>
-              <p className="text-xs text-neutral-500 mb-4">Only signed, healthy, unbooked fighters in this division are eligible. Seeded by ELO ranking score.</p>
+              <p className="text-xs text-neutral-500 mb-4">Only signed, healthy, unbooked fighters in this division are eligible. Seeded by ELO ranking score; OVR breaks ranking ties.</p>
               
               {eligibleFighters.length === 0 ? (
                 <div className="bg-black/10 border border-[#2a2c31] p-6 rounded text-center">
@@ -240,7 +241,7 @@ export default function Tournaments() {
                           <FighterAvatar id={f.id} name={`${f.firstName} ${f.lastName}`} nationality={f.nationality} className="h-8 w-8" />
                           <div>
                             <p className="font-bold text-sm">{f.firstName} {f.lastName} <CountryFlag nationality={f.nationality} className="text-xs" /></p>
-                            <p className="text-xs text-neutral-500 font-mono">Elo: {Math.floor(f.rankingScore || 1000)} • Pop: {f.popularity}</p>
+                            <p className="text-xs text-neutral-500 font-mono">Elo: {Math.floor(f.rankingScore || 1000)} • OVR: {getFighterOverall(f)} • POT: {f.potential}</p>
                           </div>
                         </div>
                         <div className="flex gap-2">

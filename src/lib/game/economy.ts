@@ -134,8 +134,8 @@ export function calculateEventProjections(
       s.isActive && (s.fighterIds.includes(f.redCornerId) || s.fighterIds.includes(f.blueCornerId))
     );
     relevantStorylines.forEach(s => {
-      if (s.type === 'Rivalry' && s.fighterIds.includes(f.redCornerId) && s.fighterIds.includes(f.blueCornerId)) {
-        eventHype += 8; // big boost for direct rivalry
+      if (s.type === 'Rivalry' && s.fighterIds.length === 2 && s.fighterIds.includes(f.redCornerId) && s.fighterIds.includes(f.blueCornerId)) {
+        eventHype += Math.min(3, Math.max(1, s.intensity ?? 1)) * 3;
       } else if (s.type === 'Rematch Demand' && s.fighterIds.includes(f.redCornerId) && s.fighterIds.includes(f.blueCornerId)) {
         eventHype += 5;
       } else if (s.type === 'Prospect Hype' || s.type === 'Upset Run' || s.type === 'Champion Dominance') {
@@ -149,6 +149,7 @@ export function calculateEventProjections(
      warnings.push("Fan backlash from a previous event is hurting current hype.");
   }
 
+  eventHype += Math.min(10, fights.reduce((total, fight) => total + Math.min(10, Math.max(0, fight.socialHype ?? 0)), 0));
   eventHype = Math.min(100, Math.max(0, eventHype));
 
   // Fan Expectation
@@ -286,7 +287,8 @@ export function calculateEventFinancials(
   actualAttendance = Math.min(actualAttendance, venue.capacity);
   
   const gateRevenue = actualAttendance * ticketPrice;
-  const broadcastRevenue = Math.floor(proj.broadcastRevenue * (0.95 + Math.random() * 0.1));
+  const rivalryIntensity = Math.max(0, ...fights.map(fight => storylines.filter(storyline => storyline.type === 'Rivalry' && storyline.isActive && storyline.fighterIds.length === 2 && storyline.fighterIds.includes(fight.redCornerId) && storyline.fighterIds.includes(fight.blueCornerId)).map(storyline => Math.min(3, Math.max(1, storyline.intensity ?? 1))).reduce((max, intensity) => Math.max(max, intensity), 0)));
+  const broadcastRevenue = Math.floor(proj.broadcastRevenue * (0.95 + Math.random() * 0.1) * (1 + rivalryIntensity * 0.02));
 
   let fighterBasePay = 0;
   let fighterWinBonuses = 0;

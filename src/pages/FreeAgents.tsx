@@ -6,8 +6,9 @@ import { Select } from '../components/Select';
 import { CountryFlag } from '../components/CountryFlag';
 import { FighterAvatar } from '../components/FighterAvatar';
 import { DataSurface, PageHeader, Panel, StatusBadge } from '../components/ui';
+import { getFighterOverall, isProspect } from '../lib/game/fighterRatings';
 
-type SortKey = 'name' | 'age' | 'weight' | 'record' | 'style' | 'popularity' | 'potential' | 'ask' | 'interest';
+type SortKey = 'name' | 'age' | 'weight' | 'record' | 'style' | 'overall' | 'popularity' | 'potential' | 'ask' | 'interest';
 
 export default function FreeAgents() {
   const { fighters, promotion, setView } = useGameStore();
@@ -29,14 +30,14 @@ export default function FreeAgents() {
       .filter(fighter => !search.trim() || `${fighter.firstName} ${fighter.lastName} ${fighter.nickname}`.toLowerCase().includes(search.trim().toLowerCase()))
       .filter(fighter => filterWeight === 'All' || fighter.weightClass === filterWeight)
       .filter(fighter => filterStyle === 'All' || fighter.style === filterStyle)
-      .filter(fighter => filterArchetype === 'All' || (filterArchetype === 'Star' && fighter.popularity >= 80) || (filterArchetype === 'Prospect' && fighter.potential > 80 && fighter.popularity < 50) || (filterArchetype === 'Veteran' && fighter.age > 33))
+      .filter(fighter => filterArchetype === 'All' || (filterArchetype === 'Star' && fighter.popularity >= 80) || (filterArchetype === 'Prospect' && isProspect(fighter)) || (filterArchetype === 'Veteran' && fighter.age > 33))
       .filter(fighter => fighter.popularity >= Number(filterMinPop));
     result.sort((a, b) => {
       const expectations = [getContractExpectation(a, promotion), getContractExpectation(b, promotion)];
       const value = (fighter: typeof a, expectation: typeof expectations[number]) => ({
         name: `${fighter.firstName} ${fighter.lastName}`, age: fighter.age, weight: fighter.weightClass,
         record: fighter.record.wins / (fighter.record.wins + fighter.record.losses + fighter.record.draws + 0.001),
-        style: fighter.style, popularity: fighter.popularity, potential: fighter.potential, ask: expectation.basePay, interest: expectation.interest
+        style: fighter.style, overall: getFighterOverall(fighter), popularity: fighter.popularity, potential: fighter.potential, ask: expectation.basePay, interest: expectation.interest
       }[sortConfig.key]);
       const [aValue, bValue] = [value(a, expectations[0]), value(b, expectations[1])];
       return aValue < bValue ? (sortConfig.direction === 'asc' ? -1 : 1) : aValue > bValue ? (sortConfig.direction === 'asc' ? 1 : -1) : 0;
@@ -63,15 +64,15 @@ export default function FreeAgents() {
         <div className="overflow-x-auto custom-scrollbar">
           <table className="min-w-[800px] w-full text-left text-sm text-neutral-400">
             <thead className="border-b border-[#2a2c31] bg-black/10 font-mono text-[10px] uppercase tracking-[0.14em] text-neutral-500"><tr>
-              {([['Fighter', 'name'], ['Age', 'age'], ['Weight', 'weight'], ['Record', 'record'], ['Style', 'style'], ['Pop', 'popularity'], ['Pot', 'potential'], ['Ask Pay/Bonus', 'ask'], ['Interest', 'interest']] as Array<[string, SortKey]>).map(([label, key]) => <th key={key} className="cursor-pointer p-4 font-normal hover:bg-white/[0.03]" onClick={() => handleSort(key)}>{label}<SortIcon sortKey={key} /></th>)}
+              {([['Fighter', 'name'], ['Age', 'age'], ['Weight', 'weight'], ['Record', 'record'], ['Style', 'style'], ['OVR', 'overall'], ['Pop', 'popularity'], ['POT', 'potential'], ['Ask Pay/Bonus', 'ask'], ['Interest', 'interest']] as Array<[string, SortKey]>).map(([label, key]) => <th key={key} className="cursor-pointer p-4 font-normal hover:bg-white/[0.03]" onClick={() => handleSort(key)}>{label}<SortIcon sortKey={key} /></th>)}
             </tr></thead>
             <tbody className="divide-y divide-[#2a2c31]">
               {agents.map(fighter => {
                 const expectation = getContractExpectation(fighter, promotion);
                 const interestTone = expectation.interest > 70 ? 'success' : expectation.interest > 40 ? 'warning' : 'danger';
                 return <tr key={fighter.id} onClick={() => setView('fighter-detail', { fighterId: fighter.id })} className="cursor-pointer transition-colors hover:bg-white/[0.02]">
-                  <td className="p-4"><div className="flex items-center gap-2"><FighterAvatar id={fighter.id} name={`${fighter.firstName} ${fighter.lastName}`} nationality={fighter.nationality} className="h-8 w-8" /><div><div className="flex items-center gap-2 font-medium text-white"><span>{fighter.firstName} {fighter.lastName}</span><CountryFlag nationality={fighter.nationality} className="text-sm" /></div>{fighter.nickname && <div className="text-xs text-neutral-500">&quot;{fighter.nickname}&quot;</div>}</div></div></td>
-                  <td className="p-4">{fighter.age}</td><td className="p-4">{fighter.weightClass}</td><td className="p-4">{fighter.record.wins}-{fighter.record.losses}-{fighter.record.draws}</td><td className="p-4">{fighter.style}</td><td className="p-4">{fighter.popularity}</td><td className="p-4">{fighter.potential}</td>
+                  <td className="p-4"><div className="flex items-center gap-2"><FighterAvatar id={fighter.id} name={`${fighter.firstName} ${fighter.lastName}`} nationality={fighter.nationality} className="h-8 w-8" /><div><div className="flex items-center gap-2 font-medium text-white"><span>{fighter.firstName} {fighter.lastName}</span><CountryFlag nationality={fighter.nationality} className="text-sm" /></div>{fighter.nickname && <div className="text-xs text-neutral-500">&quot;{fighter.nickname}&quot;</div>}<div className="text-[10px] text-neutral-500">{fighter.heightCm} cm · {fighter.fightWeightLb}/{fighter.walkAroundWeightLb} lb</div></div></div></td>
+                  <td className="p-4">{fighter.age}</td><td className="p-4">{fighter.weightClass}</td><td className="p-4">{fighter.record.wins}-{fighter.record.losses}-{fighter.record.draws}</td><td className="p-4">{fighter.style}</td><td className="p-4 font-mono text-white">{getFighterOverall(fighter)}</td><td className="p-4">{fighter.popularity}</td><td className="p-4">{fighter.potential}</td>
                   <td className="p-4"><p className="font-mono text-xs text-neutral-200">${expectation.basePay.toLocaleString()} / ${expectation.winBonus.toLocaleString()}</p><p className="mt-1 text-xs text-neutral-500">for {expectation.fights} fights</p></td>
                   <td className="p-4"><StatusBadge tone={interestTone}>{expectation.interestLabel}</StatusBadge></td>
                 </tr>;

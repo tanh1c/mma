@@ -5,6 +5,8 @@ import { generateSeasonPlan, syncCalendarSlots } from './season';
 import { scheduleTournamentRound, getPendingTitleShotDebts, isFighterBookedUpcoming, evaluateAndCreateTournament, bindTournamentToCalendarSlots, repairScheduledTournamentRound } from './tournament';
 import { quickSimulateEvent } from '../engine';
 import { getEventName } from '../branding';
+import { getContractEndDate } from './contracts';
+import { getFighterOverall } from './fighterRatings';
 
 const EVENT_INTERVAL_DAYS = 28;
 
@@ -16,6 +18,10 @@ function addDays(dateStr: string, days: number) {
   const d = new Date(dateStr);
   d.setDate(d.getDate() + days);
   return d.toISOString().split('T')[0];
+}
+
+function hasContractThrough(fighter: Fighter, eventDate: string): boolean {
+  return !!fighter.contract && fighter.contract.fightsRemaining > 0 && fighter.contract.endDate >= eventDate;
 }
 
 function hasTournamentFights(event: Event): boolean {
@@ -307,6 +313,13 @@ export function autoBookEventsAndContracts(state: GameState): GameState {
     if (existingEvent) {
       approachingSlot.eventId = existingEvent.id;
       approachingSlot.status = 'scheduled';
+      if (approachingSlot.type === 'grand_prix_round' && approachingSlot.tournamentId && approachingSlot.tournamentRound && !hasTournamentFights(existingEvent)) {
+        try {
+          newState = scheduleTournamentRound(newState, approachingSlot.tournamentId, approachingSlot.tournamentRound, existingEvent.id);
+        } catch (error) {
+          newState = cancelFailedGrandPrixEvent(newState, existingEvent.id, approachingSlot.tournamentId, approachingSlot.tournamentRound, (error as Error).message);
+        }
+      }
       return maintainRoster(newState);
     }
 
@@ -353,7 +366,7 @@ export function autoBookEventsAndContracts(state: GameState): GameState {
           const pay = 5000;
           newState.fighters[fa.id] = {
             ...fa,
-            contract: { payPerFight: pay, winBonus: pay, fightsRemaining: 4, exclusivity: true }
+            contract: { payPerFight: pay, winBonus: pay, fightsRemaining: 4, exclusivity: true, endDate: getContractEndDate(newState.currentDate, 4) }
           };
           newState.news.unshift({
             id: uuidv4(),
@@ -627,7 +640,7 @@ function generateAutoEvent(
     if (isFighterBookedUpcoming(state, f.id)) {
       return false;
     }
-    return f.contract && !f.injuryStatus && !f.medicalSuspension && f.fatigue < 50;
+    return hasContractThrough(f, dateStr) && !f.injuryStatus && !f.medicalSuspension && f.fatigue < 50;
   });
 
   // Group by wc
@@ -849,21 +862,36 @@ function generateAutoEvent(
   }
 
   // Fill rest of card
+  const tournamentFighters = new Set(Object.values(state.tournaments || {})
+    .filter(tournament => tournament.status === 'active' || tournament.status === 'planned')
+    .flatMap(tournament => [...tournament.participants.map(participant => participant.fighterId), ...tournament.reserveFighterIds]));
   for (const wc of weightClasses) {
     if (fights.length >= fightsTarget) break;
     const available = wcGroups[wc].filter(f => !bookedFighters.has(f.id)).sort((a, b) => b.popularity - a.popularity);
-    
-    for (let i = 0; i < available.length - 1; i += 2) {
-      if (fights.length >= fightsTarget) break;
-      fights.push({
-        redCornerId: available[i].id,
-        blueCornerId: available[i+1].id,
-        weightClass: wc as WeightClass,
-        isTitleFight: false,
-        rounds: 3
-      });
-      bookedFighters.add(available[i].id);
-      bookedFighters.add(available[i+1].id);
+    const rivalry = state.storylines
+      .filter(storyline => storyline.type === 'Rivalry' && storyline.isActive && (storyline.intensity ?? 1) >= 3)
+      .sort((a, b) => a.id.localeCompare(b.id))
+      .find(storyline => storyline.fighterIds.length === 2 && storyline.fighterIds.every(id => available.some(fighter => fighter.id === id) && !tournamentFighters.has(id)));
+    if (rivalry && fights.length < fightsTarget) {
+      const [redId, blueId] = rivalry.fighterIds;
+      fights.push({ redCornerId: redId, blueCornerId: blueId, weightClass: wc as WeightClass, isTitleFight: false, rounds: 3 });
+      bookedFighters.add(redId);
+      bookedFighters.add(blueId);
+      available.splice(0, available.length, ...available.filter(fighter => fighter.id !== redId && fighter.id !== blueId));
+    }
+
+    while (available.length >= 2 && fights.length < fightsTarget) {
+      const red = available.shift()!;
+      const opponentIndex = available.reduce((bestIndex, fighter, index) => {
+        const best = available[bestIndex];
+        const score = Math.abs(getFighterOverall(red) - getFighterOverall(fighter)) + Math.abs(red.popularity - fighter.popularity) / 10;
+        const bestScore = Math.abs(getFighterOverall(red) - getFighterOverall(best)) + Math.abs(red.popularity - best.popularity) / 10;
+        return score < bestScore ? index : bestIndex;
+      }, 0);
+      const blue = available.splice(opponentIndex, 1)[0];
+      fights.push({ redCornerId: red.id, blueCornerId: blue.id, weightClass: wc as WeightClass, isTitleFight: false, rounds: 3 });
+      bookedFighters.add(red.id);
+      bookedFighters.add(blue.id);
     }
   }
 
@@ -1017,7 +1045,7 @@ function maintainRoster(state: GameState): GameState {
         const pay = 5000 + (toSign.popularity * 100);
         newState.fighters[toSign.id] = { 
           ...toSign, 
-          contract: { payPerFight: pay, winBonus: pay, fightsRemaining: 4, exclusivity: true }
+          contract: { payPerFight: pay, winBonus: pay, fightsRemaining: 4, exclusivity: true, endDate: getContractEndDate(newState.currentDate, 4) }
         };
         newState.news.unshift({
           id: uuidv4(), date: newState.currentDate, type: 'contract',
@@ -1036,7 +1064,7 @@ function maintainRoster(state: GameState): GameState {
         const pay = 10000 + (f.popularity * 200);
         newState.fighters[f.id] = {
           ...f,
-          contract: { payPerFight: pay, winBonus: pay, fightsRemaining: 4, exclusivity: true }
+          contract: { payPerFight: pay, winBonus: pay, fightsRemaining: 4, exclusivity: true, endDate: getContractEndDate(newState.currentDate, 4) }
         };
         newState.news.unshift({
           id: uuidv4(), date: newState.currentDate, type: 'contract',
@@ -1049,7 +1077,7 @@ function maintainRoster(state: GameState): GameState {
       const pay = 10000 + (f.popularity * 200);
       newState.fighters[f.id] = {
         ...f,
-        contract: { payPerFight: pay, winBonus: pay, fightsRemaining: 4, exclusivity: true }
+        contract: { payPerFight: pay, winBonus: pay, fightsRemaining: 4, exclusivity: true, endDate: getContractEndDate(newState.currentDate, 4) }
       };
       newState.news.unshift({
         id: uuidv4(), date: newState.currentDate, type: 'contract',
@@ -1128,7 +1156,7 @@ export function repairEventAvailability(state: GameState, eventId: string): Game
 
         const replacementCandidates = Object.values(newState.fighters).filter(f =>
           f.weightClass === weightClass &&
-          f.contract &&
+          hasContractThrough(f, event.date) &&
           f.injuryStatus === null &&
           (!f.medicalSuspension || f.medicalSuspension.daysRemaining <= 0) &&
           !currentlyBooked.has(f.id) &&
@@ -1214,7 +1242,7 @@ export function rebuildCard(state: GameState, eventId: string): GameState {
   });
 
   const availableFighters = Object.values(newState.fighters).filter(f => 
-    f.contract &&
+    hasContractThrough(f, event.date) &&
     f.injuryStatus === null &&
     (!f.medicalSuspension || f.medicalSuspension.daysRemaining <= 0) &&
     f.fatigue < 50 &&

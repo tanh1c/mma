@@ -101,7 +101,7 @@ export default function DebugSim() {
       const candidates = lwFighters.slice(0, 6).map((f, i) => {
         return {
           ...f,
-          contract: f.contract || { fightsRemaining: 3, payPerFight: 10000, winBonus: 10000, exclusivity: true },
+          contract: f.contract || { fightsRemaining: 3, payPerFight: 10000, winBonus: 10000, exclusivity: true, endDate: '2027-01-01' },
           injuryStatus: null,
           medicalSuspension: null,
           fatigue: 0

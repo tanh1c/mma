@@ -1,8 +1,11 @@
 import { GameState, FightMatchup, FightResult, Event, WeightClass, YearlyAwardSet, FightArchiveItem, Fighter } from '../types/game';
 import { simulateFight } from './game/fightSimulator';
 import { calculateEventFinancials } from './game/economy';
-import { generateEventNewsAndStorylines, generateWeeklyNewsAndStorylines } from './game/news';
+import { coolRivalries, generateEventNewsAndStorylines, generateWeeklyNewsAndStorylines } from './game/news';
 import { applyTournamentProgression } from './game/tournament';
+import { getContractStatus } from './game/contracts';
+import { improveFighterTowardPotential } from './game/fighterRatings';
+import { generatePostFightSocial, generateScheduledFightSocial, syncLegacyNewsToSocialFeed } from './game/social';
 import { v4 as uuidv4 } from 'uuid';
 import { format, addDays } from 'date-fns';
 
@@ -232,7 +235,41 @@ export function advanceTime(state: GameState, days: number = 7): GameState {
     // Morale normalization over time
     if (f.morale < 50) f.morale += 1;
     if (f.morale > 50) f.morale -= 1;
-    
+
+    if (f.counterOffer && f.counterOffer.expiresDate < nextDate) f.counterOffer = undefined;
+
+    if (f.contract) {
+      const contractStatus = getContractStatus(f.contract, nextDate);
+      if (contractStatus === 'expired') {
+        if (f.isChampion) {
+          const alreadyNotified = newState.news.some(item => item.type === 'contract' && item.title === 'Champion Contract Expired!' && item.content.includes(f.lastName) && item.date >= format(addDays(new Date(nextDate), -30), 'yyyy-MM-dd'));
+          if (!alreadyNotified) {
+            newState.news.unshift({
+              id: uuidv4(),
+              date: nextDate,
+              title: 'Champion Contract Expired!',
+              content: `${f.lastName}'s contract has expired. Renew immediately or vacate the title.`,
+              type: 'contract'
+            });
+          }
+        } else {
+          f.contract = null;
+          newState.news.unshift({
+            id: uuidv4(),
+            date: nextDate,
+            title: `Contract Expired: ${f.lastName}`,
+            content: `${f.firstName} ${f.lastName} is now a free agent.`,
+            type: 'contract'
+          });
+        }
+      } else {
+        const lastFightDays = f.lastFightDate ? Math.floor((new Date(nextDate).getTime() - new Date(f.lastFightDate).getTime()) / 86_400_000) : 90;
+        if (getContractStatus(f.contract, nextDate) === 'expiring' && lastFightDays >= 90) {
+          f.morale = Math.max(35, f.morale - Math.max(1, Math.floor(days / 7)));
+        }
+      }
+    }
+
     // Aging mechanic
     if (Math.random() < (days / 365)) {
       f.age += 1;
@@ -246,12 +283,9 @@ export function advanceTime(state: GameState, days: number = 7): GameState {
         f.attributes.chin = Math.max(10, f.attributes.chin - randomInt(1, 3));
       }
       
-      // Stat growth for young fighters
       if (f.age < 28 && Math.random() > 0.3) {
-        f.attributes.fightIq = Math.min(100, f.attributes.fightIq + randomInt(1, 3));
-        f.attributes.striking = Math.min(100, f.attributes.striking + randomInt(0, 2));
-        f.attributes.grappling = Math.min(100, f.attributes.grappling + randomInt(0, 2));
-        f.attributes.wrestling = Math.min(100, f.attributes.wrestling + randomInt(0, 2));
+        const improved = improveFighterTowardPotential(f, randomInt, Math.random);
+        f.attributes = improved.attributes;
       }
     }
     
@@ -290,7 +324,7 @@ export function advanceTime(state: GameState, days: number = 7): GameState {
   }
   newState.titles = newTitles;
 
-  return generateWeeklyNewsAndStorylines(newState, days);
+  return generateScheduledFightSocial(syncLegacyNewsToSocialFeed(generateWeeklyNewsAndStorylines(coolRivalries(newState, nextDate), days)), nextDate);
 }
 
 export function validateTitleFight(
@@ -440,8 +474,9 @@ export function applyFightResult(state: GameState, eventId: string, fightIndex: 
   const newRed = { ...red, titleShotPromised: redTitleShotPromised, record: { ...red.record } };
   const newBlue = { ...blue, titleShotPromised: blueTitleShotPromised, record: { ...blue.record } };
 
-  newRed.fatigue += 50;
-  newBlue.fatigue += 50;
+  const campFatigue = { balanced: 0, striking: 5, wrestling: 5, cardio: -5, recovery: -10 }[updatedMatchup.campFocus ?? 'balanced'];
+  newRed.fatigue = Math.max(0, Math.min(100, newRed.fatigue + 50 + campFatigue));
+  newBlue.fatigue = Math.max(0, Math.min(100, newBlue.fatigue + 50 + campFatigue));
   
   // contract
   if (newRed.contract) {
@@ -632,7 +667,7 @@ export function applyFightResult(state: GameState, eventId: string, fightIndex: 
   const isRedChamp = newRed.isChampion || newRed.id === titleState?.undisputedChampionId || newRed.id === titleState?.interimChampionId;
   const isBlueChamp = newBlue.isChampion || newBlue.id === titleState?.undisputedChampionId || newBlue.id === titleState?.interimChampionId;
 
-  if (newRed.contract && newRed.contract.fightsRemaining <= 0) {
+  if (newRed.contract && getContractStatus(newRed.contract, newState.currentDate) === 'expired') {
       if (isRedChamp) {
         newState.news.unshift({
             id: uuidv4(), date: newState.currentDate, type: 'contract',
@@ -643,8 +678,8 @@ export function applyFightResult(state: GameState, eventId: string, fightIndex: 
         newRed.contract = null;
       }
   }
-  
-  if (newBlue.contract && newBlue.contract.fightsRemaining <= 0) {
+
+  if (newBlue.contract && getContractStatus(newBlue.contract, newState.currentDate) === 'expired') {
       if (isBlueChamp) {
         newState.news.unshift({
             id: uuidv4(), date: newState.currentDate, type: 'contract',
@@ -1038,7 +1073,7 @@ export function finalizeEventFinancials(state: GameState, eventId: string): Game
     }
   });
 
-  return generateEventNewsAndStorylines(newState, eventId);
+  return generatePostFightSocial(syncLegacyNewsToSocialFeed(generateEventNewsAndStorylines(newState, eventId)), eventId);
 }
 
 export function quickSimulateEvent(state: GameState, eventId: string): GameState {

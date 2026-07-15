@@ -1,5 +1,7 @@
 import type { Event, Fighter, GameState, SeasonCalendarSlot, WeightClass } from '../../types/game';
+import { getPairKey } from './news';
 import type { TournamentDiagnosis } from './tournament';
+import { getFighterOverall } from './fighterRatings';
 
 export type FighterReadiness = {
   status: 'ready' | 'fatigued' | 'injured' | 'suspended' | 'unsigned';
@@ -14,6 +16,9 @@ export type FighterComparison = {
   blue: Fighter;
   redChance: number;
   blueChance: number;
+  redOverall: number;
+  blueOverall: number;
+  mismatchWarning?: string;
   styleNote: string;
   readiness: { red: FighterReadiness; blue: FighterReadiness };
 };
@@ -71,9 +76,10 @@ function styleEdge(red: Fighter['style'], blue: Fighter['style']) {
 export function compareFighters(red: Fighter, blue: Fighter): FighterComparison {
   const redReadiness = getFighterReadiness(red);
   const blueReadiness = getFighterReadiness(blue);
-  const attribute = (fighter: Fighter) => Object.values(fighter.attributes).reduce((sum, value) => sum + value, 0) / Object.keys(fighter.attributes).length;
-  const redScore = (red.rankingScore ?? 1000) / 20 + attribute(red) / 4 + red.popularity / 12 + red.momentum / 10 + red.morale / 12 + redReadiness.score / 8 + styleEdge(red.style, blue.style);
-  const blueScore = (blue.rankingScore ?? 1000) / 20 + attribute(blue) / 4 + blue.popularity / 12 + blue.momentum / 10 + blue.morale / 12 + blueReadiness.score / 8 + styleEdge(blue.style, red.style);
+  const redOverall = getFighterOverall(red);
+  const blueOverall = getFighterOverall(blue);
+  const redScore = (red.rankingScore ?? 1000) / 20 + redOverall / 4 + red.popularity / 12 + red.momentum / 10 + red.morale / 12 + redReadiness.score / 8 + styleEdge(red.style, blue.style);
+  const blueScore = (blue.rankingScore ?? 1000) / 20 + blueOverall / 4 + blue.popularity / 12 + blue.momentum / 10 + blue.morale / 12 + blueReadiness.score / 8 + styleEdge(blue.style, red.style);
   const redChance = Math.round(clamp(50 + (redScore - blueScore) / 2, 10, 90));
   const styleNote = styleEdge(red.style, blue.style) > 0
     ? `${red.style} has a small stylistic edge over ${blue.style}.`
@@ -81,7 +87,18 @@ export function compareFighters(red: Fighter, blue: Fighter): FighterComparison 
       ? `${blue.style} has a small stylistic edge over ${red.style}.`
       : 'No clear stylistic edge.';
 
-  return { red, blue, redChance, blueChance: 100 - redChance, styleNote, readiness: { red: redReadiness, blue: blueReadiness } };
+  const overallGap = Math.abs(redOverall - blueOverall);
+  return {
+    red,
+    blue,
+    redChance,
+    blueChance: 100 - redChance,
+    redOverall,
+    blueOverall,
+    ...(overallGap >= 15 ? { mismatchWarning: `Severe OVR mismatch (${overallGap} points).` } : {}),
+    styleNote,
+    readiness: { red: redReadiness, blue: blueReadiness }
+  };
 }
 
 export function recommendMatchups(state: GameState, weightClass: WeightClass, excludedFighterIds: Iterable<string> = []): MatchRecommendation[] {
@@ -94,14 +111,18 @@ export function recommendMatchups(state: GameState, weightClass: WeightClass, ex
       const [first, second] = [candidates[redIndex], candidates[blueIndex]];
       const [red, blue] = (second.rankingScore ?? 0) > (first.rankingScore ?? 0) ? [second, first] : [first, second];
       const rankingGap = Math.abs((red.rankingScore ?? 1000) - (blue.rankingScore ?? 1000));
-      const storyline = state.storylines.find(item => item.isActive && item.fighterIds.includes(red.id) && item.fighterIds.includes(blue.id));
+      const overallGap = Math.abs(getFighterOverall(red) - getFighterOverall(blue));
+      const pairKey = getPairKey([red.id, blue.id]);
+      const storyline = state.storylines.find(item => item.isActive && item.type === 'Rivalry' && item.fighterIds.length === 2 && getPairKey(item.fighterIds) === pairKey);
+      const rivalryScore = Math.min(3, Math.max(1, storyline?.intensity ?? 1)) * 5;
       const reasons = [
         rankingGap <= 75 ? 'Close ranking level' : 'Clear ranked matchup',
+        `OVR gap ${overallGap}`,
         `Combined popularity ${red.popularity + blue.popularity}`,
-        ...(storyline ? [storyline.type === 'Rivalry' ? 'Active rivalry' : storyline.type] : []),
+        ...(storyline ? [`Rivalry intensity ${storyline.intensity ?? 1}`] : []),
         ...(getFighterReadiness(red).status === 'fatigued' || getFighterReadiness(blue).status === 'fatigued' ? ['One fighter is tired'] : ['Both fighters ready'])
       ];
-      const score = Math.round(clamp(100 - rankingGap / 5 + (red.popularity + blue.popularity) / 4 + (storyline?.type === 'Rivalry' ? 15 : 0) + getFighterReadiness(red).score / 10 + getFighterReadiness(blue).score / 10, 0, 100));
+      const score = Math.round(clamp(100 - rankingGap / 5 - overallGap * 1.5 + (red.popularity + blue.popularity) / 4 + (storyline ? rivalryScore : 0) + getFighterReadiness(red).score / 10 + getFighterReadiness(blue).score / 10, 0, 100));
       recommendations.push({ red, blue, score, reasons });
     }
   }

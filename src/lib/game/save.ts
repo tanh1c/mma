@@ -1,10 +1,15 @@
-import { GameState } from '../../types/game';
+import { addDays } from 'date-fns';
+import { Contract, GameState } from '../../types/game';
+import { CONTRACT_DAYS_PER_FIGHT } from './contracts';
 import { generateInitialWorld } from './generator';
 import { syncChampionFlags } from '../engine';
 import { getBeltBranding } from '../branding';
+import { getFighterOverall, normalizePhysicalProfile } from './fighterRatings';
+import { syncLegacyNewsToSocialFeed } from './social';
+import { getLocalizedFighterName, isLatinFighterName } from '../names';
 
 const SAVE_KEY = 'cage-dynasty-save';
-export const CURRENT_SAVE_VERSION = 6;
+export const CURRENT_SAVE_VERSION = 9;
 
 export function createNewGame(): GameState {
   const state = generateInitialWorld();
@@ -67,6 +72,7 @@ function extractSaveState(state: GameState): Partial<GameState> {
     titles: state.titles,
     belts: state.belts,
     news: state.news,
+    socialFeed: state.socialFeed,
     storylines: state.storylines,
     saveVersion: state.saveVersion,
     mode: state.mode,
@@ -83,7 +89,19 @@ function extractSaveState(state: GameState): Partial<GameState> {
   };
 }
 
-function validateAndMigrateState(parsed: any): GameState | null {
+function normalizeContract(contract: any, currentDate: string): Contract | null {
+  if (!contract || typeof contract !== 'object') return null;
+  const fightsRemaining = Math.max(0, Number(contract.fightsRemaining) || 0);
+  const endDate = typeof contract.endDate === 'string' && !Number.isNaN(Date.parse(contract.endDate))
+    ? contract.endDate
+    : addDays(new Date(currentDate), Math.max(90, fightsRemaining * CONTRACT_DAYS_PER_FIGHT)).toISOString().slice(0, 10);
+  const counterOffer = contract.counterOffer && typeof contract.counterOffer === 'object' && typeof contract.counterOffer.expiresDate === 'string'
+    ? contract.counterOffer
+    : undefined;
+  return { ...contract, fightsRemaining, endDate, counterOffer };
+}
+
+export function validateAndMigrateState(parsed: any): GameState | null {
   if (!parsed || !parsed.currentDate || !parsed.promotion || !parsed.fighters) {
     return null;
   }
@@ -121,12 +139,19 @@ function validateAndMigrateState(parsed: any): GameState | null {
   
   for (const id in state.fighters) {
     const f = state.fighters[id];
-    
-    // Add potential if missing
-    if (f.potential === undefined) {
-      f.potential = 50;
+    if (!isLatinFighterName(f.firstName) || !isLatinFighterName(f.lastName)) {
+      const name = getLocalizedFighterName(f.nationality, [...id].reduce((seed, char) => (seed * 31 + char.charCodeAt(0)) | 0, 0));
+      f.firstName = name.firstName;
+      f.lastName = name.lastName;
     }
-    
+
+    const physicalProfile = normalizePhysicalProfile(f);
+    f.heightCm = physicalProfile.heightCm;
+    f.fightWeightLb = physicalProfile.fightWeightLb;
+    f.walkAroundWeightLb = physicalProfile.walkAroundWeightLb;
+    const overall = getFighterOverall(f);
+    f.potential = Math.min(95, Math.max(overall, Number(f.potential) || overall));
+
     // Migrate string injuryStatus to object
     if (typeof f.injuryStatus === 'string') {
       f.injuryStatus = { id: id + '-inj', type: f.injuryStatus, daysRemaining: 14 };
@@ -136,7 +161,20 @@ function validateAndMigrateState(parsed: any): GameState | null {
     if (f.lastFightDate === undefined) {
       f.lastFightDate = null;
     }
+
+    f.contract = normalizeContract(f.contract, state.currentDate);
+    f.counterOffer = f.counterOffer && typeof f.counterOffer === 'object' && typeof f.counterOffer.expiresDate === 'string' ? f.counterOffer : undefined;
   }
+
+  for (const eventId in state.events || {}) {
+    const event = state.events[eventId];
+    event.fights = (event.fights || []).map((fight: any) => ({
+      ...fight,
+      campFocus: ['balanced', 'striking', 'wrestling', 'cardio', 'recovery'].includes(fight.campFocus) ? fight.campFocus : 'balanced',
+      socialHype: Math.min(10, Math.max(0, Number(fight.socialHype) || 0))
+    }));
+  }
+  if (!Array.isArray(state.socialFeed)) state.socialFeed = [];
 
   // Migrate observer mode and archives
   if (!state.mode) state.mode = 'manager';
@@ -225,5 +263,5 @@ function validateAndMigrateState(parsed: any): GameState | null {
   }
   
   state.saveVersion = CURRENT_SAVE_VERSION;
-  return syncChampionFlags(state as GameState);
+  return syncLegacyNewsToSocialFeed(syncChampionFlags(state as GameState));
 }

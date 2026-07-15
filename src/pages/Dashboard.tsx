@@ -1,14 +1,14 @@
 import React, { useMemo, useState } from 'react';
 import { useGameStore } from '../store/gameStore';
 import { format, differenceInDays } from 'date-fns';
-import { Trophy, TrendingUp, Users, DollarSign, Calendar, AlertTriangle, AlertCircle, Info, FastForward, Settings, Play } from 'lucide-react';
+import { Trophy, TrendingUp, Users, DollarSign, Calendar, FastForward, Settings, Play } from 'lucide-react';
 import { calculateEventProjections } from '../lib/game/economy';
-import { WEIGHT_CLASSES } from '../lib/game/constants';
-import { getPendingTitleShotDebts } from '../lib/game/tournament';
+import { getPromotionInbox } from '../lib/game/inbox';
 import { Button, Panel, PageHeader, Stat, StatusBadge } from '../components/ui';
 
 export default function Dashboard() {
-  const { promotion, currentDate, events, fighters, tournaments = {}, venues, news, storylines, titles, belts, setView, mode, autopilot, setMode, setAutopilot, advanceAutopilot, lastAutopilotSummary, sponsorDeals = [], mediaDeals = [], financeLedger = [], signSponsorDeal, signMediaDeal, renewDeal } = useGameStore();
+  const gameState = useGameStore();
+  const { promotion, currentDate, events, fighters, tournaments = {}, venues, news, storylines, titles, belts, setView, mode, autopilot, setMode, setAutopilot, advanceAutopilot, lastAutopilotSummary, sponsorDeals = [], mediaDeals = [], financeLedger = [], signSponsorDeal, signMediaDeal, renewDeal } = gameState;
 
   const [isAdvancing, setIsAdvancing] = useState(false);
   const [ledgerFilter, setLedgerFilter] = useState<'All' | 'Event' | 'Deals' | 'Costs' | 'Income'>('All');
@@ -60,166 +60,8 @@ export default function Dashboard() {
     );
   }, [nextEvent, fighters, venues, promotion, storylines, titles, tournaments]);
 
-  const alerts: { id: string; type: 'danger' | 'warning' | 'info'; message: string; action?: { label: string; onClick: () => void } }[] = [];
-
-  if (!nextEvent) {
-    alerts.push({
-      id: 'no-event',
-      type: 'warning',
-      message: 'No upcoming event booked. Inactivity will hurt momentum.',
-      action: { label: 'Book Event', onClick: () => setView('event-builder') }
-    });
-  } else {
-    if (nextEvent.fights.length === 0) {
-      alerts.push({
-        id: 'empty-event',
-        type: 'danger',
-        message: `${nextEvent.name} has no fights booked!`,
-        action: { label: 'Edit Event', onClick: () => setView('event-builder', { eventId: nextEvent.id }) }
-      });
-    }
-    if (nextEventProjections && nextEventProjections.expectedProfit < 0) {
-      alerts.push({
-        id: 'negative-profit',
-        type: 'warning',
-        message: `${nextEvent.name} is projected to lose $${Math.abs(nextEventProjections.expectedProfit).toLocaleString()}.`,
-        action: { label: 'Edit Event', onClick: () => setView('event-builder', { eventId: nextEvent.id }) }
-      });
-    }
-  }
-
-  const sixMonthsAgo = new Date(currentDate);
-  sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
-
-  WEIGHT_CLASSES.forEach(wc => {
-    const titleState = titles && titles[wc];
-    if (titleState) {
-      if (!titleState.undisputedChampionId) {
-        alerts.push({
-          id: `vacant-${wc}`,
-          type: 'info',
-          message: `The ${wc} title is currently vacant.`,
-          action: { label: 'Book Title Fight', onClick: () => setView('event-builder') }
-        });
-      } else if (titleState.status === 'inactive_champion' && !titleState.interimChampionId) {
-        alerts.push({
-          id: `inactive-${wc}`,
-          type: 'warning',
-          message: `The ${wc} Champion is inactive. An interim title fight is needed.`,
-          action: { label: 'Book Interim Fight', onClick: () => setView('event-builder') }
-        });
-      } else if (titleState.status === 'unification_needed') {
-        alerts.push({
-          id: `unify-${wc}`,
-          type: 'warning',
-          message: `The ${wc} division has an interim champion. Book a unification fight.`,
-          action: { label: 'Book Unification', onClick: () => setView('event-builder') }
-        });
-      }
-    }
-  });
-
-  // We can skip the champ.lastFightDate alert since we now have engine-based inactivity tracking above.
-
-  // Grand Prix Promised Title Shot alerts
-  const tempState = { currentDate, events, fighters, tournaments, titles } as any;
-  const debts = getPendingTitleShotDebts(tempState);
-  debts.forEach(d => {
-    if (d.status === 'used') return;
-    
-    const f = fighters[d.fighterId];
-    if (!f) return;
-    
-    const gp = tournaments[d.tournamentId];
-    const gpName = gp ? gp.name : `${d.weightClass} Grand Prix`;
-    
-    let type: 'info' | 'warning' | 'danger' = 'info';
-    if (d.daysPending > 180) {
-      type = 'danger';
-    } else if (d.status === 'champion_unavailable' || d.status === 'blocked_by_unification' || d.status === 'blocked_by_interim') {
-      type = 'warning';
-    }
-    
-    let message = `${f.firstName} ${f.lastName} won the ${gpName} and is owed a title shot (${d.daysPending} days pending).`;
-    if (d.status === 'scheduled') {
-      message = `${f.firstName} ${f.lastName}'s Grand Prix title shot vs Champion is scheduled.`;
-    } else if (d.status === 'champion_unavailable') {
-      message = `${f.firstName} ${f.lastName}'s title shot is delayed because the champion is injured/suspended.`;
-    } else if (d.status === 'fighter_unavailable') {
-      message = `${f.firstName} ${f.lastName} is injured/suspended, delaying their owed title shot.`;
-    } else if (d.status === 'blocked_by_unification') {
-      message = `${f.firstName} ${f.lastName}'s title shot is blocked pending division unification.`;
-    } else if (d.status === 'blocked_by_interim') {
-      message = `${f.firstName} ${f.lastName}'s title shot is blocked pending interim champion obligations.`;
-    }
-    
-    alerts.push({
-      id: `gp-debt-${d.fighterId}`,
-      type,
-      message,
-      action: d.status === 'pending' ? { label: 'Book Title Fight', onClick: () => setView('event-builder') } : undefined
-    });
-  });
-
-  Object.values(fighters).forEach(f => {
-    if (f.contract && f.contract.fightsRemaining <= 1) {
-      alerts.push({
-        id: `expiring-${f.id}`,
-        type: 'warning',
-        message: `${f.lastName}'s contract is expiring (${f.contract.fightsRemaining} fights left).`,
-        action: { label: 'Renew', onClick: () => setView('fighter-detail', { fighterId: f.id }) }
-      });
-    }
-    if (f.morale < 40) {
-      alerts.push({
-        id: `unhappy-${f.id}`,
-        type: 'danger',
-        message: `${f.lastName} is extremely unhappy (Morale: ${Math.round(f.morale)}).`,
-        action: { label: 'View', onClick: () => setView('fighter-detail', { fighterId: f.id }) }
-      });
-    }
-    if (f.injuryStatus && f.isChampion) {
-      alerts.push({
-        id: `injured-champ-${f.id}`,
-        type: 'danger',
-        message: `${f.weightClass} Champion ${f.lastName} is injured.`,
-        action: { label: 'View', onClick: () => setView('fighter-detail', { fighterId: f.id }) }
-      });
-    }
-  });
-
-  storylines?.filter(s => s.isActive).forEach(s => {
-    if (s.type === 'Rematch Demand' || s.type === 'Rivalry') {
-      alerts.push({
-        id: `storyline-${s.id}`,
-        type: 'info',
-        message: s.description,
-        action: { label: 'Book Fight', onClick: () => setView('event-builder') }
-      });
-    }
-  });
-
-  WEIGHT_CLASSES.forEach(wc => {
-    const count = Object.values(fighters).filter(f => f.weightClass === wc && f.contract).length;
-    if (count > 0 && count < 6) {
-      alerts.push({
-        id: `depth-${wc}`,
-        type: 'warning',
-        message: `${wc} division has only ${count} active fighters. Sign more!`,
-        action: { label: 'Scout', onClick: () => setView('free-agents') }
-      });
-    }
-  });
-
-  const topFreeAgents = Object.values(fighters).filter(f => !f.contract && (f.popularity > 60 || f.potential > 85));
-  if (topFreeAgents.length > 0) {
-    alerts.push({
-      id: 'top-free-agents',
-      type: 'info',
-      message: `There are ${topFreeAgents.length} highly touted free agents available.`,
-      action: { label: 'Scout', onClick: () => setView('free-agents') }
-    });
-  }
+  const inboxPreview = useMemo(() => getPromotionInbox(gameState).slice(0, 5), [gameState]);
+  const inboxTones = { critical: 'danger', urgent: 'warning', opportunity: 'success' } as const;
 
   return (
     <div className="space-y-6">
@@ -354,37 +196,21 @@ export default function Dashboard() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
-          {/* Action Items */}
-          {alerts.length > 0 && (
-            <div className="bg-[#101114] border border-[#2a2c31] rounded-lg p-6">
-              <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
-                <AlertCircle size={20} className="text-red-500" /> Action Items
-              </h2>
-              <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2">
-                {alerts.map(alert => (
-                  <div key={alert.id} className={`p-3 rounded-md border flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between ${
-                    alert.type === 'danger' ? 'bg-red-950/30 border-red-900/50' : 
-                    alert.type === 'warning' ? 'bg-yellow-950/30 border-yellow-900/50' : 
-                    'bg-blue-950/30 border-blue-900/50'
-                  }`}>
-                    <div className="flex items-start sm:items-center gap-3">
-                      {alert.type === 'danger' ? <AlertTriangle className="text-red-500" size={18} /> : 
-                       alert.type === 'warning' ? <AlertTriangle className="text-yellow-500" size={18} /> : 
-                       <Info className="text-blue-500" size={18} />}
-                      <p className="text-sm font-medium text-white">{alert.message}</p>
-                    </div>
-                    {alert.action && (
-                      <button 
-                        onClick={alert.action.onClick}
-                        className="text-xs font-bold bg-neutral-800 hover:bg-neutral-700 text-white px-3 py-1.5 rounded shrink-0 sm:ml-4 self-start sm:self-auto"
-                      >
-                        {alert.action.label}
-                      </button>
-                    )}
-                  </div>
-                ))}
+          {inboxPreview.length > 0 && (
+            <Panel className="space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="text-lg font-semibold text-white">Action items</h2>
+                <Button variant="quiet" onClick={() => setView('inbox')} className="min-h-9 text-xs">View all</Button>
               </div>
-            </div>
+              {inboxPreview.map(item => <article key={item.id} className="flex flex-col gap-3 rounded border border-[#2a2c31] bg-neutral-950 p-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
+                  <StatusBadge tone={inboxTones[item.severity]}>{item.severity}</StatusBadge>
+                  <h3 className="mt-2 text-sm font-semibold text-white">{item.title}</h3>
+                  <p className="mt-1 text-sm text-neutral-400">{item.description}</p>
+                </div>
+                <Button variant="secondary" onClick={() => setView(item.targetView, { fighterId: item.fighterId, eventId: item.eventId, calendarSlotId: item.calendarSlotId })} className="min-h-9 shrink-0 px-3 text-xs">Review</Button>
+              </article>)}
+            </Panel>
           )}
 
           {/* Next Event */}

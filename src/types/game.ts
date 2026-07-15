@@ -24,12 +24,25 @@ export interface FighterRecord {
   subs: number;
 }
 
+export interface ContractCounterOffer {
+  payPerFight: number;
+  winBonus: number;
+  fights: number;
+  expiresDate: string;
+  interest: number;
+}
+
 export interface Contract {
   fightsRemaining: number;
   payPerFight: number;
   winBonus: number;
   exclusivity: boolean;
+  endDate: string;
+  lastNegotiationDate?: string;
+  counterOffer?: ContractCounterOffer;
 }
+
+export type FightCampFocus = 'balanced' | 'striking' | 'wrestling' | 'cardio' | 'recovery';
 
 export interface Injury {
   id: string;
@@ -43,6 +56,10 @@ export interface Storyline {
   fighterIds: string[];
   description: string;
   isActive: boolean;
+  intensity?: number;
+  createdDate?: string;
+  expiresDate?: string;
+  resolvedDate?: string;
 }
 
 export interface MedicalSuspension {
@@ -63,6 +80,9 @@ export interface Fighter {
   age: number;
   nationality: string;
   weightClass: WeightClass;
+  heightCm: number;
+  fightWeightLb: number;
+  walkAroundWeightLb: number;
   style: FighterStyle;
   attributes: FighterAttributes;
   record: FighterRecord;
@@ -75,6 +95,7 @@ export interface Fighter {
   injuryStatus: Injury | null; // null if healthy
   medicalSuspension?: MedicalSuspension | null;
   contract: Contract | null; // null if free agent
+  counterOffer?: ContractCounterOffer;
   isChampion: boolean;
   titleDefenses?: number;
   rankingScore?: number; // Elo-like score for stable rankings
@@ -100,6 +121,36 @@ export interface NewsItem {
   type: 'general' | 'injury' | 'contract' | 'event' | 'fight';
 }
 
+export type SocialFeedKind = 'news' | 'article' | 'fighter_post' | 'promotion_post' | 'thread';
+export type SocialAuthorType = 'media' | 'fighter' | 'promotion' | 'fan';
+
+export interface SocialReply {
+  id: string;
+  authorType: SocialAuthorType;
+  authorName: string;
+  authorFighterId?: string;
+  body: string;
+}
+
+export interface SocialFeedItem {
+  id: string;
+  stableKey: string;
+  date: string;
+  kind: SocialFeedKind;
+  headline: string;
+  body: string;
+  authorType: SocialAuthorType;
+  authorName: string;
+  authorFighterId?: string;
+  fighterIds: string[];
+  eventId?: string;
+  fightId?: string;
+  storylineId?: string;
+  engagement: { likes: number; comments: number; shares: number };
+  replies?: SocialReply[];
+  actionKey?: string;
+}
+
 export interface FightMatchup {
   id: string;
   redCornerId: string; // usually higher ranked or champion
@@ -112,6 +163,8 @@ export interface FightMatchup {
   tournamentId?: string;
   tournamentRound?: TournamentRound;
   tournamentFightSlotId?: string;
+  campFocus?: FightCampFocus;
+  socialHype?: number;
 }
 
 export interface FighterRoundStats {
@@ -431,6 +484,7 @@ export interface GameState {
   titles: Record<WeightClass, WeightClassTitleState>;
   belts: Record<string, BeltInfo>;
   news: NewsItem[];
+  socialFeed: SocialFeedItem[];
   storylines: Storyline[];
   saveVersion: number;
   

@@ -2,17 +2,20 @@ import { v4 as uuidv4 } from 'uuid';
 import {
   Fighter, FighterAttributes, FighterStyle, WeightClass, GameState, Venue, Promotion, RankingItem
 } from '../../types/game';
-import { firstNames, lastNames, nicknames, nationalities } from '../names';
+import { getLocalizedFighterName, nicknames, nationalities } from '../names';
 import { WEIGHT_CLASSES, FIGHTER_STYLES, GAME_CONSTANTS } from './constants';
 import { PRNG } from './rng';
 import { initializeRankingScores, buildPromotionRankings } from './rankings';
+import { syncLegacyNewsToSocialFeed } from './social';
 import { getBeltBranding } from '../branding';
+import { getContractEndDate } from './contracts';
+import { getFighterOverall, getPhysicalProfile } from './fighterRatings';
 
 type FighterArchetype = 'Champion' | 'Contender' | 'Prospect' | 'Veteran' | 'Journeyman' | 'Can';
 
 function generateAttributes(rng: PRNG, style: FighterStyle, age: number, baseLevel: number): FighterAttributes {
   const variance = () => rng.randomInt(-8, 8);
-  const clamp = (val: number) => Math.max(GAME_CONSTANTS.MIN_ATTRIBUTES, Math.min(GAME_CONSTANTS.MAX_ATTRIBUTES, val));
+  const clamp = (val: number) => Math.max(GAME_CONSTANTS.MIN_ATTRIBUTES, Math.min(95, val));
 
   let attrs: FighterAttributes = {
     striking: clamp(baseLevel + variance()),
@@ -89,51 +92,51 @@ export function generateFighter(rng: PRNG, archetype: FighterArchetype, weightCl
   switch(archetype) {
     case 'Champion':
       age = rng.randomInt(26, 34);
-      baseLevel = rng.randomInt(85, 95);
+      baseLevel = rng.randomInt(79, 87);
       winRate = rng.randomFloat(0.85, 0.98);
       totalFights = rng.randomInt(15, 30);
       popularity = rng.randomInt(70, 100);
-      potential = rng.randomInt(85, 100);
+      potential = rng.randomInt(82, 94);
       break;
     case 'Contender':
       age = rng.randomInt(25, 35);
-      baseLevel = rng.randomInt(75, 88);
+      baseLevel = rng.randomInt(68, 78);
       winRate = rng.randomFloat(0.75, 0.90);
       totalFights = rng.randomInt(12, 25);
       popularity = rng.randomInt(50, 80);
-      potential = rng.randomInt(80, 95);
+      potential = rng.randomInt(74, 88);
       break;
     case 'Prospect':
       age = rng.randomInt(19, 24);
-      baseLevel = rng.randomInt(55, 70);
+      baseLevel = rng.randomInt(51, 62);
       winRate = rng.randomFloat(0.80, 1.0);
       totalFights = rng.randomInt(3, 10);
       popularity = rng.randomInt(20, 50);
-      potential = rng.randomInt(85, 100);
+      potential = rng.randomInt(72, 90);
       break;
     case 'Veteran':
       age = rng.randomInt(34, 42);
-      baseLevel = rng.randomInt(65, 80);
+      baseLevel = rng.randomInt(58, 68);
       winRate = rng.randomFloat(0.55, 0.70);
       totalFights = rng.randomInt(30, 50);
       popularity = rng.randomInt(60, 90);
-      potential = baseLevel; // Peaked
+      potential = rng.randomInt(55, 74);
       break;
     case 'Journeyman':
       age = rng.randomInt(26, 35);
-      baseLevel = rng.randomInt(50, 65);
+      baseLevel = rng.randomInt(46, 56);
       winRate = rng.randomFloat(0.40, 0.60);
       totalFights = rng.randomInt(15, 40);
       popularity = rng.randomInt(10, 40);
-      potential = rng.randomInt(50, 70);
+      potential = rng.randomInt(50, 68);
       break;
     case 'Can':
       age = rng.randomInt(22, 38);
-      baseLevel = rng.randomInt(30, 45);
+      baseLevel = rng.randomInt(35, 45);
       winRate = rng.randomFloat(0.10, 0.35);
       totalFights = rng.randomInt(5, 20);
       popularity = rng.randomInt(0, 10);
-      potential = rng.randomInt(30, 55);
+      potential = rng.randomInt(40, 58);
       break;
   }
 
@@ -144,17 +147,23 @@ export function generateFighter(rng: PRNG, archetype: FighterArchetype, weightCl
 
   const hasNickname = popularity > 50 || rng.chance(0.3);
   const style = rng.randomItem([...FIGHTER_STYLES]);
+  const nationality = rng.randomItem([...nationalities]);
+  const name = getLocalizedFighterName(nationality, rng.randomInt(0, 2 ** 31 - 1));
+  const physicalProfile = getPhysicalProfile(weightClass, rng.randomInt.bind(rng));
+  const attributes = generateAttributes(rng, style, age, baseLevel);
+  const overall = getFighterOverall({ attributes, style });
 
   return {
     id: uuidv4(),
-    firstName: rng.randomItem(firstNames),
-    lastName: rng.randomItem(lastNames),
+    firstName: name.firstName,
+    lastName: name.lastName,
     nickname: hasNickname ? rng.randomItem(nicknames) : '',
     age,
-    nationality: rng.randomItem(nationalities),
+    nationality,
     weightClass,
+    ...physicalProfile,
     style,
-    attributes: generateAttributes(rng, style, age, baseLevel),
+    attributes,
     record: {
       wins,
       losses,
@@ -164,7 +173,7 @@ export function generateFighter(rng: PRNG, archetype: FighterArchetype, weightCl
     },
     popularity,
     marketability: clamp(popularity + rng.randomInt(-15, 15)),
-    potential,
+    potential: Math.min(95, Math.max(potential, overall)),
     morale: rng.randomInt(60, 100),
     momentum: clamp(50 + (wins - losses) * 2 + rng.randomInt(-10, 10)),
     fatigue: rng.randomInt(0, 10),
@@ -249,11 +258,7 @@ export function generateInitialWorld(seed?: number): GameState {
     });
     
     // Sort by a proxy of 'overall' to set initial rankings
-    wcFighters.sort((a, b) => {
-      const aOvr = Object.values(a.attributes).reduce((sum, val) => sum + val, 0);
-      const bOvr = Object.values(b.attributes).reduce((sum, val) => sum + val, 0);
-      return bOvr - aOvr;
-    });
+    wcFighters.sort((a, b) => getFighterOverall(b) - getFighterOverall(a));
 
     // We want to sign 6-8 fighters per weight class.
     let signedCount = 0;
@@ -299,11 +304,13 @@ export function generateInitialWorld(seed?: number): GameState {
         const basePay = GAME_CONSTANTS.BASE_FIGHT_PAY;
         const popMultiplier = 1 + (f.popularity / 10);
         
+        const fightsRemaining = rng.randomInt(2, 5);
         fighters[f.id].contract = {
-          fightsRemaining: rng.randomInt(2, 5),
+          fightsRemaining,
           payPerFight: Math.floor(basePay * popMultiplier),
           winBonus: Math.floor(basePay * popMultiplier),
-          exclusivity: true
+          exclusivity: true,
+          endDate: getContractEndDate(currentDate, fightsRemaining)
         };
         signedFightersInWc.push(fighters[f.id]);
       }
@@ -338,6 +345,7 @@ export function generateInitialWorld(seed?: number): GameState {
       content: 'A new MMA promotion has entered the scene. Let the games begin.',
       type: 'general'
     }],
+    socialFeed: [],
     storylines: [],
     saveVersion: 1,
     mode: 'manager',
@@ -389,5 +397,5 @@ export function generateInitialWorld(seed?: number): GameState {
   
   initialState.rankings = newRankings;
 
-  return initialState;
+  return syncLegacyNewsToSocialFeed(initialState);
 }

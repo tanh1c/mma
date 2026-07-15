@@ -1,4 +1,5 @@
-import { Fighter, FightMatchup, FightResult, FighterStyle, RoundStats, JudgeRoundScore, FighterRoundStats } from '../../types/game';
+import { Fighter, FightCampFocus, FightMatchup, FightResult, FighterStyle, RoundStats, JudgeRoundScore, FighterRoundStats } from '../../types/game';
+import { getFighterOverall, getPhysicalFightModifier, getWeightCutPercent } from './fighterRatings';
 
 interface SimState {
   r1Cardio: number;
@@ -39,6 +40,28 @@ function getStyleModifier(style1: FighterStyle, style2: FighterStyle): number {
   return 1.0;
 }
 
+const campMultipliers: Record<FightCampFocus, Partial<Fighter['attributes']>> = {
+  balanced: {},
+  striking: { striking: 1.03, power: 1.03 },
+  wrestling: { wrestling: 1.03, grappling: 1.03, submissions: 1.03 },
+  cardio: { cardio: 1.04 },
+  recovery: {}
+};
+
+function applyCamp(fighter: Fighter, focus: FightCampFocus = 'balanced'): Fighter {
+  const multipliers = campMultipliers[focus];
+  const overall = getFighterOverall(fighter);
+  if (overall >= fighter.potential) return fighter;
+  // ponytail: bracket-only local camp tuning; add camp duration only with explicit preparation gameplay.
+  const attributes = { ...fighter.attributes };
+  for (const [key, multiplier] of Object.entries(multipliers) as [keyof Fighter['attributes'], number][]) {
+    const before = attributes[key];
+    attributes[key] = Math.min(95, before * multiplier);
+    if (getFighterOverall({ ...fighter, attributes }) > fighter.potential) attributes[key] = before;
+  }
+  return { ...fighter, attributes };
+}
+
 function applyPreFightModifiers(fighter: Fighter) {
   let mod = 1.0;
   
@@ -65,6 +88,9 @@ function applyPreFightModifiers(fighter: Fighter) {
 }
 
 export function simulateFight(matchup: FightMatchup, red: Fighter, blue: Fighter, seed?: number): FightResult {
+  const campFocus = matchup.campFocus ?? 'balanced';
+  red = applyCamp(red, campFocus);
+  blue = applyCamp(blue, campFocus);
   const rounds = matchup.rounds;
   const commentary: string[] = [];
   
@@ -81,18 +107,17 @@ export function simulateFight(matchup: FightMatchup, red: Fighter, blue: Fighter
   const randomFloat = (min: number, max: number) => rng() * (max - min) + min;
   const randomInt = (min: number, max: number) => Math.floor(rng() * (max - min + 1)) + min;
 
-  let r1Mod = applyPreFightModifiers(red);
-  let r2Mod = applyPreFightModifiers(blue);
+  let r1Mod = applyPreFightModifiers(red) * getPhysicalFightModifier(red, blue);
+  let r2Mod = applyPreFightModifiers(blue) * getPhysicalFightModifier(blue, red);
   
   // Gameplan and good night/bad night variance
   r1Mod *= randomFloat(0.95, 1.05);
   r2Mod *= randomFloat(0.95, 1.05);
 
-  // Determine which fighter is the favorite (higher total attributes)
-  const r1AttrTotal = Object.values(red.attributes).reduce((a, b) => a + b, 0);
-  const r2AttrTotal = Object.values(blue.attributes).reduce((a, b) => a + b, 0);
-  const attrGap = Math.abs(r1AttrTotal - r2AttrTotal);
-  const r1IsFavorite = r1AttrTotal >= r2AttrTotal;
+  const redOverall = getFighterOverall(red);
+  const blueOverall = getFighterOverall(blue);
+  const overallGap = Math.abs(redOverall - blueOverall);
+  const r1IsFavorite = redOverall >= blueOverall;
 
   // Bad night chance modifier for favorites: overconfidence, low morale, high fatigue
   const calcBadNightShift = (fighter: Fighter, isFav: boolean) => {
@@ -120,8 +145,8 @@ export function simulateFight(matchup: FightMatchup, red: Fighter, blue: Fighter
   else if (r2Roll < 52 + r2BadShift) r2Mod *= randomFloat(0.82, 0.95);
 
   // Upset mechanics for massive mismatches (Top Contender vs Journeyman)
-  if (attrGap > 150) {
-    const underdogIsRed = r1AttrTotal < r2AttrTotal;
+  if (overallGap > 14) {
+    const underdogIsRed = redOverall < blueOverall;
     // Rare event (23.5% chance): Underdog zones in, Favorite is completely flat
     if (randomFloat(0, 100) < 23.5) {
       if (underdogIsRed) {
@@ -135,8 +160,8 @@ export function simulateFight(matchup: FightMatchup, red: Fighter, blue: Fighter
   }
 
   // Journeyman grit: underdog with high toughness/IQ fights above their level
-  if (attrGap > 80) {
-    const underdogIsRed = r1AttrTotal < r2AttrTotal;
+  if (overallGap > 7) {
+    const underdogIsRed = redOverall < blueOverall;
     const underdog = underdogIsRed ? red : blue;
     const gritBonus = ((underdog.attributes.toughness - 50) / 350) + ((underdog.attributes.fightIq - 50) / 350);
     if (underdogIsRed) r1Mod += Math.max(0, gritBonus);
@@ -146,9 +171,10 @@ export function simulateFight(matchup: FightMatchup, red: Fighter, blue: Fighter
   const r1StyleMod = getStyleModifier(red.style, blue.style);
   const r2StyleMod = getStyleModifier(blue.style, red.style);
 
+  const weightCutCardio = (fighter: Fighter) => Math.max(0.9, 1 - Math.max(0, getWeightCutPercent(fighter) - 8) * 0.006);
   let state: SimState = {
-    r1Cardio: 50 + (red.attributes.cardio / 2),
-    r2Cardio: 50 + (blue.attributes.cardio / 2),
+    r1Cardio: (50 + (red.attributes.cardio / 2)) * weightCutCardio(red),
+    r2Cardio: (50 + (blue.attributes.cardio / 2)) * weightCutCardio(blue),
     r1Damage: 0,
     r2Damage: 0,
     r1HeadDmg: 0,
@@ -296,8 +322,8 @@ export function simulateFight(matchup: FightMatchup, red: Fighter, blue: Fighter
           return Math.max(0.1, Math.min(cap, chance));
         };
 
-        const r1IsUnderdog = r1AttrTotal < r2AttrTotal;
-        const r2IsUnderdog = r2AttrTotal < r1AttrTotal;
+        const r1IsUnderdog = redOverall < blueOverall;
+        const r2IsUnderdog = blueOverall < redOverall;
         
         if (randomFloat(0, 100) < calcLuckyChance(blue, red, r2FatiguePen, r2IsUnderdog)) {
           // For underdog lucky shots: 40% chance it's partial (extra damage + knockdown but not full KO sequence)
@@ -1008,13 +1034,14 @@ export function simulateFight(matchup: FightMatchup, red: Fighter, blue: Fighter
 
   // Determine potential injuries resulting from the fight
   const injuries: { fighterId: string; type: string; daysRemaining: number }[] = [];
-  if (state.r1Damage > 60 && randomFloat(0, 100) < 30) {
+  const injuryChance = campFocus === 'recovery' ? 25.5 : 30;
+  if (state.r1Damage > 60 && randomFloat(0, 100) < injuryChance) {
      injuries.push({ fighterId: red.id, type: 'Laceration', daysRemaining: randomInt(30, 90) });
   } else if (state.r1HeadDmg > 50 && method === 'KO/TKO' && loserId === red.id) {
      injuries.push({ fighterId: red.id, type: 'Concussion', daysRemaining: randomInt(60, 120) });
   }
 
-  if (state.r2Damage > 60 && randomFloat(0, 100) < 30) {
+  if (state.r2Damage > 60 && randomFloat(0, 100) < injuryChance) {
      injuries.push({ fighterId: blue.id, type: 'Laceration', daysRemaining: randomInt(30, 90) });
   } else if (state.r2HeadDmg > 50 && method === 'KO/TKO' && loserId === blue.id) {
      injuries.push({ fighterId: blue.id, type: 'Concussion', daysRemaining: randomInt(60, 120) });

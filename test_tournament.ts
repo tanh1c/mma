@@ -1,5 +1,5 @@
 import { generateInitialWorld } from './src/lib/game/generator';
-import { createGrandPrixTournament, scheduleQuarterfinals, scheduleSemifinals, scheduleFinal, applyTournamentProgression, cancelTournament, validateTournamentState } from './src/lib/game/tournament';
+import { createGrandPrixTournament, scheduleQuarterfinals, scheduleSemifinals, scheduleFinal, applyTournamentProgression, cancelTournament, validateTournamentState, runAutopilotTournaments } from './src/lib/game/tournament';
 import { applyFightResult } from './src/lib/engine';
 import { simulateFight } from './src/lib/game/fightSimulator';
 import { FightMatchup } from './src/types/game';
@@ -20,7 +20,7 @@ try {
   const candidates = lwFighters.slice(0, 6).map(f => {
     return {
       ...f,
-      contract: f.contract || { fightsRemaining: 3, payPerFight: 10000, winBonus: 10000, exclusivity: true },
+      contract: f.contract || { fightsRemaining: 3, payPerFight: 10000, winBonus: 10000, exclusivity: true, endDate: '2027-01-01' },
       injuryStatus: null,
       medicalSuspension: null,
       fatigue: 0
@@ -183,7 +183,7 @@ try {
     .slice(0, 4) // Only 4 fighters, NO reserves!
     .map(f => ({
       ...f,
-      contract: f.contract || { fightsRemaining: 3, payPerFight: 10000, winBonus: 10000, exclusivity: true },
+      contract: f.contract || { fightsRemaining: 3, payPerFight: 10000, winBonus: 10000, exclusivity: true, endDate: '2027-01-01' },
       injuryStatus: null,
       medicalSuspension: null,
       fatigue: 0
@@ -269,7 +269,7 @@ try {
     .slice(0, 4)
     .map(f => ({
       ...f,
-      contract: f.contract || { fightsRemaining: 3, payPerFight: 10000, winBonus: 10000, exclusivity: true },
+      contract: f.contract || { fightsRemaining: 3, payPerFight: 10000, winBonus: 10000, exclusivity: true, endDate: '2027-01-01' },
       injuryStatus: null,
       medicalSuspension: null,
       fatigue: 0
@@ -308,7 +308,7 @@ try {
   }
 
   let explicitState = generateInitialWorld();
-  const explicitCandidates = Object.values(explicitState.fighters).filter(f => f.weightClass === 'Lightweight' && !f.isChampion).slice(0, 4).map(f => ({ ...f, contract: f.contract || { fightsRemaining: 3, payPerFight: 10000, winBonus: 10000, exclusivity: true }, injuryStatus: null, medicalSuspension: null, fatigue: 0 }));
+  const explicitCandidates = Object.values(explicitState.fighters).filter(f => f.weightClass === 'Lightweight' && !f.isChampion).slice(0, 4).map(f => ({ ...f, contract: f.contract || { fightsRemaining: 3, payPerFight: 10000, winBonus: 10000, exclusivity: true, endDate: '2027-01-01' }, injuryStatus: null, medicalSuspension: null, fatigue: 0 }));
   explicitCandidates.forEach(fighter => { explicitState.fighters[fighter.id] = fighter; });
   explicitState = createGrandPrixTournament(explicitState, { weightClass: 'Lightweight', name: 'Explicit Winner Grand Prix', titleShotPromised: false, participantIds: explicitCandidates.map(fighter => fighter.id), reserveIds: [] });
   const explicitTourneyId = Object.keys(explicitState.tournaments).find(id => explicitState.tournaments[id].name === 'Explicit Winner Grand Prix')!;
@@ -328,7 +328,7 @@ try {
     .slice(0, 6)
     .map(f => ({
       ...f,
-      contract: f.contract || { fightsRemaining: 3, payPerFight: 10000, winBonus: 10000, exclusivity: true },
+      contract: f.contract || { fightsRemaining: 3, payPerFight: 10000, winBonus: 10000, exclusivity: true, endDate: '2027-01-01' },
       injuryStatus: null,
       medicalSuspension: null,
       fatigue: 0
@@ -399,7 +399,7 @@ try {
   const candidates8 = lwFighters8.slice(0, 11).map(f => {
     return {
       ...f,
-      contract: f.contract || { fightsRemaining: 4, payPerFight: 10000, winBonus: 10000, exclusivity: true },
+      contract: f.contract || { fightsRemaining: 4, payPerFight: 10000, winBonus: 10000, exclusivity: true, endDate: '2027-01-01' },
       injuryStatus: null,
       medicalSuspension: null,
       fatigue: 0
@@ -566,6 +566,44 @@ try {
     throw new Error("8-Man GP Winner should have earned a promised title shot.");
   }
   console.log("✅ 8-MAN TOURNAMENT INTEGRATION TEST PASSED!");
+
+  console.log("\n=== RUNNING EMERGENCY RESERVE SIGNING REGRESSION ===");
+  let emergencyState = generateInitialWorld(2026);
+  const emergencyCandidates = Object.values(emergencyState.fighters).filter(f => f.weightClass === 'Lightweight' && !f.isChampion).slice(0, 4).map(f => ({ ...f, contract: { fightsRemaining: 1, payPerFight: 5000, winBonus: 5000, exclusivity: true, endDate: '2027-01-01' }, injuryStatus: null, medicalSuspension: null, fatigue: 0 }));
+  emergencyCandidates.forEach(f => { emergencyState.fighters[f.id] = f; });
+  emergencyState = createGrandPrixTournament(emergencyState, { weightClass: 'Lightweight', name: 'Emergency Reserve Regression GP', titleShotPromised: false, participantIds: emergencyCandidates.map(f => f.id), reserveIds: [] });
+  const emergencyTournamentId = Object.keys(emergencyState.tournaments).find(id => emergencyState.tournaments[id].name === 'Emergency Reserve Regression GP')!;
+  emergencyState.tournaments[emergencyTournamentId].status = 'active';
+  emergencyState.tournaments[emergencyTournamentId].createdDate = '2023-01-01';
+  emergencyState.currentDate = '2025-01-01';
+  Object.values(emergencyState.fighters).filter(f => f.weightClass === 'Lightweight' && !f.contract).forEach(f => { emergencyState.fighters[f.id] = { ...f, popularity: 0 }; });
+  emergencyCandidates.forEach((f, index) => { emergencyState.fighters[f.id] = { ...emergencyState.fighters[f.id], contract: null, popularity: index === 0 ? 100 : 0 }; });
+  emergencyState.promotion.money = 100000;
+  emergencyState = runAutopilotTournaments(emergencyState);
+  const emergencyTournament = emergencyState.tournaments[emergencyTournamentId];
+  if (emergencyTournament.reserveFighterIds.some(id => emergencyTournament.participants.some(participant => participant.fighterId === id))) {
+    throw new Error('Emergency reserve signing must not add an existing participant as an unused reserve.');
+  }
+  console.log("✅ EMERGENCY RESERVE SIGNING REGRESSION PASSED!");
+
+  console.log("\n=== RUNNING MULTIPLE TITLE-SHOT PROMISE REGRESSION ===");
+  const promiseState = generateInitialWorld(3030);
+  const promiseWinner = Object.values(promiseState.fighters).find(fighter => fighter.weightClass === 'Lightweight')!;
+  promiseState.fighters[promiseWinner.id] = { ...promiseWinner, titleShotPromised: true };
+  const tournamentBase = {
+    id: 'used-promise', name: 'Used Promise GP', shortName: 'Used GP', weightClass: 'Lightweight' as const, status: 'completed' as const, format: 'four_man' as const,
+    createdDate: '2024-01-01', completedDate: '2024-06-01', participants: [], reserveFighterIds: [], usedReserveFighterIds: [], fights: [], titleShotPromised: true,
+    titleShotUsed: true, winnerId: promiseWinner.id, prestige: 70, notes: []
+  };
+  promiseState.tournaments = {
+    used: tournamentBase,
+    unused: { ...tournamentBase, id: 'unused-promise', name: 'Unused Promise GP', titleShotUsed: false, completedDate: '2024-12-01' }
+  };
+  const promiseErrors = validateTournamentState(promiseState);
+  if (promiseErrors.some(error => error.includes('still has titleShotPromised: true after titleShotUsed is true'))) {
+    throw new Error('A fighter with another unused GP promise must retain titleShotPromised.');
+  }
+  console.log("✅ MULTIPLE TITLE-SHOT PROMISE REGRESSION PASSED!");
 
 } catch (err: any) {
   console.error("❌ TEST FAILED:", err.message);

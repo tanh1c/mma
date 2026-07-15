@@ -1,6 +1,6 @@
 import { generateInitialWorld } from './src/lib/game/generator';
 import { generateSeasonPlan, validateSeasonCalendarState } from './src/lib/game/season';
-import { createGrandPrixTournament, bindTournamentToCalendarSlots, scheduleTournamentRound } from './src/lib/game/tournament';
+import { createGrandPrixTournament, bindTournamentToCalendarSlots, scheduleTournamentRound, validateTournamentState } from './src/lib/game/tournament';
 import { autoBookEventsAndContracts, repairEventAvailability } from './src/lib/game/autobooker';
 import { WeightClass } from './src/types/game';
 import { v4 as uuidv4 } from 'uuid';
@@ -32,7 +32,7 @@ try {
   const lwFighters = Object.values(state.fighters).filter(f => f.weightClass === 'Lightweight' && !f.isChampion);
   const candidates4 = lwFighters.slice(0, 6).map(f => ({
     ...f,
-    contract: f.contract || { fightsRemaining: 4, payPerFight: 5000, winBonus: 5000, exclusivity: true },
+    contract: f.contract || { fightsRemaining: 4, payPerFight: 5000, winBonus: 5000, exclusivity: true, endDate: '2027-01-01' },
     injuryStatus: null,
     medicalSuspension: null,
     fatigue: 0
@@ -66,7 +66,7 @@ try {
   const hwFighters = Object.values(state.fighters).filter(f => f.weightClass === 'Heavyweight' && !f.isChampion);
   const candidates8 = hwFighters.slice(0, 11).map(f => ({
     ...f,
-    contract: f.contract || { fightsRemaining: 4, payPerFight: 5000, winBonus: 5000, exclusivity: true },
+    contract: f.contract || { fightsRemaining: 4, payPerFight: 5000, winBonus: 5000, exclusivity: true, endDate: '2027-01-01' },
     injuryStatus: null,
     medicalSuspension: null,
     fatigue: 0
@@ -146,8 +146,74 @@ try {
   }
   console.log("✅ Future availability repair test passed.");
 
-  // 5. A blocked GP window must create exactly one retry window.
-  console.log("5. Testing blocked GP window retry...");
+  // 5. Starter-reputation GP windows must create a 4-man tournament through autopilot.
+  console.log("5. Testing starter-reputation GP creation...");
+  let starterGpState = generateInitialWorld();
+  starterGpState.currentDate = '2026-04-01';
+  starterGpState.promotion = { ...starterGpState.promotion, reputation: 20, money: 250000 };
+  const starterParticipants = Object.values(starterGpState.fighters)
+    .filter(fighter => fighter.weightClass === 'Lightweight' && !fighter.isChampion)
+    .slice(0, 6)
+    .map(fighter => ({
+      ...fighter,
+      contract: { fightsRemaining: 4, payPerFight: 5000, winBonus: 5000, exclusivity: true, endDate: '2027-01-01' },
+      injuryStatus: null,
+      medicalSuspension: null,
+      fatigue: 0
+    }));
+  starterParticipants.forEach(fighter => { starterGpState.fighters[fighter.id] = fighter; });
+  Object.values(starterGpState.events).forEach(event => {
+    if (!event.isCompleted) event.fights = event.fights.filter(fight => !starterParticipants.some(fighter => fighter.id === fight.redCornerId || fighter.id === fight.blueCornerId));
+  });
+  starterGpState.events['starter-completed-event'] = {
+    id: 'starter-completed-event', name: 'Starter Completed Event', date: '2026-03-01', venueId: Object.keys(starterGpState.venues)[0], ticketPrice: 20, marketingSpend: 1000, fights: [], isCompleted: true
+  };
+  starterGpState.seasonPlans = {
+    2026: {
+      ...starterGpState.seasonPlans[2026],
+      slots: [
+        { id: 'starter-completed-slot', year: 2026, date: '2026-03-01', type: 'regular_event', status: 'completed', eventId: 'starter-completed-event', priority: 1, notes: [] },
+        { id: 'starter-gp-window', year: 2026, date: '2026-04-02', type: 'grand_prix_window', status: 'planned', priority: 1, notes: [] },
+        { id: 'starter-gp-final', year: 2026, date: '2026-06-01', type: 'regular_event', status: 'planned', priority: 1, notes: [] }
+      ]
+    }
+  };
+  starterGpState = autoBookEventsAndContracts(starterGpState);
+  const starterTournament = Object.values(starterGpState.tournaments)[0];
+  const starterSlot = starterGpState.seasonPlans[2026].slots.find(slot => slot.id === 'starter-gp-window');
+  if (!starterTournament || starterTournament.format !== 'four_man' || starterSlot?.type !== 'grand_prix_round' || starterSlot.tournamentId !== starterTournament.id || starterSlot.tournamentRound !== 'semifinal') {
+    throw new Error('FAIL: starter-reputation GP window did not create and link a 4-man tournament.');
+  }
+  if (!starterSlot.eventId || !starterGpState.events[starterSlot.eventId]?.fights.some(fight => fight.tournamentId === starterTournament.id)) {
+    throw new Error('FAIL: starter-reputation GP round did not schedule tournament fights.');
+  }
+  const starterCalendarErrors = validateSeasonCalendarState(starterGpState);
+  const starterTournamentErrors = validateTournamentState(starterGpState);
+  if (starterCalendarErrors.length || starterTournamentErrors.length) {
+    throw new Error(`FAIL: starter-reputation GP creation violated calendar or tournament invariants: ${[...starterCalendarErrors, ...starterTournamentErrors].join('; ')}`);
+  }
+  console.log("✅ Starter-reputation GP creation verified.");
+
+  // 6. An existing event on a GP window date must receive the tournament round.
+  console.log("6. Testing GP window with an existing event...");
+  let existingGpState = structuredClone(starterGpState);
+  existingGpState.tournaments = {};
+  existingGpState.currentDate = '2026-04-01';
+  existingGpState.autopilot.targetTournamentWeightClass = null;
+  existingGpState.events = { 'starter-completed-event': existingGpState.events['starter-completed-event'] };
+  existingGpState.seasonPlans[2026].slots = existingGpState.seasonPlans[2026].slots.map(slot => slot.id === 'starter-gp-window' ? { ...slot, type: 'grand_prix_window', status: 'planned', targetWeightClass: undefined, tournamentId: undefined, tournamentRound: undefined, eventId: undefined, notes: [] } : slot.id === 'starter-gp-final' ? { ...slot, type: 'regular_event', status: 'planned', targetWeightClass: undefined, tournamentId: undefined, tournamentRound: undefined, eventId: undefined, notes: [] } : slot);
+  existingGpState.events['existing-gp-event'] = { id: 'existing-gp-event', name: 'Existing GP Host', date: '2026-04-02', venueId: Object.keys(existingGpState.venues)[0], ticketPrice: 30, marketingSpend: 1000, fights: [], isCompleted: false };
+  existingGpState = autoBookEventsAndContracts(existingGpState);
+  const existingTournament = Object.values(existingGpState.tournaments)[0];
+  const existingEvent = existingGpState.events['existing-gp-event'];
+  if (!existingTournament || existingTournament.status !== 'active' || !existingEvent?.fights.some(fight => fight.tournamentId === existingTournament.id)) {
+    const slot = existingGpState.seasonPlans[2026].slots.find(item => item.id === 'starter-gp-window');
+    throw new Error(`FAIL: existing event on GP window date did not receive and activate the tournament round: tournament=${existingTournament?.status}, slot=${slot?.type}/${slot?.status}/${slot?.tournamentRound}, event=${existingEvent?.fights.length}, notes=${slot?.notes?.join('|')}`);
+  }
+  console.log("✅ Existing GP host event binding verified.");
+
+  // 7. A blocked GP window must create exactly one retry window.
+  console.log("7. Testing blocked GP window retry...");
   let retryState = generateInitialWorld();
   retryState.currentDate = '2026-04-01';
   retryState.promotion = { ...retryState.promotion, reputation: 50, money: 250000 };
@@ -185,8 +251,8 @@ try {
   }
   console.log("✅ Blocked GP window retry verified.");
 
-  // 6. Validate calendar integrity
-  console.log("6. Running Calendar Integrity Validator...");
+  // 8. Validate calendar integrity
+  console.log("8. Running Calendar Integrity Validator...");
   const errors = validateSeasonCalendarState(state);
   if (errors.length > 0) {
     console.error("FAIL: Calendar integrity validation errors detected:");

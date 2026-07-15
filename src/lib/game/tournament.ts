@@ -3,6 +3,8 @@ import { v4 as uuidv4 } from 'uuid';
 import { addDays } from 'date-fns';
 import { getTournamentBranding } from '../branding';
 import { generateSeasonPlan } from './season';
+import { getContractEndDate } from './contracts';
+import { getFighterOverall } from './fighterRatings';
 
 export function isFighterBookedUpcoming(state: GameState, fighterId: string, excludeEventId?: string): boolean {
   return Object.values(state.events || {}).some(e => 
@@ -73,10 +75,14 @@ export function createGrandPrixTournament(
     const scoreB = b.rankingScore || 0;
     if (scoreB !== scoreA) return scoreB - scoreA;
     
+    const overallA = getFighterOverall(a);
+    const overallB = getFighterOverall(b);
+    if (overallB !== overallA) return overallB - overallA;
+
     const popA = a.popularity || 0;
     const popB = b.popularity || 0;
     if (popB !== popA) return popB - popA;
-    
+
     const potA = a.potential || 0;
     const potB = b.potential || 0;
     return potB - potA;
@@ -585,7 +591,7 @@ export function maintainTournamentRosterDepth(state: GameState, weightClass: Wei
       if (newState.promotion.money > pay * 4) {
         newState.fighters[toSign.id] = {
           ...toSign,
-          contract: { payPerFight: pay, winBonus: pay, fightsRemaining: 4, exclusivity: true }
+          contract: { payPerFight: pay, winBonus: pay, fightsRemaining: 4, exclusivity: true, endDate: getContractEndDate(newState.currentDate, 4) }
         };
         newState.news.unshift({
           id: uuidv4(),
@@ -845,8 +851,13 @@ export function runAutopilotTournaments(state: GameState): GameState {
       
       // 3. Reserve emergency signing recovery if active and out of reserves
       if (activeTourney.status === 'active' && (!activeTourney.reserveFighterIds || activeTourney.reserveFighterIds.length === 0)) {
+        const tournamentFighterIds = new Set([
+          ...activeTourney.participants.map(participant => participant.fighterId),
+          ...(activeTourney.usedReserveFighterIds || []),
+          ...activeTourney.fights.flatMap(fight => [fight.redFighterId, fight.blueFighterId].filter((id): id is string => Boolean(id)))
+        ]);
         const freeAgents = Object.values(newState.fighters)
-          .filter(f => !f.contract && f.weightClass === activeTourney.weightClass && !f.injuryStatus)
+          .filter(f => !f.contract && f.weightClass === activeTourney.weightClass && !f.injuryStatus && !tournamentFighterIds.has(f.id))
           .sort((a, b) => b.popularity - a.popularity || b.potential - a.potential);
           
         if (freeAgents.length > 0 && newState.promotion.money > 30000) {
@@ -854,7 +865,7 @@ export function runAutopilotTournaments(state: GameState): GameState {
           const pay = 5000 + (candidate.popularity * 100);
           newState.fighters[candidate.id] = {
             ...candidate,
-            contract: { payPerFight: pay, winBonus: pay, fightsRemaining: 4, exclusivity: true }
+            contract: { payPerFight: pay, winBonus: pay, fightsRemaining: 4, exclusivity: true, endDate: getContractEndDate(newState.currentDate, 4) }
           };
           
           const updated = { ...newState.tournaments[activeTourney.id] };
@@ -1034,8 +1045,8 @@ export function evaluateAndCreateTournament(
 ): { state: GameState; created: boolean; tournamentId?: string; errorReason?: string } {
   let newState = { ...state };
 
-  if (newState.promotion.reputation < 30 || newState.promotion.money < 150000) {
-    return { state: newState, created: false, errorReason: "Insufficient promotion reputation or funds." };
+  if (newState.promotion.money < 150000) {
+    return { state: newState, created: false, errorReason: "Insufficient promotion funds." };
   }
 
   const debts = getPendingTitleShotDebts(newState);
@@ -1469,10 +1480,11 @@ export function validateTournamentState(state: GameState): string[] {
       });
     }
 
-    // 12. titleShotUsed tournament winner should not still have fighter.titleShotPromised
+    // 12. titleShotUsed tournament winner should not still have fighter.titleShotPromised unless another promise remains
     if (t.titleShotUsed && t.winnerId) {
       const winner = state.fighters[t.winnerId];
-      if (winner && winner.titleShotPromised) {
+      const otherUnused = Object.values(state.tournaments || {}).some(other => other.id !== t.id && other.status === 'completed' && other.titleShotPromised && !other.titleShotUsed && other.winnerId === t.winnerId);
+      if (winner && winner.titleShotPromised && !otherUnused) {
         errors.push(`Tournament "${t.name}" winner ${winner.firstName} ${winner.lastName} still has titleShotPromised: true after titleShotUsed is true.`);
       }
     }

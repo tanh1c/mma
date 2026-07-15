@@ -1,3 +1,5 @@
+import { Faker, base, de, en, en_AU, en_GB, en_IE, en_NG, en_US, es, es_MX, fr, it, ja, ko, nl, pl, pt_BR, ru, sv, zh_CN, type LocaleDefinition } from '@faker-js/faker';
+
 export const firstNames = [
   'Jack', 'Thomas', 'Michael', 'Alex', 'David', 'James', 'John', 'Robert', 'William', 'Richard',
   'Charles', 'Joseph', 'Chris', 'Daniel', 'Paul', 'Mark', 'Donald', 'George', 'Kenneth', 'Steven',
@@ -41,4 +43,82 @@ export const nicknames = [
 export const nationalities = [
   'USA', 'Brazil', 'Russia', 'Japan', 'Mexico', 'UK', 'Australia', 'Canada', 'France', 'Poland',
   'Sweden', 'Netherlands', 'South Korea', 'China', 'Nigeria', 'New Zealand', 'Ireland', 'Spain', 'Germany', 'Italy'
-];
+] as const;
+
+type Nationality = typeof nationalities[number];
+
+const latinName = /^\p{Script=Latin}[\p{Script=Latin}\p{Mark}]*(?:[ '’\-]\p{Script=Latin}[\p{Script=Latin}\p{Mark}]*)*$/u;
+
+export const isLatinFighterName = (name: string) => latinName.test(name);
+
+const romanizedNamePools = {
+  Russia: {
+    firstNames: ['Aleksandr', 'Aleksei', 'Andrei', 'Artem', 'Dmitri', 'Evgeni', 'Igor', 'Ivan', 'Maksim', 'Mikhail', 'Nikolai', 'Pavel', 'Roman', 'Sergei', 'Viktor', 'Vladimir'],
+    lastNames: ['Ivanov', 'Smirnov', 'Kuznetsov', 'Popov', 'Sokolov', 'Lebedev', 'Kozlov', 'Novikov', 'Morozov', 'Petrov', 'Volkov', 'Solovyov', 'Vasilyev', 'Zaitsev', 'Pavlov', 'Semenov']
+  },
+  Japan: {
+    firstNames: ['Akira', 'Haruto', 'Ren', 'Kaito', 'Daichi', 'Hiroshi', 'Kenji', 'Takumi', 'Yuki', 'Sota', 'Riku', 'Naoki', 'Tatsuya', 'Kazuki', 'Shota', 'Yuji'],
+    lastNames: ['Sato', 'Suzuki', 'Takahashi', 'Tanaka', 'Watanabe', 'Ito', 'Yamamoto', 'Nakamura', 'Kobayashi', 'Kato', 'Yoshida', 'Yamada', 'Sasaki', 'Yamaguchi', 'Matsumoto', 'Inoue']
+  },
+  'South Korea': {
+    firstNames: ['Min-jun', 'Seo-jun', 'Ji-hoon', 'Hyun-woo', 'Jun-seo', 'Dong-hyun', 'Tae-hyun', 'Sung-min', 'Jae-won', 'Woo-jin', 'Young-ho', 'Jin-woo', 'Min-ho', 'Seung-hyun', 'Joon-ho', 'Kyung-soo'],
+    lastNames: ['Kim', 'Lee', 'Park', 'Choi', 'Jung', 'Kang', 'Cho', 'Yoon', 'Jang', 'Lim', 'Han', 'Shin', 'Seo', 'Kwon', 'Hwang', 'Ahn']
+  },
+  China: {
+    firstNames: ['Wei', 'Jun', 'Hao', 'Jian', 'Ming', 'Lei', 'Tao', 'Kai', 'Bo', 'Cheng', 'Peng', 'Qiang', 'Yong', 'Bin', 'Long', 'Rui'],
+    lastNames: ['Zhang', 'Wang', 'Li', 'Zhao', 'Chen', 'Liu', 'Yang', 'Huang', 'Wu', 'Zhou', 'Xu', 'Sun', 'Ma', 'Zhu', 'Hu', 'Guo']
+  }
+} as const;
+
+const nameLocales: Record<Nationality, LocaleDefinition[]> = {
+  USA: [en_US, en, base],
+  Brazil: [pt_BR, en, base],
+  Russia: [ru, en, base],
+  Japan: [ja, en, base],
+  Mexico: [es_MX, es, en, base],
+  UK: [en_GB, en, base],
+  Australia: [en_AU, en, base],
+  Canada: [en_US, en, base],
+  France: [fr, en, base],
+  Poland: [pl, en, base],
+  Sweden: [sv, en, base],
+  Netherlands: [nl, en, base],
+  'South Korea': [ko, en, base],
+  China: [zh_CN, en, base],
+  Nigeria: [en_NG, en, base],
+  'New Zealand': [en_AU, en, base],
+  Ireland: [en_IE, en, base],
+  Spain: [es, en, base],
+  Germany: [de, en, base],
+  Italy: [it, en, base]
+};
+
+export function getLocalizedFighterName(nationality: string, seed: number) {
+  const romanized = romanizedNamePools[nationality as keyof typeof romanizedNamePools];
+  if (romanized) {
+    const index = Math.abs(seed);
+    return {
+      firstName: romanized.firstNames[index % romanized.firstNames.length],
+      lastName: romanized.lastNames[Math.floor(index / romanized.firstNames.length) % romanized.lastNames.length]
+    };
+  }
+
+  const locale = nameLocales[nationality as Nationality];
+  if (!locale) {
+    return {
+      firstName: firstNames[Math.abs(seed) % firstNames.length],
+      lastName: lastNames[Math.abs(seed) % lastNames.length]
+    };
+  }
+
+  const faker = new Faker({ locale });
+  faker.seed(seed);
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const name = { firstName: faker.person.firstName(), lastName: faker.person.lastName() };
+    if (latinName.test(name.firstName) && latinName.test(name.lastName)) return name;
+  }
+  return {
+    firstName: firstNames[Math.abs(seed) % firstNames.length],
+    lastName: lastNames[Math.abs(seed) % lastNames.length]
+  };
+}

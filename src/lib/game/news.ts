@@ -1,5 +1,61 @@
-import { GameState, Event, FightMatchup, FightResult, Fighter, NewsItem, Storyline } from '../../types/game';
+import { GameState, Storyline } from '../../types/game';
+import { addDays, differenceInCalendarDays } from 'date-fns';
 import { v4 as uuidv4 } from 'uuid';
+
+export const RIVALRY_MAX_INTENSITY = 3;
+export const RIVALRY_COOLDOWN_DAYS = 90;
+export const RIVALRY_EXPIRY_DAYS = 180;
+
+export function getPairKey(fighterIds: string[]): string {
+  return [...fighterIds].sort().join(':');
+}
+
+function isActiveRivalry(storyline: Storyline, currentDate: string): boolean {
+  return storyline.type === 'Rivalry' && storyline.isActive && (storyline.intensity ?? 1) > 0 && (!storyline.expiresDate || storyline.expiresDate >= currentDate);
+}
+
+export function updateRivalryAfterFight(state: GameState, fighterIds: [string, string], currentDate: string, qualifies: boolean, isRematch: boolean): GameState {
+  const pairKey = getPairKey(fighterIds);
+  const existingIndex = state.storylines.findIndex(storyline => storyline.type === 'Rivalry' && getPairKey(storyline.fighterIds) === pairKey);
+  if (!qualifies && existingIndex < 0) return state;
+
+  const storylines = [...state.storylines];
+  const existing = existingIndex >= 0 ? storylines[existingIndex] : undefined;
+  if (existing && isActiveRivalry(existing, currentDate) && qualifies && isRematch) {
+    storylines[existingIndex] = { ...existing, isActive: false, intensity: 0, resolvedDate: currentDate };
+    return { ...state, storylines };
+  }
+  if (!qualifies) return state;
+
+  const intensity = Math.min(RIVALRY_MAX_INTENSITY, (existing?.intensity ?? 0) + 1);
+  const names = fighterIds.map(id => state.fighters[id]?.lastName).filter(Boolean).join(' vs ');
+  const rivalry: Storyline = {
+    id: existing?.id ?? uuidv4(),
+    type: 'Rivalry',
+    fighterIds: [...fighterIds].sort(),
+    description: `A bitter rivalry exists between ${names}.`,
+    isActive: true,
+    intensity,
+    createdDate: existing?.createdDate ?? currentDate,
+    expiresDate: addDays(new Date(currentDate), RIVALRY_EXPIRY_DAYS).toISOString().slice(0, 10),
+    resolvedDate: undefined
+  };
+  if (existingIndex >= 0) storylines[existingIndex] = rivalry;
+  else storylines.push(rivalry);
+  return { ...state, storylines };
+}
+
+export function coolRivalries(state: GameState, currentDate: string): GameState {
+  const storylines = state.storylines.map(storyline => {
+    if (storyline.type !== 'Rivalry' || !storyline.isActive) return storyline;
+    if (storyline.expiresDate && storyline.expiresDate < currentDate) return { ...storyline, isActive: false, intensity: 0 };
+    if (!isActiveRivalry(storyline, currentDate)) return storyline;
+    if (differenceInCalendarDays(new Date(currentDate), new Date(storyline.createdDate ?? currentDate)) < RIVALRY_COOLDOWN_DAYS) return storyline;
+    const intensity = Math.max(0, (storyline.intensity ?? 1) - 1);
+    return { ...storyline, intensity, isActive: intensity > 0, createdDate: currentDate };
+  });
+  return { ...state, storylines };
+}
 
 export function generateEventNewsAndStorylines(state: GameState, eventId: string): GameState {
   const event = state.events[eventId];
@@ -150,27 +206,22 @@ export function generateEventNewsAndStorylines(state: GameState, eventId: string
         }
       }
 
-      // Rivalry intensified
-      if (res.performanceRating > 85 && (res.method === 'KO/TKO' || res.method.includes('Decision'))) {
-        if (Math.random() < 0.3) {
-          if (!newState.storylines.some(s => s.type === 'Rivalry' && s.fighterIds.includes(winner.id) && s.fighterIds.includes(loser.id))) {
-             newState.news.unshift({
-               id: uuidv4(),
-               date,
-               title: `Fierce Rivalry: ${winner.lastName} vs ${loser.lastName}`,
-               content: `The war between ${winner.lastName} and ${loser.lastName} has sparked a massive rivalry.`,
-               type: 'general'
-             });
-             newState.storylines.push({
-               id: uuidv4(),
-               type: 'Rivalry',
-               fighterIds: [winner.id, loser.id],
-               description: `A bitter rivalry exists between ${winner.lastName} and ${loser.lastName}.`,
-               isActive: true
-             });
-          }
-        }
+      const pairKey = getPairKey([winner.id, loser.id]);
+      const activeRivalry = newState.storylines.find(storyline => storyline.type === 'Rivalry' && storyline.isActive && getPairKey(storyline.fighterIds) === pairKey);
+      const qualifiesForRivalry = res.performanceRating > 85 && (res.method === 'KO/TKO' || res.method.includes('Decision'));
+      const isRematch = Object.values(newState.fightArchive).some(archived => archived.eventId !== eventId && getPairKey([archived.redFighterId, archived.blueFighterId]) === pairKey);
+      const nextState = updateRivalryAfterFight(newState, [winner.id, loser.id], date, qualifiesForRivalry, isRematch);
+      if (nextState !== newState && !activeRivalry && qualifiesForRivalry) {
+        nextState.news.unshift({
+          id: uuidv4(),
+          date,
+          title: `Fierce Rivalry: ${winner.lastName} vs ${loser.lastName}`,
+          content: `The war between ${winner.lastName} and ${loser.lastName} has sparked a rivalry.`,
+          type: 'general'
+        });
       }
+      newState.storylines = nextState.storylines;
+      newState.news = nextState.news;
     }
   }
 

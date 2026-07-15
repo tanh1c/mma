@@ -2,7 +2,9 @@ import { useState, type ReactNode } from 'react';
 import {
   Award,
   BookOpen,
+  Bug,
   CalendarDays,
+  CircleAlert,
   ChevronRight,
   CircleDollarSign,
   FileClock,
@@ -24,6 +26,7 @@ export const APP_NAV_GROUPS: Array<{ label: string; items: Array<{ label: string
     label: 'Promotion',
     items: [
       { label: 'Dashboard', view: 'dashboard', icon: LayoutDashboard },
+      { label: 'Inbox', view: 'inbox', icon: CircleAlert },
       { label: 'Calendar', view: 'calendar', icon: CalendarDays },
       { label: 'Book Event', view: 'event-builder', icon: PlusCircle }
     ]
@@ -40,10 +43,11 @@ export const APP_NAV_GROUPS: Array<{ label: string; items: Array<{ label: string
   {
     label: 'Records',
     items: [
-      { label: 'News', view: 'news', icon: Newspaper },
+      { label: 'Social Hub', view: 'news', icon: Newspaper },
       { label: 'History & Stats', view: 'history', icon: FileClock },
       { label: 'MMA Guide', view: 'mma-guide', icon: BookOpen },
-      { label: 'Debug Sim', view: 'debug', icon: Settings }
+      { label: 'Debug Sim', view: 'debug', icon: Bug },
+      { label: 'Settings', view: 'settings', icon: Settings }
     ]
   }
 ];
@@ -69,7 +73,7 @@ export function AppShell({ currentView, onNavigate, title, date, money, reputati
   };
 
   const navigation = (mobile = false) => (
-    <nav className={`space-y-5 ${mobile ? 'overflow-y-auto' : 'flex-1 overflow-y-auto custom-scrollbar'}`} aria-label="Game navigation">
+    <nav className="h-full space-y-5 overflow-y-auto custom-scrollbar" aria-label="Game navigation">
       {APP_NAV_GROUPS.map(group => (
         <div key={group.label}>
           <p className="px-3 font-mono text-[10px] uppercase tracking-[0.16em] text-neutral-600">{group.label}</p>

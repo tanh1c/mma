@@ -20,6 +20,8 @@ const FightDetail = React.lazy(() => import('./pages/FightDetail').then(module =
 const Tournaments = React.lazy(() => import('./pages/Tournaments'));
 const CalendarPage = React.lazy(() => import('./pages/Calendar'));
 const MmaGuide = React.lazy(() => import('./pages/MmaGuide'));
+const Inbox = React.lazy(() => import('./pages/Inbox'));
+const SettingsPage = React.lazy(() => import('./pages/Settings'));
 
 function App() {
   const { currentView, setView, promotion, currentDate, fighters, events, advanceDays, newGame, saveGame, loadGame, exportGame, importGame } = useGameStore();
@@ -55,6 +57,7 @@ function App() {
           {(() => {
              switch (currentView) {
                case 'dashboard': return <Dashboard />;
+               case 'inbox': return <Inbox />;
                case 'roster': return <Roster />;
                case 'free-agents': return <FreeAgents />;
                case 'fighter-detail': return <FighterDetail />;
@@ -68,6 +71,7 @@ function App() {
                case 'debug': return <DebugSim />;
                case 'calendar': return <CalendarPage />;
                case 'mma-guide': return <MmaGuide />;
+               case 'settings': return <SettingsPage />;
                default: return <Dashboard />;
              }
           })()}

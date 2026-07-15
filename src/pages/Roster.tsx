@@ -8,15 +8,19 @@ import { twMerge } from 'tailwind-merge';
 import { CountryFlag } from '../components/CountryFlag';
 import { FighterAvatar } from '../components/FighterAvatar';
 import { DataSurface, PageHeader, Panel, StatusBadge } from '../components/ui';
+import { getFighterOverall, isProspect } from '../lib/game/fighterRatings';
+import { formatHeight, formatWeight } from '../lib/displayUnits';
+import { useSettingsStore } from '../store/settingsStore';
 
 function cn(...inputs: any[]) {
   return twMerge(clsx(inputs));
 }
 
-type SortKey = 'name' | 'age' | 'weight' | 'record' | 'style' | 'popularity' | 'status' | 'contract';
+type SortKey = 'name' | 'age' | 'weight' | 'record' | 'style' | 'overall' | 'potential' | 'popularity' | 'status' | 'contract';
 
 export default function Roster() {
   const { fighters, setView } = useGameStore();
+  const unitSystem = useSettingsStore(settings => settings.unitSystem);
   const [search, setSearch] = useState('');
   const [filterWeight, setFilterWeight] = useState<string>('All');
   const [filterStyle, setFilterStyle] = useState<string>('All');
@@ -58,7 +62,7 @@ export default function Roster() {
       .filter(f => {
         if (filterArchetype === 'All') return true;
         if (filterArchetype === 'Star') return f.popularity >= 80;
-        if (filterArchetype === 'Prospect') return f.potential > 80 && f.popularity < 50;
+        if (filterArchetype === 'Prospect') return isProspect(f);
         if (filterArchetype === 'Veteran') return f.age > 33;
         return true;
       });
@@ -87,6 +91,14 @@ export default function Roster() {
         case 'style':
           aValue = a.style;
           bValue = b.style;
+          break;
+        case 'overall':
+          aValue = getFighterOverall(a);
+          bValue = getFighterOverall(b);
+          break;
+        case 'potential':
+          aValue = a.potential;
+          bValue = b.potential;
           break;
         case 'popularity':
           aValue = a.popularity;
@@ -181,6 +193,12 @@ export default function Roster() {
               <th className="p-4 cursor-pointer hover:bg-neutral-900 transition-colors group" onClick={() => handleSort('style')}>
                 Style <SortIcon sortKey="style" />
               </th>
+              <th className="p-4 cursor-pointer hover:bg-neutral-900 transition-colors group" onClick={() => handleSort('overall')}>
+                OVR <SortIcon sortKey="overall" />
+              </th>
+              <th className="p-4 cursor-pointer hover:bg-neutral-900 transition-colors group" onClick={() => handleSort('potential')}>
+                POT <SortIcon sortKey="potential" />
+              </th>
               <th className="p-4 text-center cursor-pointer hover:bg-neutral-900 transition-colors group" onClick={() => handleSort('popularity')}>
                 Pop / Mor / Mom <SortIcon sortKey="popularity" />
               </th>
@@ -195,7 +213,7 @@ export default function Roster() {
           <tbody className="divide-y divide-[#2a2c31]">
             {roster.map(f => {
               // Badges
-              const isProspect = f.potential > 80 && f.popularity < 50;
+              const prospect = isProspect(f);
               const isVeteran = f.age > 33;
               const isStar = f.popularity >= 80;
 
@@ -214,10 +232,11 @@ export default function Roster() {
                         {f.isChampion && <span className="text-yellow-500 text-xs font-bold" title="Champion">👑</span>}
                       </div>
                       {f.nickname && <div className="text-xs text-neutral-400">"{f.nickname}"</div>}
+                      <div className="text-[10px] text-neutral-500">{formatHeight(f.heightCm, unitSystem)} · {formatWeight(f.fightWeightLb, unitSystem)}/{formatWeight(f.walkAroundWeightLb, unitSystem)}</div>
                       
                       <div className="mt-1 flex gap-1">
                         {isStar && <StatusBadge tone="warning">Star</StatusBadge>}
-                        {isProspect && <StatusBadge>Prospect</StatusBadge>}
+                        {prospect && <StatusBadge>Prospect</StatusBadge>}
                         {isVeteran && <StatusBadge>Veteran</StatusBadge>}
                       </div>
                     </div>
@@ -226,6 +245,8 @@ export default function Roster() {
                   <td className="p-4">{f.weightClass}</td>
                   <td className="p-4">{f.record.wins}-{f.record.losses}-{f.record.draws}</td>
                   <td className="p-4">{f.style}</td>
+                  <td className="p-4 font-mono text-white">{getFighterOverall(f)}</td>
+                  <td className="p-4 font-mono text-white">{f.potential}</td>
                   <td className="p-4 text-center font-mono text-xs">
                     <div className="flex justify-center gap-2">
                       <span className="text-white" title="Popularity">{f.popularity}</span>

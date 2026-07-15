@@ -3,6 +3,7 @@ import { autoBookEventsAndContracts, maintainDeals, repairEventAvailability, rep
 import { runAutopilotTournaments, syncTournamentTitleShotFlags, validateTournamentState, validateTitleShotDebtState } from './src/lib/game/tournament';
 import { advanceTime, applyFightResult } from './src/lib/engine';
 import { syncCalendarSlots, validateSeasonCalendarState } from './src/lib/game/season';
+import { runObserverDecisions } from './src/lib/game/observer';
 import { GameState, GrandPrixTournament } from './src/types/game';
 
 function runDaysSimulation(initialState: GameState, days: number): { state: GameState; crashCount: number; errorMessage?: string } {
@@ -19,6 +20,7 @@ function runDaysSimulation(initialState: GameState, days: number): { state: Game
       state = autoBookEventsAndContracts(state);
       state = runAutopilotTournaments(state);
       state = repairFutureEventAvailability(state);
+      state = runObserverDecisions(state);
       state = advanceTime(state, 1);
       state = maintainDeals(state);
       state = repairFutureEventAvailability(state);
@@ -139,8 +141,10 @@ function computeDiagnostics(state: GameState, crashCount: number) {
     }
   });
 
-  const calendarIntegrityErrors = validateSeasonCalendarState(state).length;
-  const tournamentInvariantErrors = validateTournamentState(state).length;
+  const calendarErrors = validateSeasonCalendarState(state);
+  const tournamentErrors = validateTournamentState(state);
+  const calendarIntegrityErrors = calendarErrors.length;
+  const tournamentInvariantErrors = tournamentErrors.length;
   const titleShotDebtErrors = validateTitleShotDebtState(state).length;
   
   // roundStats errors
@@ -187,6 +191,8 @@ function computeDiagnostics(state: GameState, crashCount: number) {
     titleShotDebtErrors,
     roundStatsErrors,
     completedEventMissingResult,
+    firstCalendarError: calendarErrors[0],
+    firstTournamentError: tournamentErrors[0],
     crashCount
   };
 }
@@ -206,8 +212,8 @@ function printReport(label: string, d: ReturnType<typeof computeDiagnostics>) {
   console.log(`- Stale Planned Slot Count: ${d.stalePlannedSlots}`);
   console.log(`- Duplicate GP Retry Count: ${d.duplicateGpRetries}`);
   console.log(`- Fake GP Slot/Event Count: ${d.fakeGPCount}`);
-  console.log(`- Calendar Integrity Errors: ${d.calendarIntegrityErrors}`);
-  console.log(`- Tournament Invariant Errors: ${d.tournamentInvariantErrors}`);
+  console.log(`- Calendar Integrity Errors: ${d.calendarIntegrityErrors}${d.firstCalendarError ? ` (${d.firstCalendarError})` : ''}`);
+  console.log(`- Tournament Invariant Errors: ${d.tournamentInvariantErrors}${d.firstTournamentError ? ` (${d.firstTournamentError})` : ''}`);
   console.log(`- Title Shot Debt Errors: ${d.titleShotDebtErrors}`);
   console.log(`- roundStats Validation Errors: ${d.roundStatsErrors}`);
   console.log(`- Completed Event Missing Result Count: ${d.completedEventMissingResult}`);
@@ -484,6 +490,8 @@ async function runTests() {
   const makeFreshWorld = () => {
     const w = generateInitialWorld();
     w.currentDate = "2026-01-01";
+    w.mode = 'observer';
+    w.autopilot = { ...w.autopilot, enabled: true };
     return w;
   };
 

@@ -1,16 +1,22 @@
 import React, { useEffect, useState } from 'react';
 import { ArrowLeft, UserCheck, UserMinus } from 'lucide-react';
 import { useGameStore } from '../store/gameStore';
-import { getContractExpectation, evaluateOffer } from '../lib/game/contracts';
+import { ContractCounterOffer } from '../types/game';
+import { getContractExpectation, getContractStatus, evaluateOffer } from '../lib/game/contracts';
 import { deriveFighterAchievements } from '../lib/game/fighterAchievements';
 import { deriveFighterTimeline } from '../lib/game/timeline';
 import { CountryFlag } from '../components/CountryFlag';
 import { FighterAvatar } from '../components/FighterAvatar';
 import { Button, PageHeader, Panel } from '../components/ui';
+import { getFighterOverall, getWeightCutPercent } from '../lib/game/fighterRatings';
+import { formatHeight, formatWeight } from '../lib/displayUnits';
+import { useSettingsStore } from '../store/settingsStore';
+import { getFighterSocialFeed, getFighterStorylines } from '../lib/game/social';
 
 const tabs = [
   { id: 'overview', label: 'Overview' },
   { id: 'achievements', label: 'Achievements' },
+  { id: 'storylines', label: 'Storylines' },
   { id: 'contract', label: 'Contract' },
   { id: 'fights', label: 'Fight Log' },
   { id: 'timeline', label: 'Timeline' }
@@ -20,13 +26,15 @@ type FighterTab = typeof tabs[number]['id'];
 
 export default function FighterDetail() {
   const state = useGameStore();
-  const { selectedFighterId, fighters, setView, goBack, signFighter, renewFighter, releaseFighter, promotion, fightArchive } = state;
+  const unitSystem = useSettingsStore(settings => settings.unitSystem);
+  const { selectedFighterId, fighters, setView, goBack, signFighter, renewFighter, setCounterOffer: saveCounterOffer, releaseFighter, promotion, fightArchive } = state;
   const f = selectedFighterId ? fighters[selectedFighterId] : null;
   const [activeTab, setActiveTab] = useState<FighterTab>('overview');
   const [offerPay, setOfferPay] = useState(10000);
   const [offerBonus, setOfferBonus] = useState(10000);
   const [offerFights, setOfferFights] = useState(3);
   const [negotiationResult, setNegotiationResult] = useState<{ accepted: boolean; reason: string } | null>(null);
+  const [counterOffer, setCounterOffer] = useState<ContractCounterOffer | null>(null);
 
   useEffect(() => {
     if (!f) return;
@@ -35,6 +43,7 @@ export default function FighterDetail() {
     setOfferBonus(expectation.winBonus);
     setOfferFights(expectation.fights);
     setNegotiationResult(null);
+    setCounterOffer(f.counterOffer && f.counterOffer.expiresDate >= state.currentDate ? f.counterOffer : null);
     setActiveTab(f.contract ? 'overview' : 'contract');
   }, [f?.id]);
 
@@ -68,14 +77,30 @@ export default function FighterDetail() {
   const currentStreak = fighterFights.reduce((streak, fight) => streak === -1 ? -1 : fight.winnerId === f.id ? streak + 1 : -1, 0);
   const timeline = deriveFighterTimeline(state, f.id);
   const achievements = deriveFighterAchievements(state, f.id);
+  const fighterStorylines = getFighterStorylines(state, f.id);
+  const activeStorylines = fighterStorylines.filter(storyline => storyline.isActive);
+  const socialActivity = getFighterSocialFeed(state, f.id);
+  const overall = getFighterOverall(f);
+  const weightCut = getWeightCutPercent(f);
+
+  const completeSigning = (pay: number, bonus: number, fights: number) => {
+    if (f.contract) renewFighter(f.id, pay, bonus, fights);
+    else signFighter(f.id, pay, bonus, fights);
+    setCounterOffer(null);
+  };
 
   const handleSign = () => {
     setNegotiationResult(null);
-    const result = evaluateOffer(f, promotion, offerPay, offerBonus, offerFights);
+    if (f.counterOffer && f.counterOffer.expiresDate >= state.currentDate) {
+      setNegotiationResult({ accepted: false, reason: 'Respond to the current counter-offer before making another offer.' });
+      return;
+    }
+    const result = evaluateOffer(f, promotion, offerPay, offerBonus, offerFights, state.currentDate);
     setNegotiationResult(result);
-    if (result.accepted) {
-      if (f.contract) renewFighter(f.id, offerPay, offerBonus, offerFights);
-      else signFighter(f.id, offerPay, offerBonus, offerFights);
+    if (result.accepted) completeSigning(offerPay, offerBonus, offerFights);
+    else if ('counterOffer' in result && result.counterOffer) {
+      setCounterOffer(result.counterOffer);
+      saveCounterOffer(f.id, result.counterOffer);
     }
   };
 
@@ -109,7 +134,9 @@ export default function FighterDetail() {
             {f.nickname && <p className="mt-1 text-sm italic text-neutral-400">“{f.nickname}”</p>}
           </div>
         </div>
-        <div className="grid grid-cols-3 gap-3 text-center md:min-w-72">
+        <div className="grid grid-cols-2 gap-3 text-center sm:grid-cols-5 md:min-w-[30rem]">
+          <ProfileStat label="OVR" value={String(overall)} tone={overall >= 80 ? 'success' : overall >= 65 ? 'warning' : 'neutral'} />
+          <ProfileStat label="POT" value={String(f.potential)} />
           <ProfileStat label="Record" value={`${f.record.wins}-${f.record.losses}-${f.record.draws}`} detail={`${f.record.kos} KO · ${f.record.subs} SUB`} />
           <ProfileStat label="Style" value={f.style} />
           <ProfileStat label="Status" value={f.injuryStatus ? 'Injured' : f.medicalSuspension ? 'Suspended' : f.fatigue > 50 ? 'Fatigued' : 'Ready'} tone={f.injuryStatus ? 'danger' : f.medicalSuspension || f.fatigue > 50 ? 'warning' : 'success'} />
@@ -124,8 +151,12 @@ export default function FighterDetail() {
     <section id={`fighter-panel-${activeTab}`} role="tabpanel" aria-labelledby={`fighter-tab-${activeTab}`} tabIndex={0}>
       {activeTab === 'overview' && <div className="space-y-6">
         <Panel>
+          <h2 className="mb-4 text-lg font-medium tracking-tight text-white">Physical Profile</h2>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4"><CareerStat label="Height" value={formatHeight(f.heightCm, unitSystem)} /><CareerStat label="Fight Weight" value={formatWeight(f.fightWeightLb, unitSystem)} /><CareerStat label="Walk-around Weight" value={formatWeight(f.walkAroundWeightLb, unitSystem)} /><CareerStat label="Weight Cut" value={`${weightCut.toFixed(1)}%`} tone={weightCut > 12 ? 'warning' : 'neutral'} /></div>
+        </Panel>
+        <Panel>
           <h2 className="mb-4 text-lg font-medium tracking-tight text-white">Attributes</h2>
-          <div className="grid gap-x-6 gap-y-2 sm:grid-cols-2"><AttrBar label="Striking" value={f.attributes.striking} /><AttrBar label="Grappling" value={f.attributes.grappling} /><AttrBar label="Wrestling" value={f.attributes.wrestling} /><AttrBar label="Submissions" value={f.attributes.submissions} /><AttrBar label="Cardio" value={f.attributes.cardio} /><AttrBar label="Chin" value={f.attributes.chin} /><AttrBar label="Power" value={f.attributes.power} /><AttrBar label="Speed" value={f.attributes.speed} /><AttrBar label="Defense" value={f.attributes.defense} /><AttrBar label="Fight IQ" value={f.attributes.fightIq} /></div>
+          <div className="grid gap-x-6 gap-y-2 sm:grid-cols-2"><AttrBar label="Striking" value={f.attributes.striking} /><AttrBar label="Grappling" value={f.attributes.grappling} /><AttrBar label="Wrestling" value={f.attributes.wrestling} /><AttrBar label="Submissions" value={f.attributes.submissions} /><AttrBar label="Cardio" value={f.attributes.cardio} /><AttrBar label="Chin" value={f.attributes.chin} /><AttrBar label="Power" value={f.attributes.power} /><AttrBar label="Speed" value={f.attributes.speed} /><AttrBar label="Defense" value={f.attributes.defense} /><AttrBar label="Fight IQ" value={f.attributes.fightIq} /><AttrBar label="Toughness" value={f.attributes.toughness} /></div>
         </Panel>
         <Panel>
           <h2 className="mb-4 text-lg font-medium tracking-tight text-white">Career Summary</h2>
@@ -149,10 +180,24 @@ export default function FighterDetail() {
         })}</div>}
       </Panel>}
 
+      {activeTab === 'storylines' && <div className="space-y-6">
+        <Panel>
+          <h2 className="text-lg font-medium tracking-tight text-white">Active Storylines</h2>
+          <p className="mt-1 text-sm text-neutral-500">Rivalries, title narratives, disputes, and other live drama involving this fighter.</p>
+          {activeStorylines.length === 0 ? <p className="py-8 text-center text-sm text-neutral-500">No active storylines.</p> : <div className="mt-4 grid gap-3 sm:grid-cols-2">{activeStorylines.map(storyline => <div key={storyline.id} className="rounded-lg border border-[#2a2c31] bg-neutral-950 p-4"><div className="flex flex-wrap items-center justify-between gap-2"><h3 className="font-medium text-white">{storyline.type}</h3>{storyline.intensity && <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-amber-300">Intensity {storyline.intensity}/3</span>}</div><p className="mt-2 text-sm leading-6 text-neutral-400">{storyline.description}</p><div className="mt-3 flex flex-wrap gap-2">{storyline.fighterIds.filter(id => id !== f.id).flatMap(id => fighters[id] ? [<button key={id} type="button" onClick={() => setView('fighter-detail', { fighterId: id })} className="rounded-full border border-neutral-800 px-2.5 py-1 text-xs text-neutral-300 hover:border-neutral-600 hover:text-white">{fighters[id].firstName} {fighters[id].lastName}</button>] : [])}</div><p className="mt-3 font-mono text-[10px] text-neutral-600">{storyline.createdDate ? `Started ${storyline.createdDate}` : 'Active'}{storyline.expiresDate ? ` · Expires ${storyline.expiresDate}` : ''}</p></div>)}</div>}
+        </Panel>
+        <Panel>
+          <h2 className="text-lg font-medium tracking-tight text-white">Social activity</h2>
+          <p className="mt-1 text-sm text-neutral-500">News, articles, posts, and threads involving {f.lastName}.</p>
+          {socialActivity.length === 0 ? <p className="py-8 text-center text-sm text-neutral-500">No social activity yet.</p> : <div className="mt-4 divide-y divide-[#2a2c31]">{socialActivity.map(entry => <article key={entry.id} className="py-4 first:pt-0 last:pb-0"><div className="flex flex-wrap items-center gap-2"><span className="font-mono text-[9px] uppercase tracking-[0.12em] text-neutral-500">{entry.kind.replace('_', ' ')}</span><time className="font-mono text-[10px] text-neutral-600">{entry.date}</time></div><h3 className="mt-2 font-medium text-white">{entry.headline}</h3><p className="mt-1 text-sm leading-6 text-neutral-400">{entry.body}</p></article>)}</div>}
+        </Panel>
+      </div>}
+
       {activeTab === 'contract' && <Panel>
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3"><h2 className="text-lg font-medium tracking-tight text-white">{f.contract ? 'Contract & Extension' : 'Negotiate Contract'}</h2>{f.contract && <Button variant="danger" onClick={handleRelease} className="inline-flex items-center gap-2"><UserMinus size={16} /> Release Fighter</Button>}</div>
-        {f.contract && <div className="mb-6 flex flex-col justify-between gap-3 rounded-lg border border-[#2a2c31] bg-neutral-950 p-4 sm:flex-row sm:items-center"><div><p className="text-sm text-neutral-400">Current deal: <span className="text-white">${f.contract.payPerFight.toLocaleString()}</span> to show, <span className="text-white">${f.contract.winBonus.toLocaleString()}</span> to win</p><p className={`mt-1 text-sm ${f.contract.fightsRemaining <= 1 ? 'text-red-300' : 'text-neutral-400'}`}>Fights remaining: {f.contract.fightsRemaining}</p></div>{f.isChampion && f.contract.fightsRemaining === 0 && <p className="text-sm text-red-300">Champion contract expired. Renew immediately or vacate the title.</p>}</div>}
+        {f.contract && <div className="mb-6 flex flex-col justify-between gap-3 rounded-lg border border-[#2a2c31] bg-neutral-950 p-4 sm:flex-row sm:items-center"><div><p className="text-sm text-neutral-400">Current deal: <span className="text-white">${f.contract.payPerFight.toLocaleString()}</span> to show, <span className="text-white">${f.contract.winBonus.toLocaleString()}</span> to win</p><p className={`mt-1 text-sm ${getContractStatus(f.contract, state.currentDate) !== 'active' ? 'text-red-300' : 'text-neutral-400'}`}>Fights remaining: {f.contract.fightsRemaining} · Ends {f.contract.endDate}</p></div>{f.isChampion && getContractStatus(f.contract, state.currentDate) === 'expired' && <p className="text-sm text-red-300">Champion contract expired. Renew immediately or vacate the title.</p>}</div>}
         {negotiationResult && <div className={`mb-4 rounded-lg border p-4 ${negotiationResult.accepted ? 'border-emerald-900 text-emerald-300' : 'border-red-900 text-red-300'}`}><p className="font-medium">{negotiationResult.accepted ? 'Offer Accepted' : 'Offer Rejected'}</p><p className="mt-1 text-sm">{negotiationResult.reason}</p></div>}
+        {counterOffer && <div className="mb-4 rounded-lg border border-amber-900 bg-amber-950/20 p-4 text-amber-100"><p className="font-medium">Counter-offer</p><p className="mt-1 text-sm">${counterOffer.payPerFight.toLocaleString()} to show · ${counterOffer.winBonus.toLocaleString()} to win · {counterOffer.fights} fights · expires {counterOffer.expiresDate}</p><Button variant="primary" onClick={() => completeSigning(counterOffer.payPerFight, counterOffer.winBonus, counterOffer.fights)} className="mt-3">Accept counter-offer</Button></div>}
         <p className="mb-4 text-sm text-neutral-400">Expected: <span className="text-white">${getContractExpectation(f, promotion).basePay.toLocaleString()}</span> to show · <span className="text-white">${getContractExpectation(f, promotion).winBonus.toLocaleString()}</span> to win · <span className="text-white">{getContractExpectation(f, promotion).interestLabel}</span></p>
         <div className="grid gap-4 md:grid-cols-3"><ContractInput label="Pay per Fight ($)" value={offerPay} onChange={setOfferPay} step={1000} /><ContractInput label="Win Bonus ($)" value={offerBonus} onChange={setOfferBonus} step={1000} /><ContractInput label="Fights" value={offerFights} onChange={setOfferFights} min={1} max={8} /></div>
         {!negotiationResult?.accepted && <Button variant="primary" onClick={handleSign} className="mt-5 inline-flex items-center gap-2"><UserCheck size={16} /> {f.contract ? 'Offer Extension' : 'Offer Contract'}</Button>}

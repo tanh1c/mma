@@ -1,10 +1,11 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useGameStore } from '../store/gameStore';
-import { WeightClass, FightMatchup } from '../types/game';
+import { WeightClass, FightCampFocus, FightMatchup } from '../types/game';
 import { v4 as uuidv4 } from 'uuid';
 import { addDays, format } from 'date-fns';
 import { calculateEventProjections } from '../lib/game/economy';
 import { compareFighters, getFighterReadiness, recommendMatchups } from '../lib/game/insights';
+import { getFighterOverall } from '../lib/game/fighterRatings';
 import { ArrowUp, ArrowDown, Trash2, AlertTriangle, Info } from 'lucide-react';
 import { Select } from '../components/Select';
 import { getEventName } from '../lib/branding';
@@ -63,7 +64,8 @@ export default function EventBuilder() {
               rounds: slot.tournamentRound === 'final' ? 5 : 3,
               tournamentId: tourney.id,
               tournamentRound: slot.tournamentRound!,
-              tournamentFightSlotId: f.id
+              tournamentFightSlotId: f.id,
+              campFocus: 'balanced'
             }));
             setFights(gpFights);
             setSelectedWC(tourney.weightClass);
@@ -93,7 +95,11 @@ export default function EventBuilder() {
   const [isTitleFight, setIsTitleFight] = useState(false);
   const [rounds, setRounds] = useState('3');
 
-  const contractedRoster = Object.values(fighters).filter(f => f.contract !== null);
+  const hasContractThroughEvent = (fighterId: string) => {
+    const fighter = fighters[fighterId];
+    return !!fighter?.contract && fighter.contract.fightsRemaining > 0 && fighter.contract.endDate >= eventDate;
+  };
+  const contractedRoster = Object.values(fighters).filter(f => hasContractThroughEvent(f.id));
   const wcFighters = contractedRoster.filter(f => f.weightClass === selectedWC);
   
   // Filter out fighters already booked
@@ -106,9 +112,9 @@ export default function EventBuilder() {
     return matchesSearch && (readinessFilter === 'All' || (readinessFilter === 'Ready' ? readiness.status === 'ready' : readiness.status === 'fatigued'));
   }).map(fighter => {
     const readiness = getFighterReadiness(fighter);
-    return { value: fighter.id, label: `${fighter.firstName} ${fighter.lastName} (${fighter.record.wins}-${fighter.record.losses}) ${fighter.isChampion ? '👑' : ''}${readiness.status === 'ready' ? '' : ` [${readiness.label.toUpperCase()}]`}`, disabled: !readiness.eligible };
+    return { value: fighter.id, label: `${fighter.firstName} ${fighter.lastName} · OVR ${getFighterOverall(fighter)} (${fighter.record.wins}-${fighter.record.losses}) ${fighter.isChampion ? '👑' : ''}${readiness.status === 'ready' ? '' : ` [${readiness.label.toUpperCase()}]`}`, disabled: !readiness.eligible };
   });
-  const recommendations = useMemo(() => recommendMatchups(gameState, selectedWC as WeightClass, bookedFighterIds), [gameState, selectedWC, fights]);
+  const recommendations = useMemo(() => recommendMatchups(gameState, selectedWC as WeightClass, bookedFighterIds).filter(recommendation => hasContractThroughEvent(recommendation.red.id) && hasContractThroughEvent(recommendation.blue.id)), [gameState, selectedWC, fights, eventDate]);
   const comparison = redFighter && blueFighter && fighters[redFighter] && fighters[blueFighter] ? compareFighters(fighters[redFighter], fighters[blueFighter]) : null;
 
   const projections = useMemo(() => {
@@ -143,7 +149,8 @@ export default function EventBuilder() {
 
     if (rFighter?.medicalSuspension) return alert(`${rFighter.firstName} ${rFighter.lastName} is medically suspended and cannot be booked.`);
     if (bFighter?.medicalSuspension) return alert(`${bFighter.firstName} ${bFighter.lastName} is medically suspended and cannot be booked.`);
-    
+    if (!hasContractThroughEvent(redFighter) || !hasContractThroughEvent(blueFighter)) return alert('Both fighters need an active contract through the event date.');
+
     if (isTitleFight) {
       if (titles && titles[selectedWC as WeightClass]) {
         const titleState = titles[selectedWC as WeightClass];
@@ -189,7 +196,8 @@ export default function EventBuilder() {
           weightClass: selectedWC as WeightClass,
           isTitleFight,
           titleFightType,
-          rounds: Number(rounds)
+          rounds: Number(rounds),
+          campFocus: 'balanced'
         }]);
         setRedFighter('');
         setBlueFighter('');
@@ -202,7 +210,8 @@ export default function EventBuilder() {
       blueCornerId: blueFighter,
       weightClass: selectedWC as WeightClass,
       isTitleFight,
-      rounds: Number(rounds)
+      rounds: Number(rounds),
+      campFocus: 'balanced'
     }]);
     
     setRedFighter('');
@@ -280,7 +289,8 @@ export default function EventBuilder() {
             blueCornerId: topContender.id,
             weightClass: wc,
             isTitleFight: true,
-            rounds: 5
+            rounds: 5,
+            campFocus: 'balanced'
           });
           fightsAdded++;
           bookedSet.add(champ.id);
@@ -298,7 +308,8 @@ export default function EventBuilder() {
           blueCornerId: remaining[1].id,
           weightClass: wc,
           isTitleFight: false,
-          rounds: 3
+          rounds: 3,
+          campFocus: 'balanced'
         });
         fightsAdded++;
         bookedSet.add(remaining[0].id);
@@ -316,7 +327,8 @@ export default function EventBuilder() {
   const handleBook = () => {
     if (fights.length === 0) return alert('Must have at least 1 fight');
     if (!eventName) return alert('Need an event name');
-    
+    if (fights.some(fight => !hasContractThroughEvent(fight.redCornerId) || !hasContractThroughEvent(fight.blueCornerId))) return alert('Every booked fighter needs an active contract through the event date.');
+
     if (promotion.money < projections.estimatedCost) {
       if (!window.confirm(`Estimated cost is $${projections.estimatedCost.toLocaleString()} but you only have $${promotion.money.toLocaleString()}. You may go into debt. Proceed?`)) {
         return;
@@ -358,6 +370,15 @@ export default function EventBuilder() {
     value: v.id,
     label: `${v.name}, ${v.city} (${v.capacity} cap)`
   }));
+
+  const campOptions = [
+    { value: 'balanced', label: 'Balanced' },
+    { value: 'striking', label: 'Striking +3% · fatigue +5' },
+    { value: 'wrestling', label: 'Wrestling +3% · fatigue +5' },
+    { value: 'cardio', label: 'Cardio +4% · fatigue -5' },
+    { value: 'recovery', label: 'Recovery · fatigue -10' }
+  ];
+  const campSummary = (focus: FightCampFocus = 'balanced') => campOptions.find(option => option.value === focus)?.label ?? 'Balanced';
 
   const wcOptions = [
     { value: 'Heavyweight', label: 'Heavyweight' },
@@ -459,7 +480,7 @@ export default function EventBuilder() {
               </div>
             </div>
 
-            {comparison && <div className="rounded border border-blue-900/50 bg-blue-950/20 p-3 text-xs text-neutral-300" title="Advisory estimate only. The actual fight simulation remains unpredictable."><div className="flex items-center justify-between gap-3"><p className="font-mono uppercase tracking-[0.12em] text-blue-300">Matchup comparison</p><p><span className="font-semibold text-white">{comparison.red.firstName} {comparison.red.lastName} {comparison.redChance}%</span> · <span className="font-semibold text-white">{comparison.blueChance}% {comparison.blue.firstName} {comparison.blue.lastName}</span></p></div><p className="mt-2">{comparison.red.style} vs {comparison.blue.style} · {comparison.red.record.wins}-{comparison.red.record.losses} vs {comparison.blue.record.wins}-{comparison.blue.record.losses}</p><p className="mt-1 text-neutral-400">{comparison.styleNote} {comparison.readiness.red.label} / {comparison.readiness.blue.label}.</p></div>}
+            {comparison && <div className="rounded border border-blue-900/50 bg-blue-950/20 p-3 text-xs text-neutral-300" title="Advisory estimate only. The actual fight simulation remains unpredictable."><div className="flex items-center justify-between gap-3"><p className="font-mono uppercase tracking-[0.12em] text-blue-300">Matchup comparison</p><p><span className="font-semibold text-white">{comparison.red.firstName} {comparison.red.lastName} {comparison.redChance}%</span> · <span className="font-semibold text-white">{comparison.blueChance}% {comparison.blue.firstName} {comparison.blue.lastName}</span></p></div><p className="mt-2">OVR {comparison.redOverall} vs {comparison.blueOverall} · {comparison.red.style} vs {comparison.blue.style} · {comparison.red.record.wins}-{comparison.red.record.losses} vs {comparison.blue.record.wins}-{comparison.blue.record.losses}</p>{comparison.mismatchWarning && <p className="mt-2 text-amber-300">{comparison.mismatchWarning}</p>}<p className="mt-1 text-neutral-400">{comparison.styleNote} {comparison.readiness.red.label} / {comparison.readiness.blue.label}.</p></div>}
 
             {recommendations.length > 0 && <div className="rounded border border-neutral-800 bg-neutral-950 p-3"><p className="mb-2 font-mono text-[10px] uppercase tracking-[0.12em] text-neutral-500">Recommended matchups</p><div className="space-y-2">{recommendations.slice(0, 3).map(recommendation => <div key={`${recommendation.red.id}-${recommendation.blue.id}`} className="flex items-center justify-between gap-2 text-xs"><div className="min-w-0"><p className="truncate text-neutral-200">{recommendation.red.firstName} {recommendation.red.lastName} vs {recommendation.blue.firstName} {recommendation.blue.lastName} <span title="Match quality estimate based on ranking, popularity, rivalry, and readiness." className="text-blue-300">{recommendation.score}</span></p><p className="truncate text-neutral-500">{recommendation.reasons.slice(0, 2).join(' · ')}</p></div><Button variant="quiet" onClick={() => { setRedFighter(recommendation.red.id); setBlueFighter(recommendation.blue.id); }} className="min-h-8 px-2 text-[10px]">Use</Button></div>)}</div></div>}
 
@@ -627,16 +648,25 @@ export default function EventBuilder() {
                             <span className="truncate">{red.firstName} <span className="text-neutral-400">{red.lastName}</span></span>
                             <CountryFlag nationality={red.nationality} className="text-xs" />
                             <FighterAvatar id={red.id} name={`${red.firstName} ${red.lastName}`} nationality={red.nationality} className="h-6 w-6" />
-                            <span className="text-[10px] font-normal text-neutral-500 min-w-[30px]">({red.popularity})</span>
+                            <span className="text-[10px] font-normal text-neutral-500 min-w-[42px]">OVR {getFighterOverall(red)}</span>
                           </div>
                           <span className="w-[10%] text-center text-neutral-600 text-xs italic">vs</span>
                           <div className="w-[45%] text-left flex items-center gap-2 truncate">
-                            <span className="text-[10px] font-normal text-neutral-500 min-w-[30px]">({blue.popularity})</span>
+                            <span className="text-[10px] font-normal text-neutral-500 min-w-[42px]">OVR {getFighterOverall(blue)}</span>
                             <FighterAvatar id={blue.id} name={`${blue.firstName} ${blue.lastName}`} nationality={blue.nationality} className="h-6 w-6" />
                             <CountryFlag nationality={blue.nationality} className="text-xs" />
                             <span className="truncate">{blue.firstName} <span className="text-neutral-400">{blue.lastName}</span></span>
                           </div>
                         </div>
+                      </div>
+                      <div className="w-40">
+                        <p className="mb-1 truncate text-[10px] text-neutral-500" title={campSummary(fight.campFocus)}>Camp: {campSummary(fight.campFocus)}</p>
+                        <Select
+                          value={fight.campFocus ?? 'balanced'}
+                          onChange={value => setFights(fights.map((item, index) => index === idx ? { ...item, campFocus: value as FightCampFocus } : item))}
+                          options={campOptions}
+                          className="text-xs"
+                        />
                       </div>
                       <button onClick={() => removeFight(idx)} className="ml-2 text-red-500/50 hover:text-red-400 transition-colors p-2 rounded hover:bg-red-500/10">
                         <Trash2 size={16} />
