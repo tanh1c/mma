@@ -1,7 +1,7 @@
-import { MMA_GUIDE_SECTIONS } from './src/pages/MmaGuide';
+import en from './src/i18n/resources/en';
 
 const requiredTerms = ['Grand Prix', 'Undisputed Champion', 'Interim Champion', 'Title Shot', 'KO/TKO', 'Submission', 'Decision'];
-const terms = MMA_GUIDE_SECTIONS.flatMap(section => section.entries.map(entry => entry.term));
+const terms = Object.values(en.mmaGuide.sections).flatMap(section => Object.values(section.entries).map(entry => entry.term));
 
 for (const term of requiredTerms) {
   if (!terms.includes(term)) throw new Error(`Missing MMA guide term: ${term}`);

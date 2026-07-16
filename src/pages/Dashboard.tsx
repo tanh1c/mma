@@ -1,14 +1,19 @@
 import React, { useMemo, useState } from 'react';
 import { useGameStore } from '../store/gameStore';
-import { format, differenceInDays } from 'date-fns';
+import { differenceInDays } from 'date-fns';
 import { Trophy, TrendingUp, Users, DollarSign, Calendar, FastForward, Settings, Play } from 'lucide-react';
 import { calculateEventProjections } from '../lib/game/economy';
 import { getPromotionInbox } from '../lib/game/inbox';
 import { Button, Panel, PageHeader, Stat, StatusBadge } from '../components/ui';
 import { ChampionshipBelt } from '../components/ChampionshipBelt';
 import { FighterRankBadge } from '../components/FighterRankBadge';
+import { useTranslation } from 'react-i18next';
+import { useSettingsStore } from '../store/settingsStore';
+import { formatCurrency, formatDate, formatNumber, formatWeightClass } from '../lib/localization';
 
 export default function Dashboard() {
+  const { t } = useTranslation('translation');
+  const language = useSettingsStore(state => state.language);
   const gameState = useGameStore();
   const { promotion, currentDate, events, fighters, tournaments = {}, venues, news, storylines, titles, belts, setView, mode, autopilot, setMode, setAutopilot, advanceAutopilot, lastAutopilotSummary, sponsorDeals = [], mediaDeals = [], financeLedger = [], signSponsorDeal, signMediaDeal, renewDeal } = gameState;
 
@@ -62,32 +67,50 @@ export default function Dashboard() {
     );
   }, [nextEvent, fighters, venues, promotion, storylines, titles, tournaments]);
 
-  const inboxPreview = useMemo(() => getPromotionInbox(gameState).slice(0, 5), [gameState]);
+  const inboxPreview = useMemo(() => getPromotionInbox(gameState, language).slice(0, 5), [gameState, language]);
   const inboxTones = { critical: 'danger', urgent: 'warning', opportunity: 'success' } as const;
+  const inboxSeverityLabels = {
+    critical: t($ => $.inbox.severity.critical),
+    urgent: t($ => $.inbox.severity.urgent),
+    opportunity: t($ => $.inbox.severity.opportunity)
+  };
+  const ledgerFilters = [
+    { value: 'All', label: t($ => $.dashboard.finance.filters.all) },
+    { value: 'Event', label: t($ => $.dashboard.finance.filters.event) },
+    { value: 'Deals', label: t($ => $.dashboard.finance.filters.deals) },
+    { value: 'Costs', label: t($ => $.dashboard.finance.filters.costs) },
+    { value: 'Income', label: t($ => $.dashboard.finance.filters.income) }
+  ] as const;
+  const newsTypeLabels = {
+    injury: t($ => $.dashboard.news.types.injury),
+    contract: t($ => $.dashboard.news.types.contract),
+    event: t($ => $.dashboard.news.types.event),
+    fight: t($ => $.dashboard.news.types.fight),
+    general: t($ => $.dashboard.news.types.general)
+  };
 
   return (
     <div className="space-y-6">
       <PageHeader
-        eyebrow={format(new Date(currentDate), 'MMM d, yyyy')}
-        title={promotion.name || 'Your Promotion'}
-        actions={<div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto"><Button variant={mode === 'manager' ? 'primary' : 'quiet'} onClick={() => { setMode('manager'); setAutopilot({ enabled: false }); }} className="min-h-9 px-3 text-xs">Manager mode</Button><Button variant={mode === 'observer' ? 'primary' : 'quiet'} onClick={() => { setMode('observer'); setAutopilot({ enabled: true }); }} className="min-h-9 px-3 text-xs">Observer mode</Button></div>}
+        eyebrow={formatDate(currentDate, language)}
+        title={promotion.name || t($ => $.dashboard.fallbackPromotion)}
+        actions={<div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto"><Button variant={mode === 'manager' ? 'primary' : 'quiet'} onClick={() => { setMode('manager'); setAutopilot({ enabled: false }); }} className="min-h-9 px-3 text-xs">{t($ => $.dashboard.managerMode)}</Button><Button variant={mode === 'observer' ? 'primary' : 'quiet'} onClick={() => { setMode('observer'); setAutopilot({ enabled: true }); }} className="min-h-9 px-3 text-xs">{t($ => $.dashboard.observerMode)}</Button></div>}
       />
 
       <Panel className="grid grid-cols-2 gap-5 sm:grid-cols-4">
-        <Stat label="Funds" value={`$${promotion.money.toLocaleString()}`} />
-        <Stat label="Reputation" value={`${promotion.reputation}/100`} />
-        <Stat label="Fanbase" value={promotion.fanbase.toLocaleString()} />
-        <Stat label="Roster size" value={rosterCount} />
+        <Stat label={t($ => $.dashboard.stats.funds)} value={formatCurrency(promotion.money, language)} />
+        <Stat label={t($ => $.dashboard.stats.reputation)} value={`${promotion.reputation}/100`} />
+        <Stat label={t($ => $.dashboard.stats.fanbase)} value={formatNumber(promotion.fanbase, language)} />
+        <Stat label={t($ => $.dashboard.stats.rosterSize)} value={rosterCount} />
       </Panel>
 
       {mode === 'observer' && (
         <Panel className="border-[#2a2c31]">
           <h2 className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.16em] text-neutral-300">
-            <Settings size={16} /> Autopilot / Observer Mode
+            <Settings size={16} /> {t($ => $.dashboard.observer.title)}
           </h2>
           <p className="mt-3 text-sm text-neutral-400">
-            The AI will automatically book events, sign free agents, renew contracts, and release fighters.
-            Sit back and watch the MMA world evolve, or take control anytime.
+            {t($ => $.dashboard.observer.description)}
           </p>
           <div className="mt-6">
             
@@ -98,7 +121,7 @@ export default function Dashboard() {
                 disabled={isAdvancing}
                 className="inline-flex min-h-9 items-center gap-2 px-3 text-xs"
               >
-                <FastForward size={16} /> Advance 1 Week
+                <FastForward size={16} /> {t($ => $.dashboard.observer.week)}
               </Button>
               <Button
                 variant="secondary"
@@ -106,7 +129,7 @@ export default function Dashboard() {
                 disabled={isAdvancing}
                 className="inline-flex min-h-9 items-center gap-2 px-3 text-xs"
               >
-                <FastForward size={16} /> Advance 1 Month
+                <FastForward size={16} /> {t($ => $.dashboard.observer.month)}
               </Button>
               <Button
                 variant="primary"
@@ -114,11 +137,11 @@ export default function Dashboard() {
                 disabled={isAdvancing}
                 className="inline-flex min-h-9 items-center gap-2 px-3 text-xs"
               >
-                <FastForward size={16} /> Quick Sim 6 Months
+                <FastForward size={16} /> {t($ => $.dashboard.observer.sixMonths)}
               </Button>
               
               <div className="sm:ml-auto flex items-center gap-3 bg-neutral-950 px-4 py-2 rounded border border-purple-900/50">
-                <span className="text-sm font-bold text-neutral-300">Watch Events Live:</span>
+                <span className="text-sm font-bold text-neutral-300">{t($ => $.dashboard.observer.watchLive)}:</span>
                 <button 
                   onClick={() => setAutopilot({ watchEvents: !autopilot.watchEvents })}
                   className={`w-12 h-6 rounded-full transition-colors relative ${autopilot.watchEvents ? 'bg-green-500' : 'bg-neutral-700'}`}
@@ -129,64 +152,64 @@ export default function Dashboard() {
             </div>
             {isAdvancing && (
               <div className="mt-4 text-purple-300 text-sm font-bold animate-pulse flex items-center gap-2">
-                <Settings className="animate-spin" size={16} /> Simulating world...
+                <Settings className="animate-spin" size={16} /> {t($ => $.dashboard.observer.simulating)}
               </div>
             )}
             {!isAdvancing && lastAutopilotSummary && (
               <div className="mt-6 bg-purple-950/50 border border-purple-500/20 rounded p-4 text-sm text-purple-200">
-                <h3 className="font-bold mb-2 uppercase tracking-wider text-purple-400">Simulation Summary ({lastAutopilotSummary.daysSimulated} days: {lastAutopilotSummary.calendarStartDate} to {lastAutopilotSummary.calendarEndDate})</h3>
+                <h3 className="font-bold mb-2 uppercase tracking-wider text-purple-400">{t($ => $.dashboard.observer.summary, { days: lastAutopilotSummary.daysSimulated, start: formatDate(lastAutopilotSummary.calendarStartDate, language), end: formatDate(lastAutopilotSummary.calendarEndDate, language) })}</h3>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <div>
-                    <span className="block text-purple-400/70 text-xs uppercase">Events Booked</span>
+                    <span className="block text-purple-400/70 text-xs uppercase">{t($ => $.dashboard.observer.eventsBooked)}</span>
                     <span className="font-bold">{lastAutopilotSummary.eventsCreated}</span>
                   </div>
                   <div>
-                    <span className="block text-purple-400/70 text-xs uppercase">Events Ran</span>
+                    <span className="block text-purple-400/70 text-xs uppercase">{t($ => $.dashboard.observer.eventsRan)}</span>
                     <span className="font-bold">{lastAutopilotSummary.eventsCompleted}</span>
                   </div>
                   <div>
-                    <span className="block text-purple-400/70 text-xs uppercase">Fights Simmed</span>
+                    <span className="block text-purple-400/70 text-xs uppercase">{t($ => $.dashboard.observer.fightsSimmed)}</span>
                     <span className="font-bold">{lastAutopilotSummary.fightsSimulated}</span>
                   </div>
                   <div>
-                    <span className="block text-purple-400/70 text-xs uppercase">New Champs</span>
+                    <span className="block text-purple-400/70 text-xs uppercase">{t($ => $.dashboard.observer.newChamps)}</span>
                     <span className="font-bold">{lastAutopilotSummary.newChampions}</span>
                   </div>
                   <div>
-                    <span className="block text-purple-400/70 text-xs uppercase">Money Change</span>
+                    <span className="block text-purple-400/70 text-xs uppercase">{t($ => $.dashboard.observer.moneyChange)}</span>
                     <span className={`font-bold ${lastAutopilotSummary.moneyChange >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                      {lastAutopilotSummary.moneyChange > 0 ? '+' : ''}${lastAutopilotSummary.moneyChange.toLocaleString()}
+                      {lastAutopilotSummary.moneyChange > 0 ? '+' : ''}{formatCurrency(lastAutopilotSummary.moneyChange, language)}
                     </span>
                   </div>
                   <div>
-                    <span className="block text-purple-400/70 text-xs uppercase">Rep Change</span>
+                    <span className="block text-purple-400/70 text-xs uppercase">{t($ => $.dashboard.observer.reputationChange)}</span>
                     <span className={`font-bold ${lastAutopilotSummary.reputationChange >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                       {lastAutopilotSummary.reputationChange > 0 ? '+' : ''}{lastAutopilotSummary.reputationChange}
                     </span>
                   </div>
                   {lastAutopilotSummary.bookingDelays > 0 && (
                     <div>
-                      <span className="block text-yellow-500/70 text-xs uppercase">Booking Delays</span>
+                      <span className="block text-yellow-500/70 text-xs uppercase">{t($ => $.dashboard.observer.bookingDelays)}</span>
                       <span className="font-bold text-yellow-500">{lastAutopilotSummary.bookingDelays}</span>
                     </div>
                   )}
                   {lastAutopilotSummary.emergencyModeTriggered > 0 && (
                     <div>
-                      <span className="block text-red-500/70 text-xs uppercase">Emergencies</span>
-                      <span className="font-bold text-red-500">{lastAutopilotSummary.emergencyModeTriggered} (${lastAutopilotSummary.ownerCashInjections * 100}k injected)</span>
+                      <span className="block text-red-500/70 text-xs uppercase">{t($ => $.dashboard.observer.emergencies)}</span>
+                      <span className="font-bold text-red-500">{lastAutopilotSummary.emergencyModeTriggered} ({t($ => $.dashboard.observer.cashInjected, { count: lastAutopilotSummary.ownerCashInjections * 100 })})</span>
                     </div>
                   )}
                 </div>
                 {lastAutopilotSummary.highlights && (
                   <div className="mt-4 pt-4 border-t border-purple-900/50">
-                    <h4 className="text-purple-300 font-bold mb-2 uppercase tracking-wide text-sm">Notable Highlights</h4>
+                    <h4 className="text-purple-300 font-bold mb-2 uppercase tracking-wide text-sm">{t($ => $.dashboard.observer.highlights)}</h4>
                     <ul className="text-sm text-purple-200/80 list-disc pl-5 space-y-1">
-                      {lastAutopilotSummary.highlights.newUndisputedChampions > 0 && <li>{lastAutopilotSummary.highlights.newUndisputedChampions} New Undisputed Champions Crowned</li>}
-                      {lastAutopilotSummary.highlights.newInterimChampions > 0 && <li>{lastAutopilotSummary.highlights.newInterimChampions} Interim Titles Won</li>}
-                      {lastAutopilotSummary.highlights.unifications > 0 && <li>{lastAutopilotSummary.highlights.unifications} Unification Fights Occurred</li>}
-                      {lastAutopilotSummary.highlights.majorInjuries > 0 && <li>{lastAutopilotSummary.highlights.majorInjuries} Major Injuries</li>}
-                      {lastAutopilotSummary.highlights.biggestProfit > 0 && <li>Biggest Event Profit: ${lastAutopilotSummary.highlights.biggestProfit.toLocaleString()}</li>}
-                      {lastAutopilotSummary.highlights.awardsGenerated && <li><span className="text-yellow-400 font-bold">Yearly Awards were generated</span> (Check History)</li>}
+                      {lastAutopilotSummary.highlights.newUndisputedChampions > 0 && <li>{t($ => $.dashboard.observer.undisputedCrowned, { count: lastAutopilotSummary.highlights.newUndisputedChampions })}</li>}
+                      {lastAutopilotSummary.highlights.newInterimChampions > 0 && <li>{t($ => $.dashboard.observer.interimWon, { count: lastAutopilotSummary.highlights.newInterimChampions })}</li>}
+                      {lastAutopilotSummary.highlights.unifications > 0 && <li>{t($ => $.dashboard.observer.unifications, { count: lastAutopilotSummary.highlights.unifications })}</li>}
+                      {lastAutopilotSummary.highlights.majorInjuries > 0 && <li>{t($ => $.dashboard.observer.injuries, { count: lastAutopilotSummary.highlights.majorInjuries })}</li>}
+                      {lastAutopilotSummary.highlights.biggestProfit > 0 && <li>{t($ => $.dashboard.observer.biggestProfit, { amount: formatCurrency(lastAutopilotSummary.highlights.biggestProfit, language) })}</li>}
+                      {lastAutopilotSummary.highlights.awardsGenerated && <li><span className="text-yellow-400 font-bold">{t($ => $.dashboard.observer.awards)}</span> ({t($ => $.dashboard.observer.checkHistory)})</li>}
                     </ul>
                   </div>
                 )}
@@ -201,16 +224,16 @@ export default function Dashboard() {
           {inboxPreview.length > 0 && (
             <Panel className="space-y-3">
               <div className="flex items-center justify-between gap-3">
-                <h2 className="text-lg font-semibold text-white">Action items</h2>
-                <Button variant="quiet" onClick={() => setView('inbox')} className="min-h-9 text-xs">View all</Button>
+                <h2 className="text-lg font-semibold text-white">{t($ => $.dashboard.actions.title)}</h2>
+                <Button variant="quiet" onClick={() => setView('inbox')} className="min-h-9 text-xs">{t($ => $.dashboard.actions.viewAll)}</Button>
               </div>
               {inboxPreview.map(item => <article key={item.id} className="flex flex-col gap-3 rounded border border-[#2a2c31] bg-neutral-950 p-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="min-w-0">
-                  <StatusBadge tone={inboxTones[item.severity]}>{item.severity}</StatusBadge>
+                  <StatusBadge tone={inboxTones[item.severity]}>{inboxSeverityLabels[item.severity]}</StatusBadge>
                   <h3 className="mt-2 text-sm font-semibold text-white">{item.title}</h3>
                   <p className="mt-1 text-sm text-neutral-400">{item.description}</p>
                 </div>
-                <Button variant="secondary" onClick={() => setView(item.targetView, { fighterId: item.fighterId, eventId: item.eventId, calendarSlotId: item.calendarSlotId })} className="min-h-9 shrink-0 px-3 text-xs">Review</Button>
+                <Button variant="secondary" onClick={() => setView(item.targetView, { fighterId: item.fighterId, eventId: item.eventId, calendarSlotId: item.calendarSlotId })} className="min-h-9 shrink-0 px-3 text-xs">{t($ => $.inbox.review)}</Button>
               </article>)}
             </Panel>
           )}
@@ -218,41 +241,41 @@ export default function Dashboard() {
           {/* Next Event */}
           <div className="bg-[#101114] border border-[#2a2c31] rounded-lg p-6">
             <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
-              <Calendar size={20} /> Next Event
+              <Calendar size={20} /> {t($ => $.dashboard.nextEvent.title)}
             </h2>
             {nextEvent ? (
               <div className="bg-neutral-950 p-4 rounded-md border border-neutral-800">
                 <div className="flex flex-col sm:flex-row gap-3 sm:items-start sm:justify-between mb-4">
                   <div>
                     <h3 className="text-xl font-bold text-white">{nextEvent.name}</h3>
-                    <p className="text-sm text-neutral-400">{nextEvent.date}</p>
+                    <p className="text-sm text-neutral-400">{formatDate(nextEvent.date, language)}</p>
                   </div>
                   <button 
                     onClick={() => setView('simulation', { eventId: nextEvent.id })}
                     className="bg-white text-black px-4 py-2 rounded font-bold text-sm hover:bg-neutral-200"
                   >
-                    Simulate
+                    {t($ => $.dashboard.nextEvent.simulate)}
                   </button>
                 </div>
                 
                 {nextEventProjections && (
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4">
                     <div className="bg-neutral-900 p-2 rounded border border-neutral-800">
-                      <p className="text-[10px] text-neutral-500 uppercase font-bold tracking-wider mb-0.5">Est. Attendance</p>
-                      <p className="text-sm font-bold text-white">{nextEventProjections.expectedAttendance.toLocaleString()}</p>
+                      <p className="text-[10px] text-neutral-500 uppercase font-bold tracking-wider mb-0.5">{t($ => $.dashboard.nextEvent.attendance)}</p>
+                      <p className="text-sm font-bold text-white">{formatNumber(nextEventProjections.expectedAttendance, language)}</p>
                     </div>
                     <div className="bg-neutral-900 p-2 rounded border border-neutral-800">
-                      <p className="text-[10px] text-neutral-500 uppercase font-bold tracking-wider mb-0.5">Est. Revenue</p>
-                      <p className="text-sm font-bold text-green-400">${(nextEventProjections.expectedGate + nextEventProjections.broadcastRevenue).toLocaleString()}</p>
+                      <p className="text-[10px] text-neutral-500 uppercase font-bold tracking-wider mb-0.5">{t($ => $.dashboard.nextEvent.revenue)}</p>
+                      <p className="text-sm font-bold text-green-400">{formatCurrency(nextEventProjections.expectedGate + nextEventProjections.broadcastRevenue, language)}</p>
                     </div>
                     <div className="bg-neutral-900 p-2 rounded border border-neutral-800">
-                      <p className="text-[10px] text-neutral-500 uppercase font-bold tracking-wider mb-0.5">Est. Cost</p>
-                      <p className="text-sm font-bold text-red-400">${nextEventProjections.estimatedCost.toLocaleString()}</p>
+                      <p className="text-[10px] text-neutral-500 uppercase font-bold tracking-wider mb-0.5">{t($ => $.dashboard.nextEvent.cost)}</p>
+                      <p className="text-sm font-bold text-red-400">{formatCurrency(nextEventProjections.estimatedCost, language)}</p>
                     </div>
                     <div className="bg-neutral-900 p-2 rounded border border-neutral-800">
-                      <p className="text-[10px] text-neutral-500 uppercase font-bold tracking-wider mb-0.5">Est. Profit</p>
+                      <p className="text-[10px] text-neutral-500 uppercase font-bold tracking-wider mb-0.5">{t($ => $.dashboard.nextEvent.profit)}</p>
                       <p className={`text-sm font-bold ${nextEventProjections.expectedProfit >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                        ${nextEventProjections.expectedProfit.toLocaleString()}
+                        {formatCurrency(nextEventProjections.expectedProfit, language)}
                       </p>
                     </div>
                   </div>
@@ -265,9 +288,9 @@ export default function Dashboard() {
                     return (
                       <div key={idx} className="flex flex-wrap justify-between items-center gap-2 text-sm p-2 bg-neutral-900 rounded">
                         <span className="flex items-center gap-1 font-medium">{red && <FighterRankBadge fighterId={red.id} />}{red?.lastName}</span>
-                        <span className="text-neutral-500 text-xs">vs</span>
+                        <span className="text-neutral-500 text-xs">{t($ => $.dashboard.nextEvent.versus)}</span>
                         <span className="flex items-center gap-1 font-medium">{blue && <FighterRankBadge fighterId={blue.id} />}{blue?.lastName}</span>
-                        <span className="text-neutral-500 text-xs ml-4">{fight.weightClass}</span>
+                        <span className="text-neutral-500 text-xs ml-4">{formatWeightClass(fight.weightClass, language)}</span>
                       </div>
                     );
                   })}
@@ -275,12 +298,12 @@ export default function Dashboard() {
               </div>
             ) : (
               <div className="text-center p-8 border border-dashed border-neutral-700 rounded-md">
-                <p className="text-neutral-400 mb-4">No events booked.</p>
+                <p className="text-neutral-400 mb-4">{t($ => $.dashboard.nextEvent.empty)}</p>
                 <button 
                   onClick={() => setView('event-builder')}
                   className="bg-neutral-800 text-white px-4 py-2 rounded text-sm hover:bg-neutral-700"
                 >
-                  Book Event
+                  {t($ => $.dashboard.nextEvent.book)}
                 </button>
               </div>
             )}
@@ -289,7 +312,7 @@ export default function Dashboard() {
           {/* Past Events */}
           <div className="bg-[#101114] border border-[#2a2c31] rounded-lg p-6">
             <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
-              <Calendar size={20} className="text-neutral-500" /> Past Events
+              <Calendar size={20} className="text-neutral-500" /> {t($ => $.dashboard.pastEvents.title)}
             </h2>
             <div className="space-y-3">
               {Object.values(events)
@@ -300,10 +323,10 @@ export default function Dashboard() {
                   <div key={event.id} className="bg-neutral-950 p-3 rounded-md border border-neutral-800 flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
                     <div>
                       <h3 className="font-bold text-white">{event.name}</h3>
-                      <p className="text-xs text-neutral-500">{event.date} • {event.fights.length} Fights</p>
+                      <p className="text-xs text-neutral-500">{formatDate(event.date, language)} • {t($ => $.dashboard.pastEvents.fights, { count: event.fights.length })}</p>
                       {event.results && (
                          <p className={`text-xs font-bold mt-1 ${event.results.profit >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                           {event.results.profit >= 0 ? '+' : '-'}${Math.abs(event.results.profit).toLocaleString()}
+                           {event.results.profit >= 0 ? '+' : '-'}{formatCurrency(Math.abs(event.results.profit), language)}
                          </p>
                       )}
                     </div>
@@ -311,12 +334,12 @@ export default function Dashboard() {
                       onClick={() => setView('simulation', { eventId: event.id })}
                       className="text-xs bg-neutral-800 hover:bg-neutral-700 text-white px-3 py-1.5 rounded transition-colors"
                     >
-                      View Results
+                      {t($ => $.dashboard.pastEvents.viewResults)}
                     </button>
                   </div>
                 ))}
               {Object.values(events).filter(e => e.isCompleted).length === 0 && (
-                <p className="text-sm text-neutral-500 italic">No past events yet.</p>
+                <p className="text-sm text-neutral-500 italic">{t($ => $.dashboard.pastEvents.empty)}</p>
               )}
             </div>
           </div>
@@ -324,7 +347,7 @@ export default function Dashboard() {
           {/* Champions */}
           <div className="bg-[#101114] border border-[#2a2c31] rounded-lg p-6">
             <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
-              <Trophy size={20} className="text-yellow-500" /> Current Champions
+              <Trophy size={20} className="text-yellow-500" /> {t($ => $.dashboard.champions.title)}
             </h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {champions.map(champ => {
@@ -342,7 +365,7 @@ export default function Dashboard() {
                     <ChampionshipBelt weightClass={champ.weightClass} type={isInterim ? 'interim' : 'undisputed'} size="card" alt="" />
                     <span className="min-w-0 flex-1">
                       <span className={`mb-1 block text-xs ${isInterim ? 'text-neutral-400' : 'text-yellow-500'} uppercase font-bold`}>
-                        {isInterim ? 'Interim ' : ''}{belt ? belt.shortName : champ.weightClass}
+                        {isInterim ? `${t($ => $.dashboard.champions.interim)} ` : ''}{belt ? belt.shortName : formatWeightClass(champ.weightClass, language)}
                       </span>
                       <span className="block truncate font-bold text-white">{champ.firstName} {champ.lastName}</span>
                       <span className="block text-xs text-neutral-400">{champ.record.wins}-{champ.record.losses}-{champ.record.draws}</span>
@@ -361,17 +384,17 @@ export default function Dashboard() {
                  aria-expanded={isFinanceOpen}
                  className="flex items-center gap-2 text-left text-lg font-bold text-white hover:text-neutral-300"
                >
-                 <span className="text-green-500">$</span> Finance & Deals
-                 <span className="text-[10px] uppercase tracking-wider text-neutral-500">{isFinanceOpen ? 'Collapse' : 'Expand'}</span>
+                 <span className="text-green-500">$</span> {t($ => $.dashboard.finance.title)}
+                 <span className="text-[10px] uppercase tracking-wider text-neutral-500">{isFinanceOpen ? t($ => $.dashboard.finance.collapse) : t($ => $.dashboard.finance.expand)}</span>
                </button>
                <div className="flex flex-wrap gap-3 sm:gap-4">
                   <div className="bg-neutral-950 px-3 py-1.5 rounded border border-neutral-800 text-center">
-                     <p className="text-[10px] text-neutral-500 uppercase font-bold tracking-wider mb-0.5">Sponsor Income</p>
-                     <p className="text-sm font-mono text-green-400">+${activeSponsorIncome.toLocaleString()}/mo</p>
+                     <p className="text-[10px] text-neutral-500 uppercase font-bold tracking-wider mb-0.5">{t($ => $.dashboard.finance.sponsorIncome)}</p>
+                     <p className="text-sm font-mono text-green-400">{t($ => $.dashboard.finance.perMonth, { amount: `+${formatCurrency(activeSponsorIncome, language)}` })}</p>
                   </div>
                   <div className="bg-neutral-950 px-3 py-1.5 rounded border border-neutral-800 text-center">
-                     <p className="text-[10px] text-neutral-500 uppercase font-bold tracking-wider mb-0.5">Media Income</p>
-                     <p className="text-sm font-mono text-green-400">+${activeMediaIncome.toLocaleString()}/mo</p>
+                     <p className="text-[10px] text-neutral-500 uppercase font-bold tracking-wider mb-0.5">{t($ => $.dashboard.finance.mediaIncome)}</p>
+                     <p className="text-sm font-mono text-green-400">{t($ => $.dashboard.finance.perMonth, { amount: `+${formatCurrency(activeMediaIncome, language)}` })}</p>
                   </div>
                </div>
             </div>
@@ -379,7 +402,7 @@ export default function Dashboard() {
             {isFinanceOpen && <>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <h3 className="text-sm font-bold text-neutral-400 mb-2 uppercase tracking-wider">Sponsors</h3>
+                <h3 className="text-sm font-bold text-neutral-400 mb-2 uppercase tracking-wider">{t($ => $.dashboard.finance.sponsors)}</h3>
                 {sponsorDeals.length > 0 ? sponsorDeals.map(deal => {
                    const daysLeft = differenceInDays(new Date(deal.expiresDate), new Date(currentDate));
                    const isExpiringSoon = deal.isActive && daysLeft <= 60;
@@ -389,27 +412,27 @@ export default function Dashboard() {
                       <p className="font-bold text-white text-sm">
                          {deal.name} 
                          <span className="text-xs text-neutral-500 font-normal ml-1">({deal.tier})</span>
-                         {!deal.isActive && <span className="ml-2 text-[10px] bg-red-900/50 text-red-300 px-1.5 py-0.5 rounded font-bold uppercase">Expired</span>}
+                         {!deal.isActive && <span className="ml-2 text-[10px] bg-red-900/50 text-red-300 px-1.5 py-0.5 rounded font-bold uppercase">{t($ => $.dashboard.finance.expired)}</span>}
                       </p>
-                      <p className={`text-xs font-bold ${deal.isActive ? 'text-green-400' : 'text-neutral-500'}`}>+${deal.monthlyIncome.toLocaleString()}/mo</p>
-                      {deal.bonusPerEvent && <p className="text-xs text-neutral-400">Event Bonus: ${deal.bonusPerEvent.toLocaleString()}</p>}
+                      <p className={`text-xs font-bold ${deal.isActive ? 'text-green-400' : 'text-neutral-500'}`}>{t($ => $.dashboard.finance.perMonth, { amount: `+${formatCurrency(deal.monthlyIncome, language)}` })}</p>
+                      {deal.bonusPerEvent && <p className="text-xs text-neutral-400">{t($ => $.dashboard.finance.eventBonus, { amount: formatCurrency(deal.bonusPerEvent, language) })}</p>}
                       {deal.isActive && (
                          <p className={`text-[10px] font-bold mt-1 ${isExpiringSoon ? 'text-orange-400' : 'text-neutral-500'}`}>
-                            Expires in {daysLeft} days ({deal.expiresDate})
+                            {t($ => $.dashboard.finance.expires, { count: daysLeft, date: formatDate(deal.expiresDate, language) })}
                          </p>
                       )}
                     </div>
                     {mode === 'manager' && (
                        <button onClick={() => renewDeal(deal.id, 'sponsor')} className="px-3 py-1 bg-neutral-800 hover:bg-neutral-700 text-xs rounded text-white font-bold transition-colors">
-                          Renew
+                          {t($ => $.dashboard.finance.renew)}
                        </button>
                     )}
                   </div>
-                )}) : <p className="text-sm text-neutral-500 italic">No active sponsor deals.</p>}
+                )}) : <p className="text-sm text-neutral-500 italic">{t($ => $.dashboard.finance.noSponsors)}</p>}
 
                 {mode === 'manager' && (
                    <div className="mt-4 space-y-2 border-t border-neutral-800 pt-4">
-                      <p className="text-xs text-neutral-400 font-bold uppercase">Available Sponsors</p>
+                      <p className="text-xs text-neutral-400 font-bold uppercase">{t($ => $.dashboard.finance.availableSponsors)}</p>
                       {[
                          { name: 'Combat Athletics Co.', req: 0 },
                          { name: 'IronClad Nutrition', req: 35 },
@@ -422,14 +445,14 @@ export default function Dashboard() {
                             <div key={tmpl.name} className="flex flex-col sm:flex-row gap-2 sm:items-center sm:justify-between p-2 bg-[#101114] border border-[#2a2c31] rounded">
                                <div>
                                   <p className="text-sm text-white font-bold">{tmpl.name}</p>
-                                  <p className="text-xs text-neutral-500">Req Rep: {tmpl.req}</p>
+                                  <p className="text-xs text-neutral-500">{t($ => $.dashboard.finance.requiredReputation, { value: tmpl.req })}</p>
                                </div>
                                <button 
                                   onClick={() => signSponsorDeal(tmpl.name)} 
                                   disabled={isLocked}
                                   className="px-3 py-1 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:bg-neutral-800 text-xs rounded text-white font-bold transition-colors"
                                >
-                                  {isLocked ? 'Locked' : 'Sign Deal'}
+                                  {isLocked ? t($ => $.dashboard.finance.locked) : t($ => $.dashboard.finance.signDeal)}
                                </button>
                             </div>
                          );
@@ -439,7 +462,7 @@ export default function Dashboard() {
               </div>
               
               <div>
-                <h3 className="text-sm font-bold text-neutral-400 mb-2 uppercase tracking-wider">Media Deal</h3>
+                <h3 className="text-sm font-bold text-neutral-400 mb-2 uppercase tracking-wider">{t($ => $.dashboard.finance.mediaDeal)}</h3>
                 {mediaDeals.length > 0 ? mediaDeals.map(deal => {
                    const daysLeft = differenceInDays(new Date(deal.expiresDate), new Date(currentDate));
                    const isExpiringSoon = deal.isActive && daysLeft <= 60;
@@ -449,27 +472,27 @@ export default function Dashboard() {
                       <p className="font-bold text-white text-sm">
                          {deal.name} 
                          <span className="text-xs text-neutral-500 font-normal ml-1">({deal.tier})</span>
-                         {!deal.isActive && <span className="ml-2 text-[10px] bg-red-900/50 text-red-300 px-1.5 py-0.5 rounded font-bold uppercase">Expired</span>}
+                         {!deal.isActive && <span className="ml-2 text-[10px] bg-red-900/50 text-red-300 px-1.5 py-0.5 rounded font-bold uppercase">{t($ => $.dashboard.finance.expired)}</span>}
                       </p>
-                      <p className={`text-xs font-bold ${deal.isActive ? 'text-green-400' : 'text-neutral-500'}`}>+${deal.monthlyIncome.toLocaleString()}/mo</p>
-                      {deal.bonusPerEvent && <p className="text-xs text-neutral-400">Event Bonus: ${deal.bonusPerEvent.toLocaleString()}</p>}
+                      <p className={`text-xs font-bold ${deal.isActive ? 'text-green-400' : 'text-neutral-500'}`}>{t($ => $.dashboard.finance.perMonth, { amount: `+${formatCurrency(deal.monthlyIncome, language)}` })}</p>
+                      {deal.bonusPerEvent && <p className="text-xs text-neutral-400">{t($ => $.dashboard.finance.eventBonus, { amount: formatCurrency(deal.bonusPerEvent, language) })}</p>}
                       {deal.isActive && (
                          <p className={`text-[10px] font-bold mt-1 ${isExpiringSoon ? 'text-orange-400' : 'text-neutral-500'}`}>
-                            Expires in {daysLeft} days ({deal.expiresDate})
+                            {t($ => $.dashboard.finance.expires, { count: daysLeft, date: formatDate(deal.expiresDate, language) })}
                          </p>
                       )}
                     </div>
                     {mode === 'manager' && (
                        <button onClick={() => renewDeal(deal.id, 'media')} className="px-3 py-1 bg-neutral-800 hover:bg-neutral-700 text-xs rounded text-white font-bold transition-colors">
-                          Renew
+                          {t($ => $.dashboard.finance.renew)}
                        </button>
                     )}
                   </div>
-                )}) : <p className="text-sm text-neutral-500 italic">No active media deals.</p>}
+                )}) : <p className="text-sm text-neutral-500 italic">{t($ => $.dashboard.finance.noMedia)}</p>}
 
                 {mode === 'manager' && (
                    <div className="mt-4 space-y-2 border-t border-neutral-800 pt-4">
-                      <p className="text-xs text-neutral-400 font-bold uppercase">Available Media Deals</p>
+                      <p className="text-xs text-neutral-400 font-bold uppercase">{t($ => $.dashboard.finance.availableMedia)}</p>
                       {[
                          { name: 'FightNet Local', req: 0 },
                          { name: 'CageCast Regional', req: 35 },
@@ -482,14 +505,14 @@ export default function Dashboard() {
                             <div key={tmpl.name} className="flex flex-col sm:flex-row gap-2 sm:items-center sm:justify-between p-2 bg-[#101114] border border-[#2a2c31] rounded">
                                <div>
                                   <p className="text-sm text-white font-bold">{tmpl.name}</p>
-                                  <p className="text-xs text-neutral-500">Req Rep: {tmpl.req}</p>
+                                  <p className="text-xs text-neutral-500">{t($ => $.dashboard.finance.requiredReputation, { value: tmpl.req })}</p>
                                </div>
                                <button 
                                   onClick={() => signMediaDeal(tmpl.name)} 
                                   disabled={isLocked}
                                   className="px-3 py-1 bg-purple-600 hover:bg-purple-500 disabled:opacity-50 disabled:bg-neutral-800 text-xs rounded text-white font-bold transition-colors"
                                >
-                                  {isLocked ? 'Locked' : 'Sign Deal'}
+                                  {isLocked ? t($ => $.dashboard.finance.locked) : t($ => $.dashboard.finance.signDeal)}
                                </button>
                             </div>
                          );
@@ -501,15 +524,15 @@ export default function Dashboard() {
             
             <div className="mt-6 border-t border-neutral-800 pt-4">
                <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between mb-3">
-                 <h3 className="text-sm font-bold text-neutral-400 uppercase tracking-wider">Recent Ledger</h3>
+                 <h3 className="text-sm font-bold text-neutral-400 uppercase tracking-wider">{t($ => $.dashboard.finance.ledger)}</h3>
                  <div className="flex flex-wrap gap-2">
-                    {['All', 'Event', 'Deals', 'Costs', 'Income'].map(filter => (
-                       <button 
-                         key={filter}
-                         onClick={() => setLedgerFilter(filter as any)}
-                         className={`text-[10px] px-2 py-1 rounded font-bold uppercase transition-colors ${ledgerFilter === filter ? 'bg-neutral-700 text-white' : 'bg-neutral-900 text-neutral-500 hover:bg-neutral-800 hover:text-neutral-300'}`}
+                    {ledgerFilters.map(filter => (
+                       <button
+                         key={filter.value}
+                         onClick={() => setLedgerFilter(filter.value)}
+                         className={`text-[10px] px-2 py-1 rounded font-bold uppercase transition-colors ${ledgerFilter === filter.value ? 'bg-neutral-700 text-white' : 'bg-neutral-900 text-neutral-500 hover:bg-neutral-800 hover:text-neutral-300'}`}
                        >
-                          {filter}
+                          {filter.label}
                        </button>
                     ))}
                  </div>
@@ -521,14 +544,14 @@ export default function Dashboard() {
                        <p className={`text-neutral-300 ${entry.isSummary ? 'text-blue-400 font-semibold' : ''}`}>
                          {entry.isSummary ? '📊 ' : ''}{entry.description}
                        </p>
-                       <p className="text-xs text-neutral-500 font-mono">{entry.date}</p>
+                       <p className="text-xs text-neutral-500 font-mono">{formatDate(entry.date, language)}</p>
                      </div>
                      <span className={`shrink-0 font-mono font-bold ${entry.isSummary ? 'text-blue-400' : (entry.amount >= 0 ? 'text-green-400' : 'text-red-400')}`}>
-                       {entry.amount > 0 ? '+' : ''}{entry.amount.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })}
+                       {entry.amount > 0 ? '+' : ''}{formatCurrency(entry.amount, language)}
                      </span>
                    </div>
                  )) : (
-                    <p className="text-sm text-neutral-500 italic py-4 text-center">No ledger entries match this filter.</p>
+                    <p className="text-sm text-neutral-500 italic py-4 text-center">{t($ => $.dashboard.finance.noLedger)}</p>
                  )}
                </div>
             </div>
@@ -539,14 +562,14 @@ export default function Dashboard() {
         {/* News Feed */}
         <div className={`bg-[#101114] border border-[#2a2c31] rounded-lg p-4 sm:p-6 flex flex-col ${isNewsOpen ? 'h-auto lg:h-[600px] max-h-[70svh] lg:max-h-none' : ''}`}>
           <div className="mb-4 flex items-center justify-between gap-3">
-            <h2 className="text-lg font-bold text-white">Latest News</h2>
+            <h2 className="text-lg font-bold text-white">{t($ => $.dashboard.news.title)}</h2>
             <button
               type="button"
               onClick={() => setIsNewsOpen(open => !open)}
               aria-expanded={isNewsOpen}
               className="text-xs font-bold uppercase text-neutral-400 hover:text-white"
             >
-              {isNewsOpen ? 'Collapse' : 'Expand'}
+              {isNewsOpen ? t($ => $.dashboard.finance.collapse) : t($ => $.dashboard.finance.expand)}
             </button>
           </div>
           {isNewsOpen && <>
@@ -562,8 +585,8 @@ export default function Dashboard() {
               return (
                 <div key={item.id} className={`border-l-2 ${borderColor} pl-4 py-1`}>
                   <div className="flex justify-between items-center">
-                    <span className="text-xs text-neutral-500 font-mono">{item.date}</span>
-                    <span className="text-[10px] text-neutral-500 uppercase tracking-wider">{item.type}</span>
+                    <span className="text-xs text-neutral-500 font-mono">{formatDate(item.date, language)}</span>
+                    <span className="text-[10px] text-neutral-500 uppercase tracking-wider">{newsTypeLabels[item.type]}</span>
                   </div>
                   <p className="text-sm font-medium text-neutral-200 mt-1">{item.title}</p>
                   <p className="text-xs text-neutral-400 mt-1 line-clamp-2">{item.content}</p>
@@ -575,7 +598,7 @@ export default function Dashboard() {
             onClick={() => setView('news')}
             className="w-full mt-4 bg-neutral-950 border border-neutral-800 text-neutral-300 py-2 rounded text-sm font-bold hover:bg-neutral-800 transition-colors"
           >
-            View All News
+            {t($ => $.dashboard.news.viewAll)}
           </button>
           </>}
         </div>

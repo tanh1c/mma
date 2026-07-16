@@ -3,6 +3,7 @@ import { useGameStore } from './store/gameStore';
 import { Download, FileJson, Save, Upload } from 'lucide-react';
 import { AppShell } from './components/AppShell';
 import { Button } from './components/ui';
+import { useTranslation } from 'react-i18next';
 import Dashboard from './pages/Dashboard';
 
 const FREE_AGENTS_NAV_LABEL = 'Sign Fighters';
@@ -24,13 +25,14 @@ const Inbox = React.lazy(() => import('./pages/Inbox'));
 const SettingsPage = React.lazy(() => import('./pages/Settings'));
 
 function App() {
+  const { t } = useTranslation('translation');
   const { currentView, setView, promotion, currentDate, fighters, events, advanceDays, newGame, saveGame, loadGame, exportGame, importGame } = useGameStore();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [search, setSearch] = useState('');
   const query = search.trim().toLowerCase();
   const searchResults = useMemo(() => query ? [
-    ...Object.values(fighters).filter(fighter => `${fighter.firstName} ${fighter.lastName} ${fighter.nickname}`.toLowerCase().includes(query)).slice(0, 4).map(fighter => ({ id: fighter.id, label: `${fighter.firstName} ${fighter.lastName}`, type: 'Fighter' as const })),
-    ...Object.values(events).filter(event => !event.isCompleted && event.name.toLowerCase().includes(query)).slice(0, 4).map(event => ({ id: event.id, label: event.name, type: 'Event' as const }))
+    ...Object.values(fighters).filter(fighter => `${fighter.firstName} ${fighter.lastName} ${fighter.nickname}`.toLowerCase().includes(query)).slice(0, 4).map(fighter => ({ id: fighter.id, label: `${fighter.firstName} ${fighter.lastName}`, type: 'fighter' as const })),
+    ...Object.values(events).filter(event => !event.isCompleted && event.name.toLowerCase().includes(query)).slice(0, 4).map(event => ({ id: event.id, label: event.name, type: 'event' as const }))
   ] : [], [query, fighters, events]);
 
   const handleImportClick = () => {
@@ -53,7 +55,7 @@ function App() {
 
   const renderView = () => {
     return (
-       <Suspense fallback={<div className="flex-1 flex items-center justify-center p-8"><p className="text-neutral-500 font-mono animate-pulse">Loading View...</p></div>}>
+       <Suspense fallback={<div className="flex-1 flex items-center justify-center p-8"><p className="text-neutral-500 font-mono animate-pulse">{t($ => $.common.loading)}</p></div>}>
           {(() => {
              switch (currentView) {
                case 'dashboard': return <Dashboard />;
@@ -89,15 +91,15 @@ function App() {
     freeAgentsLabel={FREE_AGENTS_NAV_LABEL}
     onAdvanceWeek={() => advanceDays(7)}
     utilities={<div className="space-y-2">
-      <div className="relative"><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Find fighter or event" aria-label="Quick search" className="h-10 w-full rounded border border-neutral-800 bg-neutral-950 px-3 text-xs text-white outline-none focus:border-neutral-500" />{searchResults.length > 0 && <div className="absolute bottom-11 z-20 w-full overflow-hidden rounded border border-neutral-700 bg-[#101114] shadow-xl">{searchResults.map(result => <button key={`${result.type}-${result.id}`} type="button" data-navigation-action onClick={() => { setView(result.type === 'Fighter' ? 'fighter-detail' : 'event-builder', result.type === 'Fighter' ? { fighterId: result.id } : { eventId: result.id }); setSearch(''); }} className="block w-full border-b border-neutral-800 px-3 py-2 text-left text-xs text-neutral-300 last:border-0 hover:bg-white/5 hover:text-white"><span className="mr-2 font-mono text-[9px] uppercase text-neutral-500">{result.type}</span>{result.label}</button>)}</div>}</div>
+      <div className="relative"><input value={search} onChange={event => setSearch(event.target.value)} placeholder={t($ => $.search.placeholder)} aria-label={t($ => $.search.label)} className="h-10 w-full rounded border border-neutral-800 bg-neutral-950 px-3 text-xs text-white outline-none focus:border-neutral-500" />{searchResults.length > 0 && <div className="absolute bottom-11 z-20 w-full overflow-hidden rounded border border-neutral-700 bg-[#101114] shadow-xl">{searchResults.map(result => <button key={`${result.type}-${result.id}`} type="button" data-navigation-action onClick={() => { setView(result.type === 'fighter' ? 'fighter-detail' : 'event-builder', result.type === 'fighter' ? { fighterId: result.id } : { eventId: result.id }); setSearch(''); }} className="block w-full border-b border-neutral-800 px-3 py-2 text-left text-xs text-neutral-300 last:border-0 hover:bg-white/5 hover:text-white"><span className="mr-2 font-mono text-[9px] uppercase text-neutral-500">{result.type === 'fighter' ? t($ => $.search.fighter) : t($ => $.search.event)}</span>{result.label}</button>)}</div>}</div>
       <div className="grid grid-cols-2 gap-2">
-        <Button variant="secondary" onClick={saveGame} className="flex min-h-10 items-center justify-center gap-1 px-2 text-xs"><Save size={14} /> Save</Button>
-        <Button variant="secondary" onClick={loadGame} className="flex min-h-10 items-center justify-center gap-1 px-2 text-xs"><Download size={14} /> Load</Button>
-        <Button variant="secondary" onClick={exportGame} className="flex min-h-10 items-center justify-center gap-1 px-2 text-xs"><FileJson size={14} /> Export</Button>
-        <Button variant="secondary" onClick={handleImportClick} className="flex min-h-10 items-center justify-center gap-1 px-2 text-xs"><Upload size={14} /> Import</Button>
+        <Button variant="secondary" onClick={saveGame} className="flex min-h-10 items-center justify-center gap-1 px-2 text-xs"><Save size={14} /> {t($ => $.common.save)}</Button>
+        <Button variant="secondary" onClick={loadGame} className="flex min-h-10 items-center justify-center gap-1 px-2 text-xs"><Download size={14} /> {t($ => $.common.load)}</Button>
+        <Button variant="secondary" onClick={exportGame} className="flex min-h-10 items-center justify-center gap-1 px-2 text-xs"><FileJson size={14} /> {t($ => $.common.export)}</Button>
+        <Button variant="secondary" onClick={handleImportClick} className="flex min-h-10 items-center justify-center gap-1 px-2 text-xs"><Upload size={14} /> {t($ => $.common.import)}</Button>
       </div>
       <input type="file" accept=".json" ref={fileInputRef} onChange={handleFileChange} className="hidden" />
-      <Button variant="quiet" onClick={() => { if (window.confirm('Start new game? Unsaved progress will be lost.')) newGame(); }} className="w-full text-xs">New Game</Button>
+      <Button variant="quiet" onClick={() => { if (window.confirm(t($ => $.common.newGameConfirm))) newGame(); }} className="w-full text-xs">{t($ => $.common.newGame)}</Button>
     </div>}
   >
     {renderView()}

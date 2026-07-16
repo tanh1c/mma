@@ -1,5 +1,7 @@
+import '../../i18n';
 import { GameState, Event, FightMatchup, WeightClass, Fighter, CalendarSlotType, CalendarSlotStatus, SeasonCalendarSlot, SeasonPlan, TournamentRound } from '../../types/game';
 import { v4 as uuidv4 } from 'uuid';
+import { fixedT, formatCurrency, formatWeightClass, readLanguage, type Language } from '../localization';
 import { calculateEventProjections } from './economy';
 import { generateSeasonPlan, syncCalendarSlots } from './season';
 import { scheduleTournamentRound, getPendingTitleShotDebts, isFighterBookedUpcoming, evaluateAndCreateTournament, bindTournamentToCalendarSlots, repairScheduledTournamentRound } from './tournament';
@@ -31,8 +33,10 @@ function hasTournamentFights(event: Event): boolean {
 function rescheduleGrandPrixWindow(
   state: GameState,
   sourceSlot: SeasonCalendarSlot,
-  reason: string
+  reason: string,
+  language: Language
 ) {
+  const t = fixedT(language);
   const hasFutureWindow = Object.values(state.seasonPlans || {}).some(plan =>
     plan.slots.some(slot =>
       slot.id !== sourceSlot.id &&
@@ -62,7 +66,7 @@ function rescheduleGrandPrixWindow(
     type: 'grand_prix_window',
     status: 'planned',
     priority: sourceSlot.priority,
-    notes: [`Rescheduled Grand Prix Window from ${sourceSlot.date}. Reason: ${reason}`]
+    notes: [t($ => $.generated.autobooker.gpWindowRescheduled, { date: sourceSlot.date, reason })]
   });
   state.seasonPlans[year].slots.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 }
@@ -72,8 +76,10 @@ function cancelFailedGrandPrixEvent(
   eventId: string,
   tournamentId: string,
   round: TournamentRound,
-  reason: string
+  reason: string,
+  language: Language
 ): GameState {
+  const t = fixedT(language);
   let newState = {
     ...state,
     events: { ...state.events },
@@ -92,7 +98,7 @@ function cancelFailedGrandPrixEvent(
       roundDelayReason: reason,
       delayedRound: round,
       earliestRoundDate: addDays(newState.currentDate, 14),
-      notes: [...(tourney.notes || []), `Round ${round} delayed: ${reason}`]
+      notes: [...(tourney.notes || []), t($ => $.generated.autobooker.roundDelayed, { round, reason })]
     };
   }
 
@@ -109,7 +115,7 @@ function cancelFailedGrandPrixEvent(
           eventId: undefined,
           status: 'planned' as const,
           date: addDays(newState.currentDate, 14),
-          notes: [...(slot.notes || []), `GP round delayed: ${reason}`]
+          notes: [...(slot.notes || []), t($ => $.generated.autobooker.gpRoundDelayed, { reason })]
         };
       }).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
@@ -121,8 +127,8 @@ function cancelFailedGrandPrixEvent(
     newState.news.unshift({
       id: uuidv4(),
       date: newState.currentDate,
-      title: `Grand Prix Round Delayed`,
-      content: `${event.name} was removed because tournament scheduling failed: ${reason}`,
+      title: t($ => $.generated.autobooker.gpRoundDelayedTitle),
+      content: t($ => $.generated.autobooker.gpRoundRemoved, { event: event.name, reason }),
       type: 'general' as const
     });
   }
@@ -130,7 +136,8 @@ function cancelFailedGrandPrixEvent(
   return newState;
 }
 
-export function autoBookEventsAndContracts(state: GameState): GameState {
+export function autoBookEventsAndContracts(state: GameState, language: Language = readLanguage()): GameState {
+  const t = fixedT(language);
   let newState = { ...state };
 
   // 1. Initialize & sync season plan for current year
@@ -167,7 +174,7 @@ export function autoBookEventsAndContracts(state: GameState): GameState {
 
       if (nextSlot) {
         nextSlot.targetWeightClass = d.weightClass;
-        nextSlot.notes = [...(nextSlot.notes || []), `Reserved for ${winner.lastName} Title Shot`];
+        nextSlot.notes = [...(nextSlot.notes || []), t($ => $.generated.autobooker.reservedTitleShot, { fighter: winner.lastName })];
       } else if (d.daysPending > 180) {
         const insertDate = addDays(newState.currentDate, 28);
         const newSlot: SeasonCalendarSlot = {
@@ -178,7 +185,7 @@ export function autoBookEventsAndContracts(state: GameState): GameState {
           status: 'planned',
           targetWeightClass: d.weightClass,
           priority: 4,
-          notes: [`Emergency high-priority title fight slot created for ${winner.lastName} (Pending: ${d.daysPending} days)`]
+          notes: [t($ => $.generated.autobooker.emergencyTitleSlot, { fighter: winner.lastName, count: d.daysPending })]
         };
         
         plan.slots.push(newSlot);
@@ -195,10 +202,10 @@ export function autoBookEventsAndContracts(state: GameState): GameState {
           (s.status === 'planned' || s.status === 'scheduled')
         );
         if (reservedSlot) {
-          const delayReason = champ.injuryStatus 
-            ? `Champ ${champ.lastName} injured: ${champ.injuryStatus.type}` 
-            : `Champ ${champ.lastName} suspended: ${champ.medicalSuspension?.daysRemaining} days`;
-          const noteText = `Champion Unavailable: ${delayReason}`;
+          const delayReason = champ.injuryStatus
+            ? t($ => $.generated.autobooker.championInjured, { fighter: champ.lastName, injury: champ.injuryStatus.type })
+            : t($ => $.generated.autobooker.championSuspended, { fighter: champ.lastName, count: champ.medicalSuspension?.daysRemaining ?? 0 });
+          const noteText = t($ => $.generated.autobooker.championUnavailable, { reason: delayReason });
           if (!reservedSlot.notes) reservedSlot.notes = [];
           if (!reservedSlot.notes.includes(noteText)) {
             reservedSlot.notes.push(noteText);
@@ -218,8 +225,9 @@ export function autoBookEventsAndContracts(state: GameState): GameState {
         firstPlanned.date = newState.currentDate;
         firstPlanned.type = 'regular_event';
         if (!firstPlanned.notes) firstPlanned.notes = [];
-        if (!firstPlanned.notes.includes("Forced March safeguard event.")) {
-          firstPlanned.notes.push("Forced March safeguard event.");
+        const safeguardNote = t($ => $.generated.autobooker.marchSafeguard);
+        if (!firstPlanned.notes.includes(safeguardNote)) {
+          firstPlanned.notes.push(safeguardNote);
         }
       }
     }
@@ -245,7 +253,7 @@ export function autoBookEventsAndContracts(state: GameState): GameState {
     if (daysSinceCompleted >= 90) {
       newState.autopilot = { ...newState.autopilot, nextBookingAttemptDate: null };
     } else {
-      return maintainRoster(newState);
+      return maintainRoster(newState, language);
     }
   }
 
@@ -268,15 +276,15 @@ export function autoBookEventsAndContracts(state: GameState): GameState {
     if (approachingSlot.type === 'grand_prix_window') {
       const activeOrPlannedGP = Object.values(newState.tournaments || {}).find(t => t.status === 'active' || t.status === 'planned');
       if (activeOrPlannedGP) {
-        const reason = `GP "${activeOrPlannedGP.name}" is already active/planned.`;
+        const reason = t($ => $.generated.autobooker.gpAlreadyActive, { name: activeOrPlannedGP.name });
         approachingSlot.type = 'regular_event';
-        approachingSlot.notes = [...(approachingSlot.notes || []), `Converted GP Window to Regular Event because ${reason}`];
-        rescheduleGrandPrixWindow(newState, approachingSlot, reason);
+        approachingSlot.notes = [...(approachingSlot.notes || []), t($ => $.generated.autobooker.gpWindowConverted, { reason })];
+        rescheduleGrandPrixWindow(newState, approachingSlot, reason, language);
       } else {
         const isEightManPreferred = (approachingSlot.notes || []).some(n => n.includes("8-Man Preferred"));
         const prefFormat = isEightManPreferred ? 'eight_man' : undefined;
         
-        const { state: updatedState, created, tournamentId, errorReason } = evaluateAndCreateTournament(newState, prefFormat);
+        const { state: updatedState, created, tournamentId, errorReason } = evaluateAndCreateTournament(newState, prefFormat, language);
         newState = updatedState;
         
         if (created && tournamentId) {
@@ -287,14 +295,14 @@ export function autoBookEventsAndContracts(state: GameState): GameState {
           approachingSlot.targetWeightClass = tournament.weightClass;
           approachingSlot.tournamentRound = firstRound;
           approachingSlot.tournamentId = tournamentId;
-          approachingSlot.notes = [...(approachingSlot.notes || []), `Created and linked ${tournament.name} to this slot.`];
-          
-          newState = bindTournamentToCalendarSlots(newState, tournamentId);
+          approachingSlot.notes = [...(approachingSlot.notes || []), t($ => $.generated.autobooker.gpCreatedLinked, { name: tournament.name })];
+
+          newState = bindTournamentToCalendarSlots(newState, tournamentId, language);
         } else {
           const reason = errorReason || 'Evaluation failed';
           approachingSlot.type = 'regular_event';
-          approachingSlot.notes = [...(approachingSlot.notes || []), `Converted GP Window to Regular Event. Reason: ${reason}`];
-          rescheduleGrandPrixWindow(newState, approachingSlot, reason);
+          approachingSlot.notes = [...(approachingSlot.notes || []), t($ => $.generated.autobooker.gpWindowConversionFailed, { reason })];
+          rescheduleGrandPrixWindow(newState, approachingSlot, reason, language);
         }
       }
     }
@@ -303,9 +311,9 @@ export function autoBookEventsAndContracts(state: GameState): GameState {
       // Just mark it completed once the date is reached/passed
       if (newState.currentDate >= approachingSlot.date) {
         approachingSlot.status = 'completed';
-        approachingSlot.notes = [...(approachingSlot.notes || []), `Rest month completed on ${newState.currentDate}.`];
+        approachingSlot.notes = [...(approachingSlot.notes || []), t($ => $.generated.autobooker.restCompleted, { date: newState.currentDate })];
       }
-      return maintainRoster(newState);
+      return maintainRoster(newState, language);
     }
 
     // Check if an event is already scheduled on this slot's date
@@ -315,12 +323,12 @@ export function autoBookEventsAndContracts(state: GameState): GameState {
       approachingSlot.status = 'scheduled';
       if (approachingSlot.type === 'grand_prix_round' && approachingSlot.tournamentId && approachingSlot.tournamentRound && !hasTournamentFights(existingEvent)) {
         try {
-          newState = scheduleTournamentRound(newState, approachingSlot.tournamentId, approachingSlot.tournamentRound, existingEvent.id);
+          newState = scheduleTournamentRound(newState, approachingSlot.tournamentId, approachingSlot.tournamentRound, existingEvent.id, language);
         } catch (error) {
-          newState = cancelFailedGrandPrixEvent(newState, existingEvent.id, approachingSlot.tournamentId, approachingSlot.tournamentRound, (error as Error).message);
+          newState = cancelFailedGrandPrixEvent(newState, existingEvent.id, approachingSlot.tournamentId, approachingSlot.tournamentRound, (error as Error).message, language);
         }
       }
-      return maintainRoster(newState);
+      return maintainRoster(newState, language);
     }
 
     // Otherwise, let's schedule a new event!
@@ -331,8 +339,8 @@ export function autoBookEventsAndContracts(state: GameState): GameState {
       newState.news = [{
         id: uuidv4(),
         date: newState.currentDate,
-        title: `Emergency Funding Injected`,
-        content: `The promotion has secured $100,000 in emergency funding to avoid bankruptcy, though reputation has suffered.`,
+        title: t($ => $.generated.autobooker.emergencyFundingTitle),
+        content: t($ => $.generated.autobooker.emergencyFunding, { amount: formatCurrency(100000, language) }),
         type: 'general'
       }, ...newState.news];
       
@@ -342,7 +350,7 @@ export function autoBookEventsAndContracts(state: GameState): GameState {
          date: newState.currentDate,
          type: 'owner_injection',
          amount: 100000,
-         description: 'Emergency funding injection',
+         description: t($ => $.generated.autobooker.emergencyFundingLedger),
          affectsCash: true,
          isSummary: false
       });
@@ -371,8 +379,8 @@ export function autoBookEventsAndContracts(state: GameState): GameState {
           newState.news.unshift({
             id: uuidv4(),
             date: newState.currentDate,
-            title: `Emergency Signing: ${fa.lastName}`,
-            content: `${fa.firstName} ${fa.lastName} has signed a short-term contract to resolve roster depletion.`,
+            title: t($ => $.generated.autobooker.emergencySigningTitle, { fighter: fa.lastName }),
+            content: t($ => $.generated.autobooker.emergencySigning, { fighter: `${fa.firstName} ${fa.lastName}` }),
             type: 'contract'
           });
         });
@@ -387,7 +395,8 @@ export function autoBookEventsAndContracts(state: GameState): GameState {
       approachingSlot.type,
       approachingSlot.targetWeightClass,
       approachingSlot.tournamentId,
-      approachingSlot.tournamentRound
+      approachingSlot.tournamentRound,
+      language
     );
 
     if (newEvent) {
@@ -399,7 +408,7 @@ export function autoBookEventsAndContracts(state: GameState): GameState {
       const eventDate = newEvent.date;
       const notes = [...(approachingSlot.notes || [])];
       if (originalDate !== eventDate) {
-        notes.push(`Rescheduled from ${originalDate} to ${eventDate} to match linked event.`);
+        notes.push(t($ => $.generated.autobooker.eventRescheduled, { from: originalDate, to: eventDate }));
       }
       approachingSlot.date = eventDate;
       approachingSlot.notes = notes;
@@ -411,8 +420,8 @@ export function autoBookEventsAndContracts(state: GameState): GameState {
       newState.news = [{
         id: uuidv4(),
         date: newState.currentDate,
-        title: `New Event Announced: ${newEvent.name}`,
-        content: `Cage Dynasty has announced its next event, scheduled for ${newEvent.date}.`,
+        title: t($ => $.generated.autobooker.newEventTitle, { event: newEvent.name }),
+        content: t($ => $.generated.autobooker.newEvent, { date: newEvent.date }),
         type: 'general'
       }, ...newState.news];
 
@@ -423,7 +432,8 @@ export function autoBookEventsAndContracts(state: GameState): GameState {
             newState,
             approachingSlot.tournamentId,
             approachingSlot.tournamentRound,
-            newEvent.id
+            newEvent.id,
+            language
           );
 
           const scheduledEvent = newState.events[newEvent.id];
@@ -433,7 +443,8 @@ export function autoBookEventsAndContracts(state: GameState): GameState {
               newEvent.id,
               approachingSlot.tournamentId,
               approachingSlot.tournamentRound,
-              'Tournament round produced no valid tournament fights.'
+              'Tournament round produced no valid tournament fights.',
+              language
             );
           }
         } catch (e) {
@@ -442,28 +453,30 @@ export function autoBookEventsAndContracts(state: GameState): GameState {
             newEvent.id,
             approachingSlot.tournamentId,
             approachingSlot.tournamentRound,
-            (e as Error).message
+            (e as Error).message,
+            language
           );
         }
       }
 
-      newState = checkAndCleanEmptyEvent(newState, newEvent.id);
+      newState = checkAndCleanEmptyEvent(newState, newEvent.id, language);
       if (!newState.events[newEvent.id]) {
         newState.autopilot.nextBookingAttemptDate = addDays(newState.currentDate, 14);
       }
     } else {
       // Delay by 14 days and record reason
       newState.autopilot.nextBookingAttemptDate = addDays(newState.currentDate, 14);
-      approachingSlot.notes = [...(approachingSlot.notes || []), `Booking attempt failed on ${newState.currentDate} due to roster/finance limitations.`];
+      approachingSlot.notes = [...(approachingSlot.notes || []), t($ => $.generated.autobooker.bookingFailed, { date: newState.currentDate })];
       
       if (isRecovery) {
-        const lastStallNews = newState.news.find(n => n.title === 'Event Cadence Stalled');
+        const stallTitles: string[] = [fixedT('en')($ => $.generated.autobooker.cadenceStalledTitle), fixedT('vi')($ => $.generated.autobooker.cadenceStalledTitle)];
+        const lastStallNews = newState.news.find(n => stallTitles.includes(n.title));
         if (!lastStallNews || calculateDateDifference(newState.currentDate, lastStallNews.date) >= 30) {
           newState.news.unshift({
             id: uuidv4(),
             date: newState.currentDate,
-            title: 'Event Cadence Stalled',
-            content: `Cage Dynasty has temporarily stalled due to extreme roster depletion or financial distress.`,
+            title: t($ => $.generated.autobooker.cadenceStalledTitle),
+            content: t($ => $.generated.autobooker.cadenceStalled),
             type: 'general'
           });
         }
@@ -477,17 +490,18 @@ export function autoBookEventsAndContracts(state: GameState): GameState {
       const titleState = newState.titles[f.weightClass];
       if (titleState && titleState.undisputedChampionId) {
         const champ = newState.fighters[titleState.undisputedChampionId];
-        let reason = "";
-        if (!champ) reason = "Champion not found.";
-        else if (champ.injuryStatus) reason = `Champion ${champ.lastName} is injured.`;
-        else if (champ.medicalSuspension && champ.medicalSuspension.daysRemaining > 0) reason = `Champion ${champ.lastName} is medically suspended.`;
-        else if (champ.fatigue >= 50) reason = `Champion ${champ.lastName} is fatigued.`;
-        
+        let reason = '';
+        if (!champ) reason = t($ => $.generated.autobooker.championMissing);
+        else if (champ.injuryStatus) reason = t($ => $.generated.autobooker.championInjuredPending, { fighter: champ.lastName });
+        else if (champ.medicalSuspension && champ.medicalSuspension.daysRemaining > 0) reason = t($ => $.generated.autobooker.championSuspendedPending, { fighter: champ.lastName });
+        else if (champ.fatigue >= 50) reason = t($ => $.generated.autobooker.championFatiguedPending, { fighter: champ.lastName });
+
         if (reason) {
           const gp = Object.values(newState.tournaments || {}).find(t => t.weightClass === f.weightClass && t.winnerId === f.id && t.status === 'completed' && !t.titleShotUsed);
           if (gp) {
-            const noteMsg = `Autobook Title Shot Pending: ${reason}`;
-            const exists = (gp.notes || []).some(n => n.startsWith("Autobook Title Shot Pending"));
+            const noteMsg = t($ => $.generated.autobooker.titleShotPending, { reason });
+            const pendingPrefixes: string[] = [fixedT('en')($ => $.generated.autobooker.titleShotPending, { reason: '' }), fixedT('vi')($ => $.generated.autobooker.titleShotPending, { reason: '' })].map(value => value.trim());
+            const exists = (gp.notes || []).some(n => pendingPrefixes.some(prefix => n.startsWith(prefix)));
             if (!exists || (gp.notes && gp.notes[gp.notes.length - 1] !== noteMsg)) {
               newState.tournaments[gp.id] = {
                 ...gp,
@@ -501,12 +515,13 @@ export function autoBookEventsAndContracts(state: GameState): GameState {
   });
 
   // Handle contracts: renew champions and top contenders, sign if thin, release bloat
-  newState = maintainRoster(newState);
+  newState = maintainRoster(newState, language);
 
   return newState;
 }
 
-export function maintainDeals(state: GameState): GameState {
+export function maintainDeals(state: GameState, language: Language = readLanguage()): GameState {
+  const t = fixedT(language);
   let newState = { ...state };
   
   // Deals system
@@ -545,8 +560,8 @@ export function maintainDeals(state: GameState): GameState {
          }];
          newState.news = [{
             id: uuidv4(), date: newState.currentDate, type: 'general',
-            title: `New Sponsor: ${bestSponsor.name}`,
-            content: `The promotion has signed a new ${bestSponsor.tier} sponsorship deal with ${bestSponsor.name}.`
+            title: t($ => $.generated.autobooker.newSponsorTitle, { name: bestSponsor.name }),
+            content: t($ => $.generated.autobooker.newSponsor, { tier: t($ => $.generated.autobooker[bestSponsor.tier === 'local' ? 'tierLocal' : bestSponsor.tier === 'regional' ? 'tierRegional' : 'tierNational']), name: bestSponsor.name })
          }, ...newState.news];
       }
     }
@@ -572,8 +587,8 @@ export function maintainDeals(state: GameState): GameState {
          }];
          newState.news = [{
             id: uuidv4(), date: newState.currentDate, type: 'general',
-            title: `New Broadcast Deal: ${bestMedia.name}`,
-            content: `The promotion has signed a new ${bestMedia.tier} broadcast deal with ${bestMedia.name}.`
+            title: t($ => $.generated.autobooker.newBroadcastTitle, { name: bestMedia.name }),
+            content: t($ => $.generated.autobooker.newBroadcast, { tier: t($ => $.generated.autobooker[bestMedia.tier === 'local' ? 'tierLocal' : bestMedia.tier === 'regional' ? 'tierRegional' : 'tierNational']), name: bestMedia.name })
          }, ...newState.news];
       }
     }
@@ -605,14 +620,16 @@ export function maintainDeals(state: GameState): GameState {
 }
 
 function generateAutoEvent(
-  state: GameState, 
-  dateStr: string, 
-  isRecovery?: boolean,
-  slotType?: CalendarSlotType,
-  targetWeightClass?: WeightClass,
-  tournamentId?: string,
-  tournamentRound?: TournamentRound
+  state: GameState,
+  dateStr: string,
+  isRecovery: boolean | undefined,
+  slotType: CalendarSlotType | undefined,
+  targetWeightClass: WeightClass | undefined,
+  tournamentId: string | undefined,
+  tournamentRound: TournamentRound | undefined,
+  language: Language
 ): Event | null {
+  const t = fixedT(language);
   const eventIndex = Object.keys(state.events).length + 1;
   const eventName = slotType === 'tentpole_event'
     ? getEventName('tentpole', eventIndex)
@@ -711,7 +728,7 @@ function generateAutoEvent(
         });
         bookedFighters.add(champ.id);
         bookedFighters.add(interimChamp.id);
-        newNews.push({ id: uuidv4(), date: dateStr, title: `Unification Title Fight Booked`, content: `${champ.lastName} and ${interimChamp.lastName} will fight to unify the ${wc} championship.`, type: 'general' });
+        newNews.push({ id: uuidv4(), date: dateStr, title: t($ => $.generated.autobooker.unificationTitle), content: t($ => $.generated.autobooker.unification, { red: champ.lastName, blue: interimChamp.lastName, weightClass: formatWeightClass(wc, language) }), type: 'general' });
         titleFightsBookedCount++;
       }
     }
@@ -740,8 +757,8 @@ function generateAutoEvent(
             newNews.push({ 
               id: uuidv4(), 
               date: dateStr, 
-              title: `Grand Prix Title Shot Booked`, 
-              content: `Grand Prix winner ${gpWinner.lastName} will challenge champion ${champ.lastName} for the undisputed ${wc} championship.`, 
+              title: t($ => $.generated.autobooker.gpTitleShotTitle),
+              content: t($ => $.generated.autobooker.gpTitleShot, { winner: gpWinner.lastName, champion: champ.lastName, weightClass: formatWeightClass(wc, language) }),
               type: 'general' 
             });
             titleFightsBookedCount++;
@@ -762,8 +779,8 @@ function generateAutoEvent(
             newNews.push({ 
               id: uuidv4(), 
               date: dateStr, 
-              title: `Grand Prix Title Shot Booked`, 
-              content: `${gpWinner.lastName} will fight for the vacant ${wc} championship.`, 
+              title: t($ => $.generated.autobooker.gpTitleShotTitle),
+              content: t($ => $.generated.autobooker.gpVacantTitleShot, { winner: gpWinner.lastName, weightClass: formatWeightClass(wc, language) }),
               type: 'general' 
             });
             titleFightsBookedCount++;
@@ -829,7 +846,7 @@ function generateAutoEvent(
           });
           bookedFighters.add(contender1.id);
           bookedFighters.add(contender2.id);
-          newNews.push({ id: uuidv4(), date: dateStr, title: `Interim ${wc} Title Fight Booked`, content: `${contender1.lastName} and ${contender2.lastName} will fight for the interim ${wc} championship.`, type: 'general' });
+          newNews.push({ id: uuidv4(), date: dateStr, title: t($ => $.generated.autobooker.interimTitle, { weightClass: formatWeightClass(wc, language) }), content: t($ => $.generated.autobooker.interim, { red: contender1.lastName, blue: contender2.lastName, weightClass: formatWeightClass(wc, language) }), type: 'general' });
           titleFightsBookedCount++;
         }
       }
@@ -854,7 +871,7 @@ function generateAutoEvent(
           });
           bookedFighters.add(available[0].id);
           bookedFighters.add(available[1].id);
-          newNews.push({ id: uuidv4(), date: dateStr, title: `Vacant ${wc} Title Fight Booked`, content: `${available[0].lastName} and ${available[1].lastName} will fight for the vacant ${wc} championship.`, type: 'general' });
+          newNews.push({ id: uuidv4(), date: dateStr, title: t($ => $.generated.autobooker.vacantTitle, { weightClass: formatWeightClass(wc, language) }), content: t($ => $.generated.autobooker.vacant, { red: available[0].lastName, blue: available[1].lastName, weightClass: formatWeightClass(wc, language) }), type: 'general' });
           titleFightsBookedCount++;
         }
       }
@@ -1000,7 +1017,8 @@ function generateAutoEvent(
   };
 }
 
-function maintainRoster(state: GameState): GameState {
+function maintainRoster(state: GameState, language: Language): GameState {
+  const t = fixedT(language);
   const newState = { ...state, fighters: { ...state.fighters }, news: [...state.news] };
   const signedFighters = Object.values(newState.fighters).filter(f => f.contract);
   
@@ -1028,8 +1046,8 @@ function maintainRoster(state: GameState): GameState {
         newState.fighters[toRelease.id] = { ...toRelease, contract: null };
         newState.news.unshift({
           id: uuidv4(), date: newState.currentDate, type: 'contract',
-          title: `Fighter Released`,
-          content: `${toRelease.firstName} ${toRelease.lastName} was released from their contract.`
+          title: t($ => $.generated.autobooker.fighterReleasedTitle),
+          content: t($ => $.generated.autobooker.fighterReleased, { fighter: `${toRelease.firstName} ${toRelease.lastName}` })
         });
       }
     }
@@ -1049,8 +1067,8 @@ function maintainRoster(state: GameState): GameState {
         };
         newState.news.unshift({
           id: uuidv4(), date: newState.currentDate, type: 'contract',
-          title: `New Signing: ${toSign.lastName}`,
-          content: `${toSign.firstName} ${toSign.lastName} has signed a new 4-fight contract.`
+          title: t($ => $.generated.autobooker.newSigningTitle, { fighter: toSign.lastName }),
+          content: t($ => $.generated.autobooker.newSigning, { fighter: `${toSign.firstName} ${toSign.lastName}` })
         });
       }
     }
@@ -1068,8 +1086,8 @@ function maintainRoster(state: GameState): GameState {
         };
         newState.news.unshift({
           id: uuidv4(), date: newState.currentDate, type: 'contract',
-          title: `Champion extension: ${f.lastName}`,
-          content: `${f.firstName} ${f.lastName} has secured a new 4-fight contract to defend their title.`
+          title: t($ => $.generated.autobooker.championExtensionTitle, { fighter: f.lastName }),
+          content: t($ => $.generated.autobooker.championExtension, { fighter: `${f.firstName} ${f.lastName}` })
         });
       }
     } else if (f.contract && f.contract.fightsRemaining <= 1 && f.popularity > 60) {
@@ -1081,8 +1099,8 @@ function maintainRoster(state: GameState): GameState {
       };
       newState.news.unshift({
         id: uuidv4(), date: newState.currentDate, type: 'contract',
-        title: `Contract Renewed: ${f.lastName}`,
-        content: `${f.firstName} ${f.lastName} has signed a new 4-fight extension.`
+        title: t($ => $.generated.autobooker.contractRenewedTitle, { fighter: f.lastName }),
+        content: t($ => $.generated.autobooker.contractRenewed, { fighter: `${f.firstName} ${f.lastName}` })
       });
     }
   });
@@ -1090,7 +1108,8 @@ function maintainRoster(state: GameState): GameState {
   return newState;
 }
 
-export function repairEventAvailability(state: GameState, eventId: string): GameState {
+export function repairEventAvailability(state: GameState, eventId: string, language: Language = readLanguage()): GameState {
+  const t = fixedT(language);
   let newState = {
     ...state,
     events: { ...state.events },
@@ -1116,7 +1135,7 @@ export function repairEventAvailability(state: GameState, eventId: string): Game
     if (redUnavailable || blueUnavailable) {
       changed = true;
       const unavailableFighter = redUnavailable ? red : blue;
-      const unavailableName = unavailableFighter ? `${unavailableFighter.firstName} ${unavailableFighter.lastName}` : "Unknown Fighter";
+      const unavailableName = unavailableFighter ? `${unavailableFighter.firstName} ${unavailableFighter.lastName}` : t($ => $.generated.autobooker.unknownFighter);
 
       if (fight.tournamentId && fight.tournamentRound) {
         const tId = fight.tournamentId;
@@ -1124,22 +1143,22 @@ export function repairEventAvailability(state: GameState, eventId: string): Game
         const tourney = newState.tournaments[tId];
         if (tourney) {
           try {
-            newState = repairScheduledTournamentRound(newState, tId, round, eventId);
-            return checkAndCleanEmptyEvent(newState, eventId);
+            newState = repairScheduledTournamentRound(newState, tId, round, eventId, language);
+            return checkAndCleanEmptyEvent(newState, eventId, language);
           } catch (err) {
             console.error("Failed to repair tournament fight", err);
           }
         }
       } else if (fight.isTitleFight) {
         eventFights.splice(i, 1);
-        const redName = red ? `${red.firstName} ${red.lastName}` : "Champion";
-        const blueName = blue ? `${blue.firstName} ${blue.lastName}` : "Challenger";
+        const redName = red ? `${red.firstName} ${red.lastName}` : t($ => $.generated.autobooker.champion);
+        const blueName = blue ? `${blue.firstName} ${blue.lastName}` : t($ => $.generated.autobooker.challenger);
         
         newState.news = [{
           id: uuidv4(),
           date: newState.currentDate,
-          title: `Title Fight Postponed`,
-          content: `The ${fight.weightClass} title fight between ${redName} and ${blueName} has been postponed due to injury/suspension of ${unavailableName}.`,
+          title: t($ => $.generated.autobooker.titlePostponedTitle),
+          content: t($ => $.generated.autobooker.titlePostponed, { weightClass: formatWeightClass(fight.weightClass, language), red: redName, blue: blueName, fighter: unavailableName }),
           type: 'general' as const
         }, ...newState.news];
       } else {
@@ -1174,7 +1193,7 @@ export function repairEventAvailability(state: GameState, eventId: string): Game
 
           const repFighter = replacementCandidates[0];
           const replacedFighter = redUnavailable ? red : blue;
-          const replacedName = replacedFighter ? `${replacedFighter.firstName} ${replacedFighter.lastName}` : "Unknown";
+          const replacedName = replacedFighter ? `${replacedFighter.firstName} ${replacedFighter.lastName}` : t($ => $.generated.autobooker.unknown);
 
           if (redUnavailable) {
             fight.redCornerId = repFighter.id;
@@ -1185,8 +1204,8 @@ export function repairEventAvailability(state: GameState, eventId: string): Game
           newState.news = [{
             id: uuidv4(),
             date: newState.currentDate,
-            title: `Fight Matchup Updated`,
-            content: `${repFighter.firstName} ${repFighter.lastName} has stepped in to face ${redUnavailable ? blue?.lastName : red?.lastName} on ${event.name}, replacing the injured/suspended ${replacedName}.`,
+            title: t($ => $.generated.autobooker.matchupUpdatedTitle),
+            content: t($ => $.generated.autobooker.matchupUpdated, { replacement: `${repFighter.firstName} ${repFighter.lastName}`, opponent: (redUnavailable ? blue?.lastName : red?.lastName) ?? t($ => $.generated.autobooker.unknown), event: event.name, replaced: replacedName }),
             type: 'general' as const
           }, ...newState.news];
         } else {
@@ -1194,8 +1213,8 @@ export function repairEventAvailability(state: GameState, eventId: string): Game
           newState.news = [{
             id: uuidv4(),
             date: newState.currentDate,
-            title: `Fight Removed`,
-            content: `The bout between ${red ? red.lastName : 'Unknown'} and ${blue ? blue.lastName : 'Unknown'} has been removed from ${event.name} due to medical suspension/injury of ${unavailableName}.`,
+            title: t($ => $.generated.autobooker.fightRemovedTitle),
+            content: t($ => $.generated.autobooker.fightRemoved, { red: red?.lastName ?? t($ => $.generated.autobooker.unknown), blue: blue?.lastName ?? t($ => $.generated.autobooker.unknown), event: event.name, fighter: unavailableName }),
             type: 'general' as const
           }, ...newState.news];
         }
@@ -1210,7 +1229,7 @@ export function repairEventAvailability(state: GameState, eventId: string): Game
     };
   }
 
-  return checkAndCleanEmptyEvent(newState, eventId);
+  return checkAndCleanEmptyEvent(newState, eventId, language);
 }
 
 export function rebuildCard(state: GameState, eventId: string): GameState {
@@ -1295,7 +1314,8 @@ export function rebuildCard(state: GameState, eventId: string): GameState {
   return newState;
 }
 
-export function checkAndCleanEmptyEvent(state: GameState, eventId: string): GameState {
+export function checkAndCleanEmptyEvent(state: GameState, eventId: string, language: Language = readLanguage()): GameState {
+  const t = fixedT(language);
   let newState = {
     ...state,
     events: { ...state.events },
@@ -1335,8 +1355,8 @@ export function checkAndCleanEmptyEvent(state: GameState, eventId: string): Game
   newState.news.unshift({
     id: uuidv4(),
     date: newState.currentDate,
-    title: `Event Cancelled: ${event.name}`,
-    content: `Due to insufficient matchups and fighter unavailability, ${event.name} has been cancelled.`,
+    title: t($ => $.generated.autobooker.eventCancelledTitle, { event: event.name }),
+    content: t($ => $.generated.autobooker.eventCancelled, { event: event.name }),
     type: 'general' as const
   });
 
@@ -1349,7 +1369,7 @@ export function checkAndCleanEmptyEvent(state: GameState, eventId: string): Game
       ...slot,
       status: 'cancelled' as const,
       eventId: undefined,
-      notes: [...(slot.notes || []), `Cancelled on ${newState.currentDate} due to insufficient fights (< 3 fights).`]
+      notes: [...(slot.notes || []), t($ => $.generated.autobooker.calendarCancelled, { date: newState.currentDate })]
     };
 
     newState.seasonPlans[slotYear] = {
@@ -1359,10 +1379,10 @@ export function checkAndCleanEmptyEvent(state: GameState, eventId: string): Game
   }
 
   Object.keys(newState.tournaments).forEach(tId => {
-    const t = newState.tournaments[tId];
-    const hasFightsLinked = t.fights.some(f => f.eventId === eventId);
+    const tournament = newState.tournaments[tId];
+    const hasFightsLinked = tournament.fights.some(f => f.eventId === eventId);
     if (hasFightsLinked) {
-      const updatedFights = t.fights.map(f => {
+      const updatedFights = tournament.fights.map(f => {
         if (f.eventId === eventId) {
           return {
             ...f,
@@ -1373,14 +1393,14 @@ export function checkAndCleanEmptyEvent(state: GameState, eventId: string): Game
         return f;
       });
 
-      const round = t.fights.find(f => f.eventId === eventId)?.round;
+      const round = tournament.fights.find(f => f.eventId === eventId)?.round;
       newState.tournaments[tId] = {
-        ...t,
+        ...tournament,
         fights: updatedFights,
-        roundDelayReason: `Event ${event.name} cancelled due to roster depletion.`,
+        roundDelayReason: t($ => $.generated.autobooker.tournamentEventCancelled, { event: event.name }),
         delayedRound: round || null,
         earliestRoundDate: addDays(newState.currentDate, 14),
-        notes: [...(t.notes || []), `Round delayed due to cancellation of event ${event.name}`]
+        notes: [...(tournament.notes || []), t($ => $.generated.autobooker.tournamentRoundCancelled, { event: event.name })]
       };
     }
   });
@@ -1390,7 +1410,8 @@ export function checkAndCleanEmptyEvent(state: GameState, eventId: string): Game
 
 export function simulateDueEvents(
   state: GameState,
-  simulateEvents: boolean
+  simulateEvents: boolean,
+  language: Language = readLanguage()
 ): { state: GameState; stoppedForManualEvent: boolean; selectedEventId?: string } {
   let newState = { ...state };
 
@@ -1401,8 +1422,8 @@ export function simulateDueEvents(
 
     if (!dueEvent) return { state: newState, stoppedForManualEvent: false };
 
-    newState = repairEventAvailability(newState, dueEvent.id);
-    newState = checkAndCleanEmptyEvent(newState, dueEvent.id);
+    newState = repairEventAvailability(newState, dueEvent.id, language);
+    newState = checkAndCleanEmptyEvent(newState, dueEvent.id, language);
 
     const repairedEvent = newState.events[dueEvent.id];
     if (!repairedEvent || repairedEvent.isCompleted || repairedEvent.fights.length < 3) continue;
@@ -1411,11 +1432,12 @@ export function simulateDueEvents(
       return { state: newState, stoppedForManualEvent: true, selectedEventId: repairedEvent.id };
     }
 
-    newState = quickSimulateEvent(newState, repairedEvent.id);
+    newState = quickSimulateEvent(newState, repairedEvent.id, language);
   }
 }
 
-export function repairPastScheduledEvents(state: GameState): GameState {
+export function repairPastScheduledEvents(state: GameState, language: Language = readLanguage()): GameState {
+  const t = fixedT(language);
   let newState = { ...state };
   const pastEvents = Object.values(newState.events)
     .filter(e => !e.isCompleted && e.date < newState.currentDate)
@@ -1426,7 +1448,7 @@ export function repairPastScheduledEvents(state: GameState): GameState {
     if (!currentEvent || currentEvent.isCompleted) return;
 
     if (currentEvent.fights.length < 3) {
-      newState = checkAndCleanEmptyEvent(newState, currentEvent.id);
+      newState = checkAndCleanEmptyEvent(newState, currentEvent.id, language);
       return;
     }
 
@@ -1442,7 +1464,7 @@ export function repairPastScheduledEvents(state: GameState): GameState {
           ...slot,
           date: currentEvent.date,
           status: 'scheduled' as const,
-          notes: [...(slot.notes || []), `Past due event queued for simulation on ${newState.currentDate}.`]
+          notes: [...(slot.notes || []), t($ => $.generated.autobooker.pastDueQueued, { date: newState.currentDate })]
         };
       });
       newState.seasonPlans[year] = { ...plan, slots };
@@ -1452,7 +1474,7 @@ export function repairPastScheduledEvents(state: GameState): GameState {
   return newState;
 }
 
-export function repairFutureEventAvailability(state: GameState): GameState {
+export function repairFutureEventAvailability(state: GameState, language: Language = readLanguage()): GameState {
   let newState = { ...state };
   const cutoffDate = addDays(newState.currentDate, 30);
 
@@ -1462,7 +1484,7 @@ export function repairFutureEventAvailability(state: GameState): GameState {
   );
 
   upcomingEvents.forEach(e => {
-    newState = repairEventAvailability(newState, e.id);
+    newState = repairEventAvailability(newState, e.id, language);
   });
 
   return newState;

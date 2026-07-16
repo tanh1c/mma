@@ -1,6 +1,7 @@
 import { addDays, format } from "date-fns";
 import { create } from 'zustand';
 import { GameState, Fighter, Event } from '../types/game';
+import { readLanguage } from '../lib/localization';
 import { generateInitialWorld } from '../lib/game/generator';
 import { advanceTime, applyFightResult, finalizeEventFinancials } from '../lib/engine';
 import { createFightSession, fightSessionToResult, runFightSession, stepFightSession, type FightSession } from '../lib/game/liveFight';
@@ -231,8 +232,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
   advanceAutopilot: (targetDays, simulateEvents) => {
     set((state) => {
+      const language = readLanguage();
       let newState = { ...state };
-      
+
       const startMoney = state.promotion.money;
       const startRep = state.promotion.reputation;
       const startEventsCount = Object.values(state.events).length;
@@ -292,9 +294,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
         };
         
         gameState = syncCalendarSlots(gameState);
-        gameState = repairPastScheduledEvents(gameState);
+        gameState = repairPastScheduledEvents(gameState, language);
 
-        let dueResult = simulateDueEvents(gameState, simulateEvents);
+        let dueResult = simulateDueEvents(gameState, simulateEvents, language);
         gameState = syncCalendarSlots(dueResult.state);
         if (dueResult.stoppedForManualEvent && dueResult.selectedEventId) {
           Object.assign(newState, gameState);
@@ -323,17 +325,17 @@ export const useGameStore = create<GameStore>((set, get) => ({
           break;
         }
 
-        gameState = autoBookEventsAndContracts(gameState);
-        gameState = runAutopilotTournaments(gameState);
-        gameState = repairFutureEventAvailability(gameState);
-        gameState = runObserverDecisions(gameState);
-        gameState = advanceTime(gameState, 1);
-        gameState = maintainDeals(gameState);
-        gameState = repairFutureEventAvailability(gameState);
+        gameState = autoBookEventsAndContracts(gameState, language);
+        gameState = runAutopilotTournaments(gameState, language);
+        gameState = repairFutureEventAvailability(gameState, language);
+        gameState = runObserverDecisions(gameState, language);
+        gameState = advanceTime(gameState, 1, language);
+        gameState = maintainDeals(gameState, language);
+        gameState = repairFutureEventAvailability(gameState, language);
         gameState = syncTournamentTitleShotFlags(gameState);
-        gameState = repairPastScheduledEvents(gameState);
+        gameState = repairPastScheduledEvents(gameState, language);
 
-        dueResult = simulateDueEvents(gameState, simulateEvents);
+        dueResult = simulateDueEvents(gameState, simulateEvents, language);
         gameState = syncCalendarSlots(dueResult.state);
         daysSimulated++;
         Object.assign(newState, gameState);
@@ -778,7 +780,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       if (!event) return state;
       
       let tempState: GameState = { ...state };
-      tempState = repairEventAvailability(tempState, eventId);
+      tempState = repairEventAvailability(tempState, eventId, readLanguage());
       
       const updatedEvent = tempState.events[eventId];
       if (!updatedEvent) return tempState;
@@ -828,7 +830,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     return {
       activeEventSimulation: {
         ...sim,
-        session: createFightSession(matchup, red, blue),
+        session: createFightSession(matchup, red, blue, undefined, readLanguage()),
         status: 'running'
       }
     };

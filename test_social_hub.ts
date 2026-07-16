@@ -4,6 +4,8 @@ import { addSocialFeedItems, applyPromotionSocialAction, generatePostFightSocial
 import { validateAndMigrateState, CURRENT_SAVE_VERSION } from './src/lib/game/save';
 import { advanceTime, finalizeEventFinancials } from './src/lib/engine';
 import { calculateEventProjections } from './src/lib/game/economy';
+import { evaluateOffer } from './src/lib/game/contracts';
+import { generateEventNewsAndStorylines } from './src/lib/game/news';
 
 const state = generateInitialWorld(31);
 const synced = syncLegacyNewsToSocialFeed({ ...state, socialFeed: [] });
@@ -37,6 +39,34 @@ const event: import('./src/types/game').Event = { id: 'social-event', name: 'Cag
 const scheduledBase = { ...state, events: { ...state.events, [event.id]: event }, currentDate: event.date, socialFeed: [] };
 const booked = generateScheduledFightSocial(scheduledBase, event.date);
 assert.ok(booked.socialFeed.some(item => item.stableKey.endsWith(':booked')));
+const vietnameseBooked = generateScheduledFightSocial(scheduledBase, event.date, 'vi');
+const stripSocialProse = (value: typeof booked.socialFeed) => value.map(({ headline, body, replies, ...entry }) => ({ ...entry, replies: replies?.map(({ body: _body, ...reply }) => reply) }));
+assert.deepEqual(stripSocialProse(booked.socialFeed), stripSocialProse(vietnameseBooked.socialFeed));
+assert.notDeepEqual(booked.socialFeed.map(item => item.headline), vietnameseBooked.socialFeed.map(item => item.headline));
+const acceptedEnglish = evaluateOffer(red, state.promotion, 1_000_000, 1_000_000, 3, state.currentDate, 'en');
+const acceptedVietnamese = evaluateOffer(red, state.promotion, 1_000_000, 1_000_000, 3, state.currentDate, 'vi');
+assert.deepEqual({ ...acceptedEnglish, reason: '' }, { ...acceptedVietnamese, reason: '' });
+assert.notEqual(acceptedEnglish.reason, acceptedVietnamese.reason);
+
+const completedNewsBase = structuredClone(scheduledBase);
+completedNewsBase.currentDate = event.date;
+completedNewsBase.news = [{ id: 'persisted-news', date: event.date, title: 'Existing English title', content: 'Existing English content.', type: 'general' }];
+completedNewsBase.events[event.id] = {
+  ...event,
+  isCompleted: true,
+  results: { attendance: 500, gateRevenue: 50_000, broadcastRevenue: 20_000, fighterBasePay: 10_000, fighterWinBonuses: 5_000, venueCost: 5_000, marketingCost: 1_000, totalRevenue: 70_000, totalCost: 21_000, profit: 49_000, fanReaction: 20 }
+};
+const englishEventNews = generateEventNewsAndStorylines(completedNewsBase, event.id, 'en');
+const vietnameseEventNews = generateEventNewsAndStorylines(completedNewsBase, event.id, 'vi');
+const stripNewsGeneration = (value: typeof englishEventNews) => ({
+  ...value,
+  news: value.news.map(({ id: _id, title: _title, content: _content, ...entry }) => entry),
+  storylines: value.storylines.map(({ id: _id, description: _description, ...entry }) => entry)
+});
+assert.deepEqual(stripNewsGeneration(englishEventNews), stripNewsGeneration(vietnameseEventNews));
+assert.notDeepEqual(englishEventNews.news.slice(0, 2).map(item => [item.title, item.content]), vietnameseEventNews.news.slice(0, 2).map(item => [item.title, item.content]));
+assert.deepEqual(vietnameseEventNews.news.find(item => item.id === 'persisted-news'), completedNewsBase.news[0]);
+
 assert.equal(generateScheduledFightSocial(booked, event.date).socialFeed.length, booked.socialFeed.length);
 const prefight = generateScheduledFightSocial({ ...scheduledBase, currentDate: '2025-01-10' }, '2025-01-10');
 assert.ok(prefight.socialFeed.some(item => item.stableKey.endsWith(':prefight')));

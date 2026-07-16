@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useGameStore } from '../store/gameStore';
 import { WeightClass, FightCampFocus, FightMatchup } from '../types/game';
 import { v4 as uuidv4 } from 'uuid';
-import { addDays, format } from 'date-fns';
+import { addDays, format as formatDateInput } from 'date-fns';
 import { calculateEventProjections } from '../lib/game/economy';
 import { compareFighters, getFighterReadiness, recommendMatchups } from '../lib/game/insights';
 import { getFighterOverall } from '../lib/game/fighterRatings';
@@ -15,8 +15,13 @@ import { ChampionshipBelt } from '../components/ChampionshipBelt';
 import { FighterRankBadge } from '../components/FighterRankBadge';
 import { getFighterRankContext } from '../lib/game/rankings';
 import { Button, Panel, PageHeader } from '../components/ui';
+import { useTranslation } from 'react-i18next';
+import { useSettingsStore } from '../store/settingsStore';
+import { formatCurrency, formatNumber, formatReadiness, formatWeightClass } from '../lib/localization';
 
 export default function EventBuilder() {
+  const { t } = useTranslation('translation');
+  const language = useSettingsStore(state => state.language);
   const gameState = useGameStore();
   const { fighters, venues, promotion, currentDate, storylines, titles, belts, createEvent, updateEvent, setView, goBack, selectedEventId, selectedCalendarSlotId, seasonPlans = {}, events, tournaments = {} } = gameState;
   
@@ -24,7 +29,7 @@ export default function EventBuilder() {
   const editingEvent = isEditing ? events[selectedEventId!] : null;
 
   const [eventName, setEventName] = useState(editingEvent ? editingEvent.name : getEventName('regular', Object.keys(events).length + 1));
-  const [eventDate, setEventDate] = useState(editingEvent ? editingEvent.date : format(addDays(new Date(currentDate), 28), 'yyyy-MM-dd'));
+  const [eventDate, setEventDate] = useState(editingEvent ? editingEvent.date : formatDateInput(addDays(new Date(currentDate), 28), 'yyyy-MM-dd'));
   const [venueId, setVenueId] = useState(editingEvent ? editingEvent.venueId : Object.keys(venues)[0]);
   const [ticketPrice, setTicketPrice] = useState(editingEvent ? editingEvent.ticketPrice : 50);
   const [marketingSpend, setMarketingSpend] = useState(editingEvent ? editingEvent.marketingSpend : 10000);
@@ -111,14 +116,14 @@ export default function EventBuilder() {
   const fighterOptions = availableWcFighters.filter(fighter => {
     const query = fighterSearch.trim().toLowerCase();
     const matchesSearch = !query || `${fighter.firstName} ${fighter.lastName} ${fighter.nickname}`.toLowerCase().includes(query);
-    const readiness = getFighterReadiness(fighter);
+    const readiness = getFighterReadiness(fighter, language);
     return matchesSearch && (readinessFilter === 'All' || (readinessFilter === 'Ready' ? readiness.status === 'ready' : readiness.status === 'fatigued'));
   }).map(fighter => {
-    const readiness = getFighterReadiness(fighter);
-    return { value: fighter.id, label: `${getFighterRankContext(gameState, fighter.id)?.label ?? 'UR'} · ${fighter.firstName} ${fighter.lastName} · OVR ${getFighterOverall(fighter)} (${fighter.record.wins}-${fighter.record.losses}) ${readiness.status === 'ready' ? '' : ` [${readiness.label.toUpperCase()}]`}`, disabled: !readiness.eligible };
+    const readiness = getFighterReadiness(fighter, language);
+    return { value: fighter.id, label: `${getFighterRankContext(gameState, fighter.id)?.label ?? 'UR'} · ${fighter.firstName} ${fighter.lastName} · OVR ${getFighterOverall(fighter)} (${fighter.record.wins}-${fighter.record.losses}) ${readiness.status === 'ready' ? '' : ` [${formatReadiness(readiness.status, language).toUpperCase()}]`}`, disabled: !readiness.eligible };
   });
-  const recommendations = useMemo(() => recommendMatchups(gameState, selectedWC as WeightClass, bookedFighterIds).filter(recommendation => hasContractThroughEvent(recommendation.red.id) && hasContractThroughEvent(recommendation.blue.id)), [gameState, selectedWC, fights, eventDate]);
-  const comparison = redFighter && blueFighter && fighters[redFighter] && fighters[blueFighter] ? compareFighters(fighters[redFighter], fighters[blueFighter]) : null;
+  const recommendations = useMemo(() => recommendMatchups(gameState, selectedWC as WeightClass, bookedFighterIds, language).filter(recommendation => hasContractThroughEvent(recommendation.red.id) && hasContractThroughEvent(recommendation.blue.id)), [gameState, selectedWC, fights, eventDate, language]);
+  const comparison = redFighter && blueFighter && fighters[redFighter] && fighters[blueFighter] ? compareFighters(fighters[redFighter], fighters[blueFighter], language) : null;
 
   const projections = useMemo(() => {
     return calculateEventProjections(
@@ -137,22 +142,22 @@ export default function EventBuilder() {
   if (selectedEventId && events[selectedEventId] && events[selectedEventId].isCompleted) {
     return (
       <div className="text-center p-10 text-neutral-400">
-        <h2 className="text-xl mb-4">Event is already completed and cannot be edited.</h2>
-        <Button variant="secondary" onClick={() => goBack('dashboard')}>Back</Button>
+        <h2 className="text-xl mb-4">{t($ => $.eventBuilder.completed)}</h2>
+        <Button variant="secondary" onClick={() => goBack('dashboard')}>{t($ => $.eventBuilder.back)}</Button>
       </div>
     );
   }
 
   const addFight = () => {
-    if (!redFighter || !blueFighter) return alert('Select both fighters');
-    if (redFighter === blueFighter) return alert('Fighter cannot fight themselves');
+    if (!redFighter || !blueFighter) return alert(t($ => $.eventBuilder.validation.selectBoth));
+    if (redFighter === blueFighter) return alert(t($ => $.eventBuilder.validation.sameFighter));
     
     const rFighter = fighters[redFighter];
     const bFighter = fighters[blueFighter];
 
-    if (rFighter?.medicalSuspension) return alert(`${rFighter.firstName} ${rFighter.lastName} is medically suspended and cannot be booked.`);
-    if (bFighter?.medicalSuspension) return alert(`${bFighter.firstName} ${bFighter.lastName} is medically suspended and cannot be booked.`);
-    if (!hasContractThroughEvent(redFighter) || !hasContractThroughEvent(blueFighter)) return alert('Both fighters need an active contract through the event date.');
+    if (rFighter?.medicalSuspension) return alert(t($ => $.eventBuilder.validation.suspended, { name: `${rFighter.firstName} ${rFighter.lastName}` }));
+    if (bFighter?.medicalSuspension) return alert(t($ => $.eventBuilder.validation.suspended, { name: `${bFighter.firstName} ${bFighter.lastName}` }));
+    if (!hasContractThroughEvent(redFighter) || !hasContractThroughEvent(blueFighter)) return alert(t($ => $.eventBuilder.validation.contract));
 
     if (isTitleFight) {
       if (titles && titles[selectedWC as WeightClass]) {
@@ -169,25 +174,25 @@ export default function EventBuilder() {
         if (titleState.status === 'unification_needed') {
            titleFightType = 'unification';
            if (redFighter !== titleState.undisputedChampionId && redFighter !== titleState.interimChampionId) {
-              return alert(`Unification fight must involve both champions.`);
+              return alert(t($ => $.eventBuilder.validation.unification));
            }
            if (blueFighter !== titleState.undisputedChampionId && blueFighter !== titleState.interimChampionId) {
-              return alert(`Unification fight must involve both champions.`);
+              return alert(t($ => $.eventBuilder.validation.unification));
            }
         } else if (hasUndisputed && titleState.status === 'active') {
            titleFightType = 'undisputed';
            if (redFighter !== titleState.undisputedChampionId && blueFighter !== titleState.undisputedChampionId) {
-              return alert(`Cannot book a title fight without the active champion. Include the champion, or uncheck "Title Fight" for ${beltName}.`);
+              return alert(t($ => $.eventBuilder.validation.activeChampion, { belt: beltName }));
            }
         } else if (hasUndisputed && titleState.status === 'inactive_champion' && !hasInterim) {
            titleFightType = 'interim';
            if (redFighter === titleState.undisputedChampionId || blueFighter === titleState.undisputedChampionId) {
-              return alert(`Undisputed champion cannot fight for an interim title. Uncheck "Title Fight" or wait for unification.`);
+              return alert(t($ => $.eventBuilder.validation.interimChampion));
            }
         } else if (hasInterim && !hasUndisputed) {
            titleFightType = 'interim';
            if (redFighter !== titleState.interimChampionId && blueFighter !== titleState.interimChampionId) {
-              return alert(`Cannot book an interim title fight without the active interim champion.`);
+              return alert(t($ => $.eventBuilder.validation.activeInterim));
            }
         } else if (!hasUndisputed && !hasInterim) {
            titleFightType = 'vacant_undisputed';
@@ -224,7 +229,7 @@ export default function EventBuilder() {
   const removeFight = (index: number) => {
     const fight = fights[index];
     if (fight && ('tournamentId' in fight) && (fight as any).tournamentId) {
-      alert("This is a tournament fight. You cannot remove or modify tournament fights directly. Cancel the tournament on the Tournaments page instead.");
+      alert(t($ => $.eventBuilder.validation.tournamentFight));
       return;
     }
     setFights(fights.filter((_, i) => i !== index));
@@ -321,25 +326,25 @@ export default function EventBuilder() {
     }
 
     if (fightsAdded === 0) {
-      alert('Không thể tự động thêm trận đấu. Có thể do võ sĩ đang bị chấn thương, kiệt sức, hoặc chưa được ký hợp đồng.');
+      alert(t($ => $.eventBuilder.validation.autoFill));
     } else {
       setFights(newFights);
     }
   };
 
   const handleBook = () => {
-    if (fights.length === 0) return alert('Must have at least 1 fight');
-    if (!eventName) return alert('Need an event name');
-    if (fights.some(fight => !hasContractThroughEvent(fight.redCornerId) || !hasContractThroughEvent(fight.blueCornerId))) return alert('Every booked fighter needs an active contract through the event date.');
+    if (fights.length === 0) return alert(t($ => $.eventBuilder.validation.oneFight));
+    if (!eventName) return alert(t($ => $.eventBuilder.validation.eventName));
+    if (fights.some(fight => !hasContractThroughEvent(fight.redCornerId) || !hasContractThroughEvent(fight.blueCornerId))) return alert(t($ => $.eventBuilder.validation.everyContract));
 
     if (promotion.money < projections.estimatedCost) {
-      if (!window.confirm(`Estimated cost is $${projections.estimatedCost.toLocaleString()} but you only have $${promotion.money.toLocaleString()}. You may go into debt. Proceed?`)) {
+      if (!window.confirm(t($ => $.eventBuilder.validation.cost, { cost: formatCurrency(projections.estimatedCost, language), money: formatCurrency(promotion.money, language) }))) {
         return;
       }
     }
 
     if (projections.warnings.length > 0) {
-      if (!window.confirm(`You have ${projections.warnings.length} active warnings. Are you sure you want to book this event?`)) {
+      if (!window.confirm(t($ => $.eventBuilder.validation.warnings, { count: projections.warnings.length }))) {
         return;
       }
     }
@@ -371,30 +376,23 @@ export default function EventBuilder() {
 
   const venueOptions = Object.values(venues).map(v => ({
     value: v.id,
-    label: `${v.name}, ${v.city} (${v.capacity} cap)`
+    label: `${v.name}, ${v.city} (${t($ => $.eventBuilder.details.capacity, { count: v.capacity })})`
   }));
 
   const campOptions = [
-    { value: 'balanced', label: 'Balanced' },
-    { value: 'striking', label: 'Striking +3% · fatigue +5' },
-    { value: 'wrestling', label: 'Wrestling +3% · fatigue +5' },
-    { value: 'cardio', label: 'Cardio +4% · fatigue -5' },
-    { value: 'recovery', label: 'Recovery · fatigue -10' }
+    { value: 'balanced', label: t($ => $.eventBuilder.camp.balanced) },
+    { value: 'striking', label: t($ => $.eventBuilder.camp.striking) },
+    { value: 'wrestling', label: t($ => $.eventBuilder.camp.wrestling) },
+    { value: 'cardio', label: t($ => $.eventBuilder.camp.cardio) },
+    { value: 'recovery', label: t($ => $.eventBuilder.camp.recovery) }
   ];
-  const campSummary = (focus: FightCampFocus = 'balanced') => campOptions.find(option => option.value === focus)?.label ?? 'Balanced';
+  const campSummary = (focus: FightCampFocus = 'balanced') => campOptions.find(option => option.value === focus)?.label ?? t($ => $.eventBuilder.camp.balanced);
 
-  const wcOptions = [
-    { value: 'Heavyweight', label: 'Heavyweight' },
-    { value: 'Middleweight', label: 'Middleweight' },
-    { value: 'Welterweight', label: 'Welterweight' },
-    { value: 'Lightweight', label: 'Lightweight' },
-    { value: 'Featherweight', label: 'Featherweight' },
-    { value: 'Bantamweight', label: 'Bantamweight' }
-  ];
+  const wcOptions = ['Heavyweight', 'Middleweight', 'Welterweight', 'Lightweight', 'Featherweight', 'Bantamweight'].map(value => ({ value, label: formatWeightClass(value, language) }));
 
   return (
     <div className="mx-auto max-w-6xl space-y-6 pb-10">
-      <PageHeader eyebrow="Promotion operations" title={isEditing ? 'Edit Event' : 'Book Event'} description={isEditing ? 'Review the existing card, projections and logistics.' : 'Build a card, review projections, then confirm the event.'} />
+      <PageHeader eyebrow={t($ => $.eventBuilder.eyebrow)} title={isEditing ? t($ => $.eventBuilder.editTitle) : t($ => $.eventBuilder.bookTitle)} description={isEditing ? t($ => $.eventBuilder.editDescription) : t($ => $.eventBuilder.bookDescription)} />
       
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         
@@ -403,32 +401,32 @@ export default function EventBuilder() {
           <Panel className="space-y-4">
             <h2 className="text-lg font-bold text-white flex items-center gap-2">
               <span className="w-6 h-6 rounded bg-neutral-800 flex items-center justify-center text-xs">1</span>
-              Event Details
+              {t($ => $.eventBuilder.details.title)}
             </h2>
             
             <div>
-              <label className="block text-xs text-neutral-400 mb-1">Event Name</label>
+              <label className="block text-xs text-neutral-400 mb-1">{t($ => $.eventBuilder.details.eventName)}</label>
               <input type="text" value={eventName} onChange={e => setEventName(e.target.value)} className="w-full bg-neutral-950 border border-neutral-800 rounded px-3 py-2 text-white text-sm focus:border-neutral-500 focus:ring-1 focus:ring-neutral-500 outline-none transition-colors" />
             </div>
             
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
-                <label className="block text-xs text-neutral-400 mb-1">Date</label>
+                <label className="block text-xs text-neutral-400 mb-1">{t($ => $.eventBuilder.details.date)}</label>
                 <input type="date" value={eventDate} onChange={e => setEventDate(e.target.value)} min={currentDate} className="w-full bg-neutral-950 border border-neutral-800 rounded px-3 py-2 text-white text-sm focus:border-blue-500 outline-none" />
               </div>
               <div>
-                <label className="block text-xs text-neutral-400 mb-1">Venue</label>
+                <label className="block text-xs text-neutral-400 mb-1">{t($ => $.eventBuilder.details.venue)}</label>
                 <Select value={venueId} onChange={setVenueId} options={venueOptions} />
               </div>
             </div>
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
-                <label className="block text-xs text-neutral-400 mb-1">Ticket Price ($)</label>
+                <label className="block text-xs text-neutral-400 mb-1">{t($ => $.eventBuilder.details.ticketPrice)}</label>
                 <input type="number" min="10" value={ticketPrice} onChange={e => setTicketPrice(Number(e.target.value))} className="w-full bg-neutral-950 border border-neutral-800 rounded px-3 py-2 text-white text-sm focus:border-blue-500 outline-none" />
               </div>
               <div>
-                <label className="block text-xs text-neutral-400 mb-1">Marketing Spend ($)</label>
+                <label className="block text-xs text-neutral-400 mb-1">{t($ => $.eventBuilder.details.marketingSpend)}</label>
                 <input type="number" min="0" step="1000" value={marketingSpend} onChange={e => setMarketingSpend(Number(e.target.value))} className="w-full bg-neutral-950 border border-neutral-800 rounded px-3 py-2 text-white text-sm focus:border-blue-500 outline-none" />
               </div>
             </div>
@@ -438,15 +436,15 @@ export default function EventBuilder() {
             <div className="flex justify-between items-center">
               <h2 className="text-lg font-bold text-white flex items-center gap-2">
                 <span className="w-6 h-6 rounded bg-neutral-800 flex items-center justify-center text-xs">2</span>
-                Matchmaking
+                {t($ => $.eventBuilder.matchmaking.title)}
               </h2>
               <Button variant="secondary" className="min-h-9 px-3 text-xs" onClick={handleAutoFill}>
-                Auto Fill
+                {t($ => $.eventBuilder.matchmaking.autoFill)}
               </Button>
             </div>
             
             <div>
-              <label className="block text-xs text-neutral-400 mb-1">Weight Class</label>
+              <label className="block text-xs text-neutral-400 mb-1">{t($ => $.eventBuilder.matchmaking.weightClass)}</label>
               <Select 
                 value={selectedWC} 
                 onChange={val => { setSelectedWC(val); setRedFighter(''); setBlueFighter(''); }} 
@@ -455,46 +453,46 @@ export default function EventBuilder() {
             </div>
 
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto]">
-              <input value={fighterSearch} onChange={event => setFighterSearch(event.target.value)} placeholder="Search fighter" aria-label="Search fighters" className="min-w-0 rounded border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-white outline-none focus:border-neutral-500" />
-              <Select value={readinessFilter} onChange={value => setReadinessFilter(value as typeof readinessFilter)} options={[{ value: 'All', label: 'All readiness' }, { value: 'Ready', label: 'Ready' }, { value: 'Risky', label: 'Tired' }]} className="sm:w-32" />
+              <input value={fighterSearch} onChange={event => setFighterSearch(event.target.value)} placeholder={t($ => $.eventBuilder.matchmaking.search)} aria-label={t($ => $.eventBuilder.matchmaking.searchLabel)} className="min-w-0 rounded border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-white outline-none focus:border-neutral-500" />
+              <Select value={readinessFilter} onChange={value => setReadinessFilter(value as typeof readinessFilter)} options={[{ value: 'All', label: t($ => $.eventBuilder.matchmaking.allReadiness) }, { value: 'Ready', label: t($ => $.eventBuilder.matchmaking.ready) }, { value: 'Risky', label: t($ => $.eventBuilder.matchmaking.tired) }]} className="sm:w-32" />
             </div>
 
             <div className="space-y-3">
               <div>
-                <label className="block text-xs text-neutral-400 mb-1">Red Corner (Higher Rank)</label>
+                <label className="block text-xs text-neutral-400 mb-1">{t($ => $.eventBuilder.matchmaking.redCorner)}</label>
                 <Select 
                   value={redFighter} 
                   onChange={setRedFighter} 
                   options={fighterOptions}
-                  placeholder="Select Fighter"
+                  placeholder={t($ => $.eventBuilder.matchmaking.selectFighter)}
                 />
               </div>
               <div className="flex justify-center -my-2 relative z-10">
-                <span className="bg-neutral-800 text-xs font-bold px-2 py-0.5 rounded text-neutral-400">VS</span>
+                <span className="bg-neutral-800 text-xs font-bold px-2 py-0.5 rounded text-neutral-400">{t($ => $.eventBuilder.matchmaking.versus)}</span>
               </div>
               <div>
-                <label className="block text-xs text-neutral-400 mb-1">Blue Corner</label>
+                <label className="block text-xs text-neutral-400 mb-1">{t($ => $.eventBuilder.matchmaking.blueCorner)}</label>
                 <Select 
                   value={blueFighter} 
                   onChange={setBlueFighter} 
                   options={fighterOptions}
-                  placeholder="Select Fighter"
+                  placeholder={t($ => $.eventBuilder.matchmaking.selectFighter)}
                 />
               </div>
             </div>
 
-            {comparison && <div className="rounded border border-blue-900/50 bg-blue-950/20 p-3 text-xs text-neutral-300" title="Advisory estimate only. The actual fight simulation remains unpredictable."><div className="flex items-center justify-between gap-3"><p className="font-mono uppercase tracking-[0.12em] text-blue-300">Matchup comparison</p><p><span className="font-semibold text-white">{comparison.red.firstName} {comparison.red.lastName} {comparison.redChance}%</span> · <span className="font-semibold text-white">{comparison.blueChance}% {comparison.blue.firstName} {comparison.blue.lastName}</span></p></div><p className="mt-2">OVR {comparison.redOverall} vs {comparison.blueOverall} · {comparison.red.style} vs {comparison.blue.style} · {comparison.red.record.wins}-{comparison.red.record.losses} vs {comparison.blue.record.wins}-{comparison.blue.record.losses}</p>{comparison.mismatchWarning && <p className="mt-2 text-amber-300">{comparison.mismatchWarning}</p>}<p className="mt-1 text-neutral-400">{comparison.styleNote} {comparison.readiness.red.label} / {comparison.readiness.blue.label}.</p></div>}
+            {comparison && <div className="rounded border border-blue-900/50 bg-blue-950/20 p-3 text-xs text-neutral-300" title={t($ => $.eventBuilder.matchmaking.advisory)}><div className="flex items-center justify-between gap-3"><p className="font-mono uppercase tracking-[0.12em] text-blue-300">{t($ => $.eventBuilder.matchmaking.comparison)}</p><p><span className="font-semibold text-white">{comparison.red.firstName} {comparison.red.lastName} {comparison.redChance}%</span> · <span className="font-semibold text-white">{comparison.blueChance}% {comparison.blue.firstName} {comparison.blue.lastName}</span></p></div><p className="mt-2">OVR {comparison.redOverall} vs {comparison.blueOverall} · {comparison.red.style} vs {comparison.blue.style} · {comparison.red.record.wins}-{comparison.red.record.losses} vs {comparison.blue.record.wins}-{comparison.blue.record.losses}</p>{comparison.mismatchWarning && <p className="mt-2 text-amber-300">{comparison.mismatchWarning}</p>}<p className="mt-1 text-neutral-400">{comparison.styleNote} {comparison.readiness.red.label} / {comparison.readiness.blue.label}.</p></div>}
 
-            {recommendations.length > 0 && <div className="rounded border border-neutral-800 bg-neutral-950 p-3"><p className="mb-2 font-mono text-[10px] uppercase tracking-[0.12em] text-neutral-500">Recommended matchups</p><div className="space-y-2">{recommendations.slice(0, 3).map(recommendation => <div key={`${recommendation.red.id}-${recommendation.blue.id}`} className="flex items-center justify-between gap-2 text-xs"><div className="min-w-0"><p className="truncate text-neutral-200">{recommendation.red.firstName} {recommendation.red.lastName} vs {recommendation.blue.firstName} {recommendation.blue.lastName} <span title="Match quality estimate based on ranking, popularity, rivalry, and readiness." className="text-blue-300">{recommendation.score}</span></p><p className="truncate text-neutral-500">{recommendation.reasons.slice(0, 2).join(' · ')}</p></div><Button variant="quiet" onClick={() => { setRedFighter(recommendation.red.id); setBlueFighter(recommendation.blue.id); }} className="min-h-8 px-2 text-[10px]">Use</Button></div>)}</div></div>}
+            {recommendations.length > 0 && <div className="rounded border border-neutral-800 bg-neutral-950 p-3"><p className="mb-2 font-mono text-[10px] uppercase tracking-[0.12em] text-neutral-500">{t($ => $.eventBuilder.matchmaking.recommended)}</p><div className="space-y-2">{recommendations.slice(0, 3).map(recommendation => <div key={`${recommendation.red.id}-${recommendation.blue.id}`} className="flex items-center justify-between gap-2 text-xs"><div className="min-w-0"><p className="truncate text-neutral-200">{recommendation.red.firstName} {recommendation.red.lastName} vs {recommendation.blue.firstName} {recommendation.blue.lastName} <span title={t($ => $.eventBuilder.matchmaking.quality)} className="text-blue-300">{recommendation.score}</span></p><p className="truncate text-neutral-500">{recommendation.reasons.slice(0, 2).join(' · ')}</p></div><Button variant="quiet" onClick={() => { setRedFighter(recommendation.red.id); setBlueFighter(recommendation.blue.id); }} className="min-h-8 px-2 text-[10px]">{t($ => $.eventBuilder.matchmaking.use)}</Button></div>)}</div></div>}
 
             <div className="flex items-center gap-4 bg-neutral-950 p-3 rounded border border-neutral-800">
               <label className="flex items-center gap-2 text-sm text-neutral-300 cursor-pointer">
                 <input type="checkbox" checked={isTitleFight} onChange={e => setIsTitleFight(e.target.checked)} className="bg-neutral-900 border-neutral-700 rounded text-blue-500 focus:ring-blue-500 focus:ring-offset-neutral-950" />
-                Title Fight
+                {t($ => $.eventBuilder.matchmaking.titleFight)}
               </label>
               <div className="h-4 w-px bg-neutral-800"></div>
               <label className="flex items-center gap-2 text-sm text-neutral-300">
-                Rounds:
+                {t($ => $.eventBuilder.matchmaking.rounds)}:
                 <Select 
                   value={rounds} 
                   onChange={setRounds} 
@@ -505,7 +503,7 @@ export default function EventBuilder() {
             </div>
 
             <Button variant="primary" onClick={addFight} className="mt-2 w-full">
-              Add fight to card
+              {t($ => $.eventBuilder.matchmaking.addFight)}
             </Button>
           </Panel>
         </div>
@@ -517,34 +515,34 @@ export default function EventBuilder() {
           <Panel>
             <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
               <span className="w-6 h-6 rounded bg-neutral-800 flex items-center justify-center text-xs">3</span>
-              Event Projections
+              {t($ => $.eventBuilder.projections.title)}
             </h2>
             
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
               <div className="bg-neutral-950 p-3 rounded border border-neutral-800">
-                <div className="text-[10px] text-neutral-500 uppercase font-bold tracking-wider mb-1">Event Hype</div>
+                <div className="text-[10px] text-neutral-500 uppercase font-bold tracking-wider mb-1">{t($ => $.eventBuilder.projections.hype)}</div>
                 <div className="text-xl font-bold text-white flex items-end gap-1">
                   {Math.round(projections.eventHype)}
                   <span className="text-xs text-neutral-500 mb-1">/100</span>
                 </div>
               </div>
               <div className="bg-neutral-950 p-3 rounded border border-neutral-800">
-                <div className="text-[10px] text-neutral-500 uppercase font-bold tracking-wider mb-1">Est. Attendance</div>
+                <div className="text-[10px] text-neutral-500 uppercase font-bold tracking-wider mb-1">{t($ => $.eventBuilder.projections.attendance)}</div>
                 <div className="text-xl font-bold text-white flex items-end gap-1">
-                  {projections.expectedAttendance.toLocaleString()}
-                  <span className="text-xs text-neutral-500 mb-1">/ {venues[venueId].capacity}</span>
+                  {formatNumber(projections.expectedAttendance, language)}
+                  <span className="text-xs text-neutral-500 mb-1">/ {formatNumber(venues[venueId].capacity, language)}</span>
                 </div>
               </div>
               <div className="bg-neutral-950 p-3 rounded border border-neutral-800">
-                <div className="text-[10px] text-neutral-500 uppercase font-bold tracking-wider mb-1">Est. Revenue</div>
+                <div className="text-[10px] text-neutral-500 uppercase font-bold tracking-wider mb-1">{t($ => $.eventBuilder.projections.revenue)}</div>
                 <div className="text-xl font-bold text-green-400">
-                  ${(projections.expectedGate + (projections.broadcastRevenue || 0)).toLocaleString()}
+                  {formatCurrency(projections.expectedGate + (projections.broadcastRevenue || 0), language)}
                 </div>
               </div>
               <div className="bg-neutral-950 p-3 rounded border border-neutral-800">
-                <div className="text-[10px] text-neutral-500 uppercase font-bold tracking-wider mb-1">Est. Profit</div>
+                <div className="text-[10px] text-neutral-500 uppercase font-bold tracking-wider mb-1">{t($ => $.eventBuilder.projections.profit)}</div>
                 <div className={`text-xl font-bold ${projections.expectedProfit >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                  ${Math.round(projections.expectedProfit).toLocaleString()}
+                  {formatCurrency(Math.round(projections.expectedProfit), language)}
                 </div>
               </div>
             </div>
@@ -552,7 +550,7 @@ export default function EventBuilder() {
             {projections.warnings.length > 0 && (
               <div className="bg-red-950/30 border border-red-900/50 rounded-lg p-4 space-y-2">
                 <div className="flex items-center gap-2 text-red-400 font-bold text-sm mb-2">
-                  <AlertTriangle size={16} /> Warnings ({projections.warnings.length})
+                  <AlertTriangle size={16} /> {t($ => $.eventBuilder.projections.warnings, { count: projections.warnings.length })}
                 </div>
                 <ul className="text-xs text-red-300 space-y-1 list-disc pl-5">
                   {projections.warnings.map((w, i) => <li key={i}>{w}</li>)}
@@ -562,7 +560,7 @@ export default function EventBuilder() {
             
             {projections.warnings.length === 0 && fights.length > 0 && (
               <div className="bg-green-950/30 border border-green-900/50 rounded-lg p-3 flex items-center gap-2 text-green-400 text-sm">
-                <Info size={16} /> Card looks good!
+                <Info size={16} /> {t($ => $.eventBuilder.projections.good)}
               </div>
             )}
           </Panel>
@@ -571,14 +569,14 @@ export default function EventBuilder() {
           <Panel className="flex min-h-[400px] flex-1 flex-col">
             <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
               <span className="w-6 h-6 rounded bg-neutral-800 flex items-center justify-center text-xs">4</span>
-              Fight Card ({fights.length})
+              {t($ => $.eventBuilder.card.heading, { count: fights.length })}
             </h2>
             
             <div className="flex-1 space-y-2 overflow-y-auto pr-2">
               {fights.length === 0 ? (
                 <div className="h-full flex flex-col items-center justify-center text-neutral-500">
-                  <p className="text-sm">No fights added yet.</p>
-                  <p className="text-xs mt-1">Use the matchmaking panel to add bouts.</p>
+                  <p className="text-sm">{t($ => $.eventBuilder.card.empty)}</p>
+                  <p className="text-xs mt-1">{t($ => $.eventBuilder.card.emptyHint)}</p>
                 </div>
               ) : (
                 fights.map((fight, idx) => {
@@ -587,20 +585,20 @@ export default function EventBuilder() {
                   const isMainEvent = idx === 0;
                   const isCoMain = idx === 1;
                   
-                  let slotLabel = `Bout ${fights.length - idx}`;
-                  if (isMainEvent) slotLabel = 'Main Event';
-                  else if (isCoMain) slotLabel = 'Co-Main Event';
-                  else if (idx < 5) slotLabel = 'Main Card';
-                  else slotLabel = 'Prelims';
+                  let slotLabel: string = t($ => $.eventBuilder.card.bout, { number: fights.length - idx });
+                  if (isMainEvent) slotLabel = t($ => $.eventBuilder.card.mainEvent);
+                  else if (isCoMain) slotLabel = t($ => $.eventBuilder.card.coMain);
+                  else if (idx < 5) slotLabel = t($ => $.eventBuilder.card.mainCard);
+                  else slotLabel = t($ => $.eventBuilder.card.prelims);
 
                   return (
                     <div key={idx} className={`flex flex-wrap items-start gap-3 rounded border p-3 transition-colors sm:flex-nowrap sm:items-center ${isMainEvent ? 'bg-neutral-800 border-neutral-600' : 'bg-neutral-950 border-neutral-800'}`}>
                       {/* Order Controls */}
                       <div className="flex flex-col gap-1">
-                        <button type="button" aria-label={`Move ${slotLabel} up`} onClick={() => moveFight(idx, 'up')} disabled={idx === 0} className="text-neutral-500 hover:text-white disabled:opacity-30 disabled:hover:text-neutral-500 transition-colors">
+                        <button type="button" aria-label={t($ => $.eventBuilder.card.moveUp, { slot: slotLabel })} onClick={() => moveFight(idx, 'up')} disabled={idx === 0} className="text-neutral-500 hover:text-white disabled:opacity-30 disabled:hover:text-neutral-500 transition-colors">
                           <ArrowUp size={14} />
                         </button>
-                        <button type="button" aria-label={`Move ${slotLabel} down`} onClick={() => moveFight(idx, 'down')} disabled={idx === fights.length - 1} className="text-neutral-500 hover:text-white disabled:opacity-30 disabled:hover:text-neutral-500 transition-colors">
+                        <button type="button" aria-label={t($ => $.eventBuilder.card.moveDown, { slot: slotLabel })} onClick={() => moveFight(idx, 'down')} disabled={idx === fights.length - 1} className="text-neutral-500 hover:text-white disabled:opacity-30 disabled:hover:text-neutral-500 transition-colors">
                           <ArrowDown size={14} />
                         </button>
                       </div>
@@ -609,14 +607,14 @@ export default function EventBuilder() {
                         <div className="mb-1 flex flex-wrap justify-between gap-1 text-[10px] font-bold uppercase tracking-wider text-neutral-400">
                           <span className={isMainEvent || isCoMain ? 'text-yellow-500/80' : ''}>{slotLabel}</span>
                           <span className="flex flex-wrap items-center justify-end gap-2">
-                            {fight.rounds} RND
+                            {t($ => $.eventBuilder.card.rounds, { count: fight.rounds })}
                             <span className="w-1 h-1 rounded-full bg-neutral-600"></span>
-                            {fight.weightClass} 
+                            {formatWeightClass(fight.weightClass, language)}
                             {fight.isTitleFight && <ChampionshipBelt weightClass={fight.weightClass} type={fight.titleFightType === 'interim' ? 'interim' : 'undisputed'} size="marker" alt="" />}
                             {fight.isTitleFight && (
                               <span className="ml-1 text-yellow-500">
-                                {fight.titleFightType === 'interim' ? 'INTERIM ' : fight.titleFightType === 'unification' ? 'UNIFICATION ' : fight.titleFightType === 'vacant_undisputed' ? 'VACANT ' : ''}
-                                {belts['belt_' + fight.weightClass.toLowerCase()]?.shortName || 'TITLE'}
+                                {fight.titleFightType === 'interim' ? `${t($ => $.eventBuilder.card.interim)} ` : fight.titleFightType === 'unification' ? `${t($ => $.eventBuilder.card.unification)} ` : fight.titleFightType === 'vacant_undisputed' ? `${t($ => $.eventBuilder.card.vacant)} ` : ''}
+                                {belts['belt_' + fight.weightClass.toLowerCase()]?.shortName || t($ => $.eventBuilder.card.title)}
                               </span>
                             )}
                             {(() => {
@@ -635,14 +633,14 @@ export default function EventBuilder() {
                               const isGpTitleShotMatch = (isRedChamp && isBlueGPWinner) || (isBlueChamp && isRedGPWinner);
                               
                               return isGpTitleShotMatch && (
-                                <span title="Grand Prix winner is owed an undisputed title fight." className="text-purple-400 ml-1 font-bold">
-                                  🛡 GP Title Shot
+                                <span title={t($ => $.eventBuilder.card.gpTitleShotHelp)} className="text-purple-400 ml-1 font-bold">
+                                  🛡 {t($ => $.eventBuilder.card.gpTitleShot)}
                                 </span>
                               );
                             })()}
                             {(fight as any).tournamentId && (
-                              <span title="A scheduled Grand Prix bracket stage." className="text-purple-400 ml-1 font-bold text-xs uppercase">
-                                🛡 {((fight as any).tournamentRound === 'quarterfinal') ? 'GP Quarterfinal' : ((fight as any).tournamentRound === 'semifinal') ? 'GP Semifinal' : 'GP Final'}
+                              <span title={t($ => $.eventBuilder.card.gpRoundHelp)} className="text-purple-400 ml-1 font-bold text-xs uppercase">
+                                🛡 {((fight as any).tournamentRound === 'quarterfinal') ? t($ => $.eventBuilder.card.gpQuarterfinal) : ((fight as any).tournamentRound === 'semifinal') ? t($ => $.eventBuilder.card.gpSemifinal) : t($ => $.eventBuilder.card.gpFinal)}
                               </span>
                             )}
                           </span>
@@ -664,7 +662,7 @@ export default function EventBuilder() {
                         </div>
                       </div>
                       <div className="order-last w-full sm:order-none sm:w-40">
-                        <p className="mb-1 truncate text-[10px] text-neutral-500" title={campSummary(fight.campFocus)}>Camp: {campSummary(fight.campFocus)}</p>
+                        <p className="mb-1 truncate text-[10px] text-neutral-500" title={campSummary(fight.campFocus)}>{t($ => $.eventBuilder.camp.label, { value: campSummary(fight.campFocus) })}</p>
                         <Select
                           value={fight.campFocus ?? 'balanced'}
                           onChange={value => setFights(fights.map((item, index) => index === idx ? { ...item, campFocus: value as FightCampFocus } : item))}
@@ -672,7 +670,7 @@ export default function EventBuilder() {
                           className="text-xs"
                         />
                       </div>
-                      <button type="button" aria-label={`Remove ${slotLabel}`} onClick={() => removeFight(idx)} className="rounded p-2 text-red-500/50 transition-colors hover:bg-red-500/10 hover:text-red-400 sm:ml-2">
+                      <button type="button" aria-label={t($ => $.eventBuilder.card.remove, { slot: slotLabel })} onClick={() => removeFight(idx)} className="rounded p-2 text-red-500/50 transition-colors hover:bg-red-500/10 hover:text-red-400 sm:ml-2">
                         <Trash2 size={16} />
                       </button>
                     </div>
@@ -683,7 +681,7 @@ export default function EventBuilder() {
             
             <div className="mt-4 pt-4 border-t border-neutral-800">
               <Button variant="primary" onClick={handleBook} disabled={fights.length === 0} className="w-full">
-                {isEditing ? 'Update event' : 'Confirm & book event'}
+                {isEditing ? t($ => $.eventBuilder.card.update) : t($ => $.eventBuilder.card.confirm)}
               </Button>
             </div>
           </Panel>

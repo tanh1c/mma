@@ -67,9 +67,12 @@ assert.equal(cooled.storylines.find(storyline => storyline.type === 'Rivalry')!.
 const inboxState = generateInitialWorld(7);
 const inboxFighter = Object.values(inboxState.fighters).find(candidate => candidate.contract)!;
 inboxState.fighters[inboxFighter.id] = { ...inboxFighter, contract: { ...inboxFighter.contract!, fightsRemaining: 1, endDate: '2026-01-20' } };
-const inbox = getPromotionInbox(inboxState);
+const inbox = getPromotionInbox(inboxState, 'en');
+const vietnameseInbox = getPromotionInbox(inboxState, 'vi');
 assert.equal(inbox[0].severity, 'urgent');
 assert.equal(inbox[0].fighterId, inboxFighter.id);
+assert.deepEqual(inbox.map(({ title: _title, description: _description, ...item }) => item), vietnameseInbox.map(({ title: _title, description: _description, ...item }) => item));
+assert.notEqual(inbox[0].title, vietnameseInbox[0].title);
 const renewed = { ...inboxState, fighters: { ...inboxState.fighters, [inboxFighter.id]: { ...inboxState.fighters[inboxFighter.id], contract: { ...inboxState.fighters[inboxFighter.id].contract!, fightsRemaining: 3, endDate: '2027-01-01' } } } };
 assert.equal(getPromotionInbox(renewed).some(item => item.fighterId === inboxFighter.id), false);
 

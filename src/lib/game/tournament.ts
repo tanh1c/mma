@@ -5,6 +5,17 @@ import { getTournamentBranding } from '../branding';
 import { generateSeasonPlan } from './season';
 import { getContractEndDate } from './contracts';
 import { getFighterOverall } from './fighterRatings';
+import '../../i18n';
+import { fixedT, formatWeightClass, readLanguage, type Language } from '../localization';
+
+function formatRound(round: TournamentRound, language: Language): string {
+  const t = fixedT(language);
+  return round === 'quarterfinal'
+    ? t($ => $.generated.tournament.quarterfinal)
+    : round === 'semifinal'
+      ? t($ => $.generated.tournament.semifinal)
+      : t($ => $.generated.tournament.final);
+}
 
 export function isFighterBookedUpcoming(state: GameState, fighterId: string, excludeEventId?: string): boolean {
   return Object.values(state.events || {}).some(e => 
@@ -21,8 +32,10 @@ export function createGrandPrixTournament(
     format?: TournamentFormat;
     participantIds?: string[];
     reserveIds?: string[];
-  }
+  },
+  language: Language = readLanguage()
 ): GameState {
+  const t = fixedT(language);
   const { weightClass, name, titleShotPromised, format = 'four_man', participantIds = [], reserveIds = [] } = options;
   
   if (format === 'four_man') {
@@ -176,12 +189,16 @@ export function createGrandPrixTournament(
     fights,
     titleShotPromised,
     prestige: format === 'eight_man' ? 85 : 70,
-    notes: [`Planned on ${state.currentDate} with format: ${format}. Seeds: ${sortedParticipants.map((f, idx) => `${idx + 1}. ${f.lastName}`).join(', ')}`]
+    notes: [t($ => $.generated.tournament.plannedNote, {
+      date: state.currentDate,
+      format: format === 'eight_man' ? t($ => $.generated.tournament.eightMan) : t($ => $.generated.tournament.fourMan),
+      seeds: sortedParticipants.map((f, idx) => `${idx + 1}. ${f.lastName}`).join(', ')
+    })]
   };
   
-  const formatLabel = format === 'eight_man' ? '8-man' : '4-man';
+  const formatLabel = format === 'eight_man' ? t($ => $.generated.tournament.eightMan) : t($ => $.generated.tournament.fourMan);
   const participantCount = format === 'eight_man' ? 8 : 4;
-  const titleShotText = titleShotPromised ? " The winner will earn a guaranteed title shot." : "";
+  const titleShotText = titleShotPromised ? t($ => $.generated.tournament.titleShotPromise) : "";
 
   const newState = {
     ...state,
@@ -194,22 +211,31 @@ export function createGrandPrixTournament(
         id: uuidv4(),
         date: state.currentDate,
         type: 'general' as const,
-        title: `Tournament Announced: ${name}`,
-        content: `A new ${formatLabel} Grand Prix has been announced in the ${weightClass} division, featuring ${participantCount} elite fighters.${titleShotText} Participants: ${sortedParticipants.map(f => `${f.firstName} ${f.lastName}`).join(', ')}.`
+        title: t($ => $.generated.tournament.announcedTitle, { name }),
+        content: t($ => $.generated.tournament.announced, {
+          format: formatLabel,
+          weightClass: formatWeightClass(weightClass, language),
+          count: participantCount,
+          titleShot: titleShotText,
+          participants: sortedParticipants.map(f => `${f.firstName} ${f.lastName}`).join(', ')
+        })
       },
       ...state.news
     ]
   };
   
-  return bindTournamentToCalendarSlots(newState, newTourney.id);
+  return bindTournamentToCalendarSlots(newState, newTourney.id, language);
 }
 
 export function scheduleTournamentRound(
   state: GameState,
   tournamentId: string,
   round: 'quarterfinal' | 'semifinal' | 'final',
-  eventId: string
+  eventId: string,
+  language: Language = readLanguage()
 ): GameState {
+  const t = fixedT(language);
+  const roundLabel = formatRound(round, language);
   const tourney = state.tournaments[tournamentId];
   if (!tourney) throw new Error("Tournament not found");
   
@@ -285,9 +311,9 @@ export function scheduleTournamentRound(
     );
     
     if (isSuspendedShort || isBookedElsewhere) {
-      delayReason = isSuspendedShort 
-        ? `${fighter.lastName} is medically suspended for ${fighter.medicalSuspension?.daysRemaining} days.`
-        : `${fighter.lastName} is already booked in another event.`;
+      delayReason = isSuspendedShort
+        ? t($ => $.generated.tournament.suspendedDelay, { fighter: fighter.lastName, count: fighter.medicalSuspension?.daysRemaining })
+        : t($ => $.generated.tournament.bookedDelay, { fighter: fighter.lastName });
       delayFighterId = fighter.id;
       const delayDays = isSuspendedShort ? fighter.medicalSuspension!.daysRemaining : 28;
       delayEarliestDate = addDaysStr(newState.currentDate, delayDays);
@@ -339,22 +365,31 @@ export function scheduleTournamentRound(
         
         const origF = newState.fighters[originalFighterId];
         const newF = newState.fighters[unusedReserveId];
-        updatedTourney.notes = [...(updatedTourney.notes || []), `Replacement: ${newF.lastName} replaced unavailable fighter ${origF.lastName} on ${state.currentDate} for round ${round}.`];
+        updatedTourney.notes = [...(updatedTourney.notes || []), t($ => $.generated.tournament.replacementNote, {
+          replacement: newF.lastName,
+          original: origF.lastName,
+          date: state.currentDate,
+          round: roundLabel
+        })];
         
         newState.news = [
           {
             id: uuidv4(),
             date: state.currentDate,
             type: 'general' as const,
-            title: `Grand Prix Replacement: ${newF.lastName} enters ${round}!`,
-            content: `Due to long-term injury/suspension/fatigue, ${origF.firstName} ${origF.lastName} is unable to compete. Reserve fighter ${newF.firstName} ${newF.lastName} steps in for the ${round} round.`
+            title: t($ => $.generated.tournament.replacementTitle, { replacement: newF.lastName, round: roundLabel }),
+            content: t($ => $.generated.tournament.replacement, {
+              original: `${origF.firstName} ${origF.lastName}`,
+              replacement: `${newF.firstName} ${newF.lastName}`,
+              round: roundLabel
+            })
           },
           ...newState.news
         ];
         
         return unusedReserveId;
       } else {
-        delayReason = `${fighter.lastName} is unavailable and no reserve is available.`;
+        delayReason = t($ => $.generated.tournament.unavailableDelay, { fighter: fighter.lastName });
         delayFighterId = fighter.id;
         if (fighter.medicalSuspension && fighter.medicalSuspension.daysRemaining > 0) {
           delayEarliestDate = addDaysStr(newState.currentDate, fighter.medicalSuspension.daysRemaining);
@@ -397,18 +432,23 @@ export function scheduleTournamentRound(
       updatedTourney.delayedFighterId = delayFighterId;
     }
     
-    updatedTourney.notes = [...(updatedTourney.notes || []), `Round ${round} delayed: ${delayReason}`];
+    updatedTourney.notes = [...(updatedTourney.notes || []), t($ => $.generated.tournament.delayedNote, { round: roundLabel, reason: delayReason })];
     
     const isNewDelay = tourney.roundDelayReason !== delayReason || tourney.earliestRoundDate !== delayEarliestDate;
     if (isNewDelay) {
-      newState = handleDelayedRoundCalendarSlot(newState, tournamentId, round, delayEarliestDate, delayReason);
+      newState = handleDelayedRoundCalendarSlot(newState, tournamentId, round, delayEarliestDate, delayReason, language);
       newState.news = [
         {
           id: uuidv4(),
           date: state.currentDate,
           type: 'general' as const,
-          title: `${updatedTourney.name} ${round} Delayed`,
-          content: `The ${round} of the ${updatedTourney.name} has been delayed. Reason: ${delayReason}. Earliest expected reschedule: ${delayEarliestDate}.`
+          title: t($ => $.generated.tournament.delayedTitle, { name: updatedTourney.name, round: roundLabel }),
+          content: t($ => $.generated.tournament.delayed, {
+            name: updatedTourney.name,
+            round: roundLabel,
+            reason: delayReason,
+            date: delayEarliestDate
+          })
         },
         ...newState.news
       ];
@@ -470,7 +510,7 @@ export function scheduleTournamentRound(
     updatedTourney.startDate = updatedEvent.date;
   }
 
-  updatedTourney.notes = [...(updatedTourney.notes || []), `Round ${round} scheduled on Event: ${updatedEvent.name} on ${state.currentDate}`];
+  updatedTourney.notes = [...(updatedTourney.notes || []), t($ => $.generated.tournament.scheduledNote, { round: roundLabel, event: updatedEvent.name, date: state.currentDate })];
   
   newState.tournaments[tournamentId] = updatedTourney;
   newState.events[eventId] = updatedEvent;
@@ -483,29 +523,30 @@ export function scheduleTournamentRound(
       id: uuidv4(),
       date: state.currentDate,
       type: 'event' as const,
-      title: `${updatedTourney.name} ${round} Scheduled!`,
-      content: `The ${round} matches have been scheduled for ${updatedEvent.name} on ${updatedEvent.date}!`
+      title: t($ => $.generated.tournament.scheduledTitle, { name: updatedTourney.name, round: roundLabel }),
+      content: t($ => $.generated.tournament.scheduled, { round: roundLabel, event: updatedEvent.name, date: updatedEvent.date })
     },
     ...newState.news
   ];
 
-  newState = linkScheduledRoundToSlot(newState, tournamentId, round, eventId);
+  newState = linkScheduledRoundToSlot(newState, tournamentId, round, eventId, language);
   return newState;
 }
 
-export function scheduleQuarterfinals(state: GameState, tournamentId: string, eventId: string): GameState {
-  return scheduleTournamentRound(state, tournamentId, 'quarterfinal', eventId);
+export function scheduleQuarterfinals(state: GameState, tournamentId: string, eventId: string, language: Language = readLanguage()): GameState {
+  return scheduleTournamentRound(state, tournamentId, 'quarterfinal', eventId, language);
 }
 
-export function scheduleSemifinals(state: GameState, tournamentId: string, eventId: string): GameState {
-  return scheduleTournamentRound(state, tournamentId, 'semifinal', eventId);
+export function scheduleSemifinals(state: GameState, tournamentId: string, eventId: string, language: Language = readLanguage()): GameState {
+  return scheduleTournamentRound(state, tournamentId, 'semifinal', eventId, language);
 }
 
-export function scheduleFinal(state: GameState, tournamentId: string, eventId: string): GameState {
-  return scheduleTournamentRound(state, tournamentId, 'final', eventId);
+export function scheduleFinal(state: GameState, tournamentId: string, eventId: string, language: Language = readLanguage()): GameState {
+  return scheduleTournamentRound(state, tournamentId, 'final', eventId, language);
 }
 
-export function cancelTournament(state: GameState, tournamentId: string): GameState {
+export function cancelTournament(state: GameState, tournamentId: string, language: Language = readLanguage()): GameState {
+  const t = fixedT(language);
   const tourney = state.tournaments[tournamentId];
   if (!tourney) throw new Error("Tournament not found");
   
@@ -531,7 +572,7 @@ export function cancelTournament(state: GameState, tournamentId: string): GameSt
   newState.tournaments[tournamentId] = {
     ...tourney,
     status: 'cancelled',
-    notes: [...(tourney.notes || []), `Tournament cancelled on ${state.currentDate}.`]
+    notes: [...(tourney.notes || []), t($ => $.generated.tournament.cancelledNote, { date: state.currentDate })]
   };
 
   if (newState.seasonPlans) {
@@ -543,7 +584,7 @@ export function cancelTournament(state: GameState, tournamentId: string): GameSt
           return {
             ...s,
             status: 'cancelled' as const,
-            notes: [...(s.notes || []), `Tournament cancelled on ${state.currentDate}.`]
+            notes: [...(s.notes || []), t($ => $.generated.tournament.cancelledNote, { date: state.currentDate })]
           };
         }
         return s;
@@ -555,7 +596,8 @@ export function cancelTournament(state: GameState, tournamentId: string): GameSt
   return newState;
 }
 
-export function maintainTournamentRosterDepth(state: GameState, weightClass: WeightClass): GameState {
+export function maintainTournamentRosterDepth(state: GameState, weightClass: WeightClass, language: Language = readLanguage()): GameState {
+  const t = fixedT(language);
   const eligible = Object.values(state.fighters).filter(f => 
     f.weightClass === weightClass &&
     f.contract &&
@@ -598,8 +640,11 @@ export function maintainTournamentRosterDepth(state: GameState, weightClass: Wei
           id: uuidv4(),
           date: newState.currentDate,
           type: 'contract' as const,
-          title: `Tournament Signing: ${toSign.lastName}`,
-          content: `${toSign.firstName} ${toSign.lastName} has signed a 4-fight contract to bolster the ${weightClass} Grand Prix roster.`
+          title: t($ => $.generated.tournament.signingTitle, { fighter: toSign.lastName }),
+          content: t($ => $.generated.tournament.signing, {
+            fighter: `${toSign.firstName} ${toSign.lastName}`,
+            weightClass: formatWeightClass(weightClass, language)
+          })
         });
         currentEligibleCount++;
       }
@@ -614,8 +659,10 @@ export function applyTournamentProgression(
   tournamentId: string,
   slotId: string,
   winnerId: string | null,
-  loserId: string | null
+  loserId: string | null,
+  language: Language = readLanguage()
 ): GameState {
+  const t = fixedT(language);
   const tourney = state.tournaments[tournamentId];
   if (!tourney) return state;
   
@@ -626,6 +673,7 @@ export function applyTournamentProgression(
   const advancementWinnerId = winnerId ?? slot.redFighterId ?? null;
   const advancementLoserId = loserId ?? (advancementWinnerId === slot.redFighterId ? slot.blueFighterId : slot.redFighterId) ?? null;
   const usedDrawTiebreaker = winnerId === null && advancementWinnerId !== null;
+  const unknown = t($ => $.generated.tournament.unknown);
 
   if (slot.isCompleted && slot.winnerId === advancementWinnerId) {
     return state;
@@ -647,7 +695,10 @@ export function applyTournamentProgression(
 
   if (usedDrawTiebreaker) {
     const fighter = newState.fighters[advancementWinnerId!];
-    updatedTourney.notes = [...(updatedTourney.notes || []), `Draw tiebreaker: ${fighter ? `${fighter.firstName} ${fighter.lastName}` : 'Unknown'} advanced from ${slot.round} by bracket order.`];
+    updatedTourney.notes = [...(updatedTourney.notes || []), t($ => $.generated.tournament.drawTiebreaker, {
+      fighter: fighter ? `${fighter.firstName} ${fighter.lastName}` : unknown,
+      round: formatRound(slot.round, language)
+    })];
   }
   
   if (slot.round === 'quarterfinal') {
@@ -681,15 +732,15 @@ export function applyTournamentProgression(
       const d = addDays(new Date(state.currentDate), 28);
       updatedTourney.recommendedSemifinalDate = d.toISOString().split('T')[0];
       
-      updatedTourney.notes = [...(updatedTourney.notes || []), `Quarterfinals completed. Semifinalists set.`];
+      updatedTourney.notes = [...(updatedTourney.notes || []), t($ => $.generated.tournament.quarterfinalsCompleteNote)];
       
       newState.news = [
         {
           id: uuidv4(),
           date: state.currentDate,
           type: 'general' as const,
-          title: `${updatedTourney.name} Semifinalists Decided!`,
-          content: `The quarterfinal round of the ${updatedTourney.name} is complete. Semifinal matches are set!`
+          title: t($ => $.generated.tournament.semifinalistsTitle, { name: updatedTourney.name }),
+          content: t($ => $.generated.tournament.semifinalists, { name: updatedTourney.name })
         },
         ...newState.news
       ];
@@ -717,17 +768,20 @@ export function applyTournamentProgression(
       
       const f1 = w1 ? newState.fighters[w1] : null;
       const f2 = w2 ? newState.fighters[w2] : null;
-      const names = (f1 ? f1.lastName : 'Unknown') + ' vs ' + (f2 ? f2.lastName : 'Unknown');
-      
-      updatedTourney.notes = [...(updatedTourney.notes || []), `Semifinals completed. Finalists: ${names}`];
+      const names = (f1 ? f1.lastName : unknown) + ' vs ' + (f2 ? f2.lastName : unknown);
+
+      updatedTourney.notes = [...(updatedTourney.notes || []), t($ => $.generated.tournament.semifinalsCompleteNote, { fighters: names })];
       
       newState.news = [
         {
           id: uuidv4(),
           date: state.currentDate,
           type: 'general' as const,
-          title: `${updatedTourney.name} Finalists Decided!`,
-          content: `The bracket is set. ${f1 ? f1.firstName + ' ' + f1.lastName : 'Unknown'} will face ${f2 ? f2.firstName + ' ' + f2.lastName : 'Unknown'} in the Grand Prix Final.`
+          title: t($ => $.generated.tournament.finalistsTitle, { name: updatedTourney.name }),
+          content: t($ => $.generated.tournament.finalists, {
+            red: f1 ? `${f1.firstName} ${f1.lastName}` : unknown,
+            blue: f2 ? `${f2.firstName} ${f2.lastName}` : unknown
+          })
         },
         ...newState.news
       ];
@@ -738,9 +792,9 @@ export function applyTournamentProgression(
     updatedTourney.completedDate = state.currentDate;
 
     const champ = advancementWinnerId ? newState.fighters[advancementWinnerId] : null;
-    const champName = champ ? `${champ.firstName} ${champ.lastName}` : 'Unknown';
-    
-    updatedTourney.notes = [...(updatedTourney.notes || []), `Grand Prix Winner: ${champName} on ${state.currentDate}`];
+    const champName = champ ? `${champ.firstName} ${champ.lastName}` : unknown;
+
+    updatedTourney.notes = [...(updatedTourney.notes || []), t($ => $.generated.tournament.winnerNote, { fighter: champName, date: state.currentDate })];
     
     const isEightMan = updatedTourney.format === 'eight_man';
     const winBonus = isEightMan ? 120 : 80;
@@ -758,7 +812,9 @@ export function applyTournamentProgression(
       updatedChamp.rankingScore = (updatedChamp.rankingScore || 1000) + winBonus;
       updatedChamp.popularity = Math.min(100, updatedChamp.popularity + winPop);
       updatedChamp.momentum = Math.min(100, updatedChamp.momentum + winMom);
-      updatedChamp.history = [`Won Grand Prix vs ${advancementLoserId ? newState.fighters[advancementLoserId]?.lastName : 'Unknown'}`, ...updatedChamp.history].slice(0, 5);
+      updatedChamp.history = [t($ => $.generated.tournament.winnerHistory, {
+        opponent: advancementLoserId ? newState.fighters[advancementLoserId]?.lastName || unknown : unknown
+      }), ...updatedChamp.history].slice(0, 5);
       
       newState.fighters[champ.id] = updatedChamp;
     }
@@ -778,8 +834,12 @@ export function applyTournamentProgression(
         id: uuidv4(),
         date: state.currentDate,
         type: 'general' as const,
-        title: `${champName} Wins the ${updatedTourney.name}!`,
-        content: `${champName} defeated ${advancementLoserId ? newState.fighters[advancementLoserId]?.lastName : 'Unknown'} in the Grand Prix final to claim the crown!${updatedTourney.titleShotPromised ? ' A future title shot is guaranteed.' : ''}`
+        title: t($ => $.generated.tournament.winnerTitle, { fighter: champName, name: updatedTourney.name }),
+        content: t($ => $.generated.tournament.winner, {
+          fighter: champName,
+          opponent: advancementLoserId ? newState.fighters[advancementLoserId]?.lastName || unknown : unknown,
+          titleShot: updatedTourney.titleShotPromised ? t($ => $.generated.tournament.titleShotGuaranteed) : ''
+        })
       },
       ...newState.news
     ];
@@ -789,7 +849,8 @@ export function applyTournamentProgression(
   return newState;
 }
 
-export function runAutopilotTournaments(state: GameState): GameState {
+export function runAutopilotTournaments(state: GameState, language: Language = readLanguage()): GameState {
+  const t = fixedT(language);
   let newState = { ...state, tournaments: { ...state.tournaments }, events: { ...state.events }, fighters: { ...state.fighters }, news: [...state.news] };
   
   const activeTourney = Object.values(newState.tournaments).find(t => t.status === 'planned' || t.status === 'active');
@@ -806,7 +867,11 @@ export function runAutopilotTournaments(state: GameState): GameState {
     // Recovery / stuck tournament mitigation
     if (isPlannedStuck || isActiveStuck) {
       // 1. Post non-spam warning news once every 90 days of delay
-      const lastDelayNews = newState.news.find(n => n.title?.includes("Grand Prix Delayed") && n.content?.includes(activeTourney.name));
+      const delayTitles: string[] = [
+        fixedT('en')($ => $.generated.tournament.autopilotDelayedTitle, { name: activeTourney.name }),
+        fixedT('vi')($ => $.generated.tournament.autopilotDelayedTitle, { name: activeTourney.name })
+      ];
+      const lastDelayNews = newState.news.find(n => delayTitles.includes(n.title) && n.content?.includes(activeTourney.name));
       const lastDelayNewsDate = lastDelayNews ? lastDelayNews.date : null;
       const daysSinceLastNews = lastDelayNewsDate 
         ? getDaysDiff(newState.currentDate, lastDelayNewsDate)
@@ -816,8 +881,8 @@ export function runAutopilotTournaments(state: GameState): GameState {
         newState.news.unshift({
           id: uuidv4(),
           date: newState.currentDate,
-          title: `Grand Prix Delayed: ${activeTourney.name}`,
-          content: `The ${activeTourney.name} has been delayed for ${ageDays} days. Promotion officials are working on emergency options.`,
+          title: t($ => $.generated.tournament.autopilotDelayedTitle, { name: activeTourney.name }),
+          content: t($ => $.generated.tournament.autopilotDelayed, { name: activeTourney.name, count: ageDays }),
           type: 'general'
         });
       }
@@ -833,14 +898,14 @@ export function runAutopilotTournaments(state: GameState): GameState {
         // If we don't have enough fighters and cannot sign (broke or no FA available)
         if (signedCount + totalFA < required || (newState.promotion.money < 50000 && signedCount < required)) {
           try {
-            newState = cancelTournament(newState, activeTourney.id);
+            newState = cancelTournament(newState, activeTourney.id, language);
             // Clear target class
             newState.autopilot.targetTournamentWeightClass = null;
             newState.news.unshift({
               id: uuidv4(),
               date: newState.currentDate,
-              title: `Grand Prix Cancelled: ${activeTourney.name}`,
-              content: `The ${activeTourney.name} has been cancelled due to permanent participant roster depletion and financial constraints.`,
+              title: t($ => $.generated.tournament.autopilotCancelledTitle, { name: activeTourney.name }),
+              content: t($ => $.generated.tournament.autopilotCancelled, { name: activeTourney.name }),
               type: 'general'
             });
             return newState;
@@ -871,14 +936,17 @@ export function runAutopilotTournaments(state: GameState): GameState {
           
           const updated = { ...newState.tournaments[activeTourney.id] };
           updated.reserveFighterIds = [...(updated.reserveFighterIds || []), candidate.id];
-          updated.notes = [...(updated.notes || []), `Emergency Reserve Signing: Signed ${candidate.lastName} on ${newState.currentDate}.`];
+          updated.notes = [...(updated.notes || []), t($ => $.generated.tournament.emergencyReserveNote, { fighter: candidate.lastName, date: newState.currentDate })];
           newState.tournaments[activeTourney.id] = updated;
           
           newState.news.unshift({
             id: uuidv4(),
             date: newState.currentDate,
-            title: `Emergency Tournament Signing: ${candidate.lastName}`,
-            content: `Cage Dynasty has signed free agent ${candidate.firstName} ${candidate.lastName} as an emergency reserve for the stalled ${activeTourney.name}.`,
+            title: t($ => $.generated.tournament.emergencySigningTitle, { fighter: candidate.lastName }),
+            content: t($ => $.generated.tournament.emergencySigning, {
+              fighter: `${candidate.firstName} ${candidate.lastName}`,
+              name: activeTourney.name
+            }),
             type: 'contract'
           });
         }
@@ -894,9 +962,9 @@ export function runAutopilotTournaments(state: GameState): GameState {
       if (upcomingEvent) {
          try {
            if (activeTourney.format === 'eight_man') {
-             newState = scheduleQuarterfinals(newState, activeTourney.id, upcomingEvent.id);
+             newState = scheduleQuarterfinals(newState, activeTourney.id, upcomingEvent.id, language);
            } else {
-             newState = scheduleSemifinals(newState, activeTourney.id, upcomingEvent.id);
+             newState = scheduleSemifinals(newState, activeTourney.id, upcomingEvent.id, language);
            }
          } catch (e) {
            // Skip if scheduling fails
@@ -914,7 +982,7 @@ export function runAutopilotTournaments(state: GameState): GameState {
         const upcomingEvent = Object.values(newState.events).find(e => !e.isCompleted && e.date >= state.currentDate);
         if (upcomingEvent) {
           try {
-            newState = scheduleSemifinals(newState, activeTourney.id, upcomingEvent.id);
+            newState = scheduleSemifinals(newState, activeTourney.id, upcomingEvent.id, language);
           } catch (e) {
             // Retry on the next eligible event.
           }
@@ -941,7 +1009,7 @@ export function runAutopilotTournaments(state: GameState): GameState {
            
            if (upcomingEvent) {
               try {
-                newState = scheduleSemifinals(newState, activeTourney.id, upcomingEvent.id);
+                newState = scheduleSemifinals(newState, activeTourney.id, upcomingEvent.id, language);
               } catch (e) {
                 // Ignore
               }
@@ -965,7 +1033,7 @@ export function runAutopilotTournaments(state: GameState): GameState {
          
          if (upcomingEvent) {
             try {
-              newState = scheduleFinal(newState, activeTourney.id, upcomingEvent.id);
+              newState = scheduleFinal(newState, activeTourney.id, upcomingEvent.id, language);
             } catch (e) {
               // Delay or handle reserve replacement
             }
@@ -1047,7 +1115,7 @@ export function runAutopilotTournaments(state: GameState): GameState {
 
   // 2. Concentrate depth building ONLY in the target division
   if (targetWc) {
-    newState = maintainTournamentRosterDepth(newState, targetWc);
+    newState = maintainTournamentRosterDepth(newState, targetWc, language);
   }
 
   return newState;
@@ -1055,7 +1123,8 @@ export function runAutopilotTournaments(state: GameState): GameState {
 
 export function evaluateAndCreateTournament(
   state: GameState,
-  preferredFormat?: TournamentFormat
+  preferredFormat?: TournamentFormat,
+  language: Language = readLanguage()
 ): { state: GameState; created: boolean; tournamentId?: string; errorReason?: string } {
   let newState = { ...state };
 
@@ -1144,7 +1213,7 @@ export function evaluateAndCreateTournament(
   }
 
   // Ensure depth is built
-  newState = maintainTournamentRosterDepth(newState, targetWc);
+  newState = maintainTournamentRosterDepth(newState, targetWc, language);
 
   const canRunEightMan = newState.promotion.reputation >= 60 && newState.promotion.money >= 200000;
   let format: TournamentFormat = 'four_man';
@@ -1198,7 +1267,7 @@ export function evaluateAndCreateTournament(
       format,
       participantIds,
       reserveIds
-    });
+    }, language);
     
     const newT = Object.values(newState.tournaments).find(t => t.weightClass === targetWc && t.status === 'planned');
     
@@ -1652,7 +1721,8 @@ export function diagnoseActiveTournaments(state: GameState): TournamentDiagnosis
   return diagnostics;
 }
 
-export function bindTournamentToCalendarSlots(state: GameState, tournamentId: string): GameState {
+export function bindTournamentToCalendarSlots(state: GameState, tournamentId: string, language: Language = readLanguage()): GameState {
+  const t = fixedT(language);
   const newState = { ...state };
   const tournament = newState.tournaments[tournamentId];
   if (!tournament) return newState;
@@ -1722,7 +1792,7 @@ export function bindTournamentToCalendarSlots(state: GameState, tournamentId: st
           ...slots[slotIdx],
           tournamentId: tournament.id,
           tournamentRound: round,
-          notes: [...(slots[slotIdx].notes || []), `Linked to ${tournament.name}`]
+          notes: [...(slots[slotIdx].notes || []), t($ => $.generated.tournament.calendarLinked, { name: tournament.name })]
         };
       }
     });
@@ -1752,7 +1822,7 @@ export function bindTournamentToCalendarSlots(state: GameState, tournamentId: st
         tournamentId: tournament.id,
         tournamentRound: round,
         priority: 1,
-        notes: [`Created and linked to ${tournament.name}`]
+        notes: [t($ => $.generated.tournament.calendarCreated, { name: tournament.name })]
       };
       slots.push(newSlot);
     });
@@ -1768,7 +1838,8 @@ export function bindTournamentToCalendarSlots(state: GameState, tournamentId: st
   return newState;
 }
 
-export function linkScheduledRoundToSlot(state: GameState, tournamentId: string, round: TournamentRound, eventId: string): GameState {
+export function linkScheduledRoundToSlot(state: GameState, tournamentId: string, round: TournamentRound, eventId: string, language: Language = readLanguage()): GameState {
+  const t = fixedT(language);
   const newState = { ...state };
   if (!newState.seasonPlans) return newState;
   const event = newState.events[eventId];
@@ -1785,9 +1856,9 @@ export function linkScheduledRoundToSlot(state: GameState, tournamentId: string,
       const eventDate = event.date;
       const notes = [...(slot.notes || [])];
       if (originalDate !== eventDate) {
-        notes.push(`Rescheduled from ${originalDate} to ${eventDate} to match linked event.`);
+        notes.push(t($ => $.generated.tournament.calendarRescheduled, { from: originalDate, to: eventDate }));
       }
-      notes.push(`Scheduled on event ${eventId} (Date: ${eventDate})`);
+      notes.push(t($ => $.generated.tournament.calendarScheduled, { event: eventId, date: eventDate }));
       
       slots[slotIndex] = {
         ...slot,
@@ -1804,7 +1875,8 @@ export function linkScheduledRoundToSlot(state: GameState, tournamentId: string,
   return newState;
 }
 
-export function handleDelayedRoundCalendarSlot(state: GameState, tournamentId: string, round: TournamentRound, earliestDate: string, reason: string): GameState {
+export function handleDelayedRoundCalendarSlot(state: GameState, tournamentId: string, round: TournamentRound, earliestDate: string, reason: string, language: Language = readLanguage()): GameState {
+  const t = fixedT(language);
   const newState = { ...state };
   if (!newState.seasonPlans) return newState;
 
@@ -1816,7 +1888,7 @@ export function handleDelayedRoundCalendarSlot(state: GameState, tournamentId: s
       const slots = [...plan.slots];
       const slot = slots[slotIdx];
       
-      const newNote = `Delayed: ${reason}. Earliest date: ${earliestDate}`;
+      const newNote = t($ => $.generated.tournament.calendarDelayed, { reason, date: earliestDate });
       const notes = [...(slot.notes || [])];
       if (!notes.includes(newNote)) {
         notes.push(newNote);
@@ -1846,8 +1918,11 @@ export function repairScheduledTournamentRound(
   state: GameState,
   tournamentId: string,
   round: 'quarterfinal' | 'semifinal' | 'final',
-  eventId: string
+  eventId: string,
+  language: Language = readLanguage()
 ): GameState {
+  const t = fixedT(language);
+  const roundLabel = formatRound(round, language);
   const tourney = state.tournaments[tournamentId];
   if (!tourney) throw new Error("Tournament not found");
 
@@ -1892,9 +1967,9 @@ export function repairScheduledTournamentRound(
     );
     
     if (isSuspendedShort || isBookedElsewhere) {
-      delayReason = isSuspendedShort 
-        ? `${fighter.lastName} is medically suspended for ${fighter.medicalSuspension?.daysRemaining} days.`
-        : `${fighter.lastName} is already booked in another event.`;
+      delayReason = isSuspendedShort
+        ? t($ => $.generated.tournament.suspendedDelay, { fighter: fighter.lastName, count: fighter.medicalSuspension?.daysRemaining })
+        : t($ => $.generated.tournament.bookedDelay, { fighter: fighter.lastName });
       delayFighterId = fighter.id;
       const delayDays = isSuspendedShort ? fighter.medicalSuspension!.daysRemaining : 28;
       delayEarliestDate = addDaysStr(newState.currentDate, delayDays);
@@ -1939,22 +2014,31 @@ export function repairScheduledTournamentRound(
         
         const origF = newState.fighters[originalFighterId];
         const newF = newState.fighters[unusedReserveId];
-        updatedTourney.notes = [...(updatedTourney.notes || []), `Replacement: ${newF.lastName} replaced unavailable fighter ${origF.lastName} on ${state.currentDate} for round ${round}.`];
+        updatedTourney.notes = [...(updatedTourney.notes || []), t($ => $.generated.tournament.replacementNote, {
+          replacement: newF.lastName,
+          original: origF.lastName,
+          date: state.currentDate,
+          round: roundLabel
+        })];
         
         newState.news = [
           {
             id: uuidv4(),
             date: state.currentDate,
             type: 'general' as const,
-            title: `Grand Prix Replacement: ${newF.lastName} enters ${round}!`,
-            content: `Due to long-term injury/suspension/fatigue, ${origF.firstName} ${origF.lastName} is unable to compete. Reserve fighter ${newF.firstName} ${newF.lastName} steps in for the ${round} round.`
+            title: t($ => $.generated.tournament.replacementTitle, { replacement: newF.lastName, round: roundLabel }),
+            content: t($ => $.generated.tournament.replacement, {
+              original: `${origF.firstName} ${origF.lastName}`,
+              replacement: `${newF.firstName} ${newF.lastName}`,
+              round: roundLabel
+            })
           },
           ...newState.news
         ];
         
         return unusedReserveId;
       } else {
-        delayReason = `${fighter.lastName} is unavailable and no reserve is available.`;
+        delayReason = t($ => $.generated.tournament.unavailableDelay, { fighter: fighter.lastName });
         delayFighterId = fighter.id;
         if (fighter.medicalSuspension && fighter.medicalSuspension.daysRemaining > 0) {
           delayEarliestDate = addDaysStr(newState.currentDate, fighter.medicalSuspension.daysRemaining);
@@ -2000,18 +2084,23 @@ export function repairScheduledTournamentRound(
       updatedTourney.delayedFighterId = delayFighterId;
     }
     
-    updatedTourney.notes = [...(updatedTourney.notes || []), `Round ${round} delayed: ${delayReason}`];
+    updatedTourney.notes = [...(updatedTourney.notes || []), t($ => $.generated.tournament.delayedNote, { round: roundLabel, reason: delayReason })];
     
     const isNewDelay = tourney.roundDelayReason !== delayReason || tourney.earliestRoundDate !== delayEarliestDate;
     if (isNewDelay) {
-      newState = handleDelayedRoundCalendarSlot(newState, tournamentId, round, delayEarliestDate, delayReason);
+      newState = handleDelayedRoundCalendarSlot(newState, tournamentId, round, delayEarliestDate, delayReason, language);
       newState.news = [
         {
           id: uuidv4(),
           date: state.currentDate,
           type: 'general' as const,
-          title: `${updatedTourney.name} ${round} Delayed`,
-          content: `The ${round} of the ${updatedTourney.name} has been delayed. Reason: ${delayReason}. Earliest expected reschedule: ${delayEarliestDate}.`
+          title: t($ => $.generated.tournament.delayedTitle, { name: updatedTourney.name, round: roundLabel }),
+          content: t($ => $.generated.tournament.delayed, {
+            name: updatedTourney.name,
+            round: roundLabel,
+            reason: delayReason,
+            date: delayEarliestDate
+          })
         },
         ...newState.news
       ];
@@ -2073,7 +2162,7 @@ export function repairScheduledTournamentRound(
   });
 
   updatedTourney.fights = updatedFightsInTourney;
-  updatedTourney.notes = [...(updatedTourney.notes || []), `Round ${round} repaired/rescheduled on Event: ${updatedEvent.name} on ${state.currentDate}`];
+  updatedTourney.notes = [...(updatedTourney.notes || []), t($ => $.generated.tournament.repairedNote, { round: roundLabel, event: updatedEvent.name, date: state.currentDate })];
   
   newState.tournaments[tournamentId] = updatedTourney;
   newState.events[eventId] = updatedEvent;

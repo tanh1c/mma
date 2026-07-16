@@ -51,6 +51,16 @@ assert.equal(firstPass.fighters[blue.id].counterOffer, undefined);
 assert.equal(firstPass.news.filter(item => item.id === `observer-counter-${red.id}-2025-01-01`).length, 1);
 assert.equal(secondPass.news.filter(item => item.id === `observer-counter-${red.id}-2025-01-01`).length, 1);
 
+const stripLocalizedProse = (value: ReturnType<typeof runObserverDecisions>) => ({
+  ...value,
+  news: value.news.map(({ title: _title, content: _content, ...item }) => item),
+  socialFeed: value.socialFeed.map(({ headline: _headline, body: _body, replies, ...item }) => ({ ...item, replies: replies?.map(({ body: _replyBody, ...reply }) => reply) }))
+});
+const observerEnglish = runObserverDecisions(decisionBase, 'en');
+const observerVietnamese = runObserverDecisions(decisionBase, 'vi');
+assert.notEqual(observerEnglish.news[0].title, observerVietnamese.news[0].title);
+assert.deepEqual(stripLocalizedProse(observerEnglish), stripLocalizedProse(observerVietnamese));
+
 const mismatchRed = attributes(red, Object.fromEntries(Object.keys(red.attributes).map(key => [key, 90])) as Partial<Fighter['attributes']>);
 const mismatchBlue = attributes(blue, Object.fromEntries(Object.keys(blue.attributes).map(key => [key, 40])) as Partial<Fighter['attributes']>);
 const mismatchFight = { ...fight, id: 'mismatch', redCornerId: mismatchRed.id, blueCornerId: mismatchBlue.id };
@@ -79,6 +89,17 @@ const rivalryBooked = autoBookEventsAndContracts(rivalrySetup.state);
 const rivalryEvent = Object.values(rivalryBooked.events).find(candidate => candidate.date === '2025-01-02')!;
 assert.ok(rivalryEvent.fights.some(candidate => new Set([candidate.redCornerId, candidate.blueCornerId]).size === 2 && candidate.redCornerId !== candidate.blueCornerId && [candidate.redCornerId, candidate.blueCornerId].every(id => rivalrySetup.rivals.some(rival => rival.id === id))));
 
+const bilingualBase = rivalryBookingState().state;
+const bookedEnglish = autoBookEventsAndContracts(structuredClone(bilingualBase), 'en');
+const bookedVietnamese = autoBookEventsAndContracts(structuredClone(bilingualBase), 'vi');
+const eventEnglish = Object.values(bookedEnglish.events)[0];
+const eventVietnamese = Object.values(bookedVietnamese.events)[0];
+assert.deepEqual(
+  { ...eventEnglish, id: '', fights: eventEnglish.fights.map(({ id: _id, ...fight }) => fight) },
+  { ...eventVietnamese, id: '', fights: eventVietnamese.fights.map(({ id: _id, ...fight }) => fight) }
+);
+assert.notEqual(bookedEnglish.news[0].title, bookedVietnamese.news[0].title);
+
 const blockedSetup = rivalryBookingState();
 blockedSetup.state = createGrandPrixTournament(blockedSetup.state, { name: 'Blocking GP', weightClass: 'Lightweight', format: 'four_man', titleShotPromised: true, participantIds: blockedSetup.candidates.slice(3, 6).map(item => item.id).concat(blockedSetup.rivals[0].id), reserveIds: [] });
 const blockedBooked = autoBookEventsAndContracts(blockedSetup.state);
@@ -86,6 +107,6 @@ const blockedEvent = Object.values(blockedBooked.events).find(candidate => candi
 assert.equal(blockedEvent.fights.some(candidate => [candidate.redCornerId, candidate.blueCornerId].every(id => blockedSetup.rivals.some(rival => rival.id === id))), false);
 
 const storeSource = readFileSync(new URL('./src/store/gameStore.ts', import.meta.url), 'utf8');
-assert.match(storeSource, /repairFutureEventAvailability\(gameState\);\s*gameState = runObserverDecisions\(gameState\);\s*gameState = advanceTime/);
+assert.match(storeSource, /repairFutureEventAvailability\(gameState, language\);\s*gameState = runObserverDecisions\(gameState, language\);\s*gameState = advanceTime\(gameState, 1, language\)/);
 
 console.log('Observer decision tests passed.');

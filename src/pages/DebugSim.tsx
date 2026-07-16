@@ -9,6 +9,7 @@ import { createGrandPrixTournament, scheduleSemifinals, scheduleFinal, validateT
 import { applyFightResult } from '../lib/engine';
 import { validateSeasonCalendarState } from '../lib/game/season';
 import { Button, PageHeader, Panel } from '../components/ui';
+import { useTranslation } from 'react-i18next';
 
 const createFighter = (name: string, attrs: Partial<Fighter['attributes']>, age: number = 28): Fighter => {
   const rng = new PRNG(Math.random());
@@ -76,6 +77,7 @@ const tests = [
 ];
 
 export default function DebugSim() {
+  const { t } = useTranslation('translation');
   const store = useGameStore();
   const [results, setResults] = useState<any[]>([]);
   const [report, setReport] = useState<any | null>(null);
@@ -242,7 +244,7 @@ export default function DebugSim() {
       
     } catch (err: any) {
       log(`❌ TEST FAILED: ${err.message}`);
-      alert(`Test Failed: ${err.message}`);
+      alert(t($ => $.debugSim.testFailed, { message: err.message }));
     }
   };
 
@@ -353,14 +355,14 @@ export default function DebugSim() {
 
   const printState = () => {
     console.log(useGameStore.getState());
-    alert("GameState printed to console.");
+    alert(t($ => $.debugSim.statePrinted));
   };
 
   const addCash = () => {
     useGameStore.setState(state => ({
       promotion: { ...state.promotion, money: state.promotion.money + 1000000 }
     }));
-    alert("Added $1,000,000");
+    alert(t($ => $.debugSim.cashAdded));
   };
 
   const runInvariants = () => {
@@ -488,10 +490,10 @@ export default function DebugSim() {
     }
 
     if (passed) {
-       alert("Title Invariants Passed! Check console for details.");
+       alert(t($ => $.debugSim.invariantsPassed));
        console.log("Invariants passed", { champsByWc, titles: state.titles });
     } else {
-       alert("INVARIANT FAILURES DETECTED:\n" + errors.join('\n'));
+       alert(`${t($ => $.debugSim.invariantFailures)}\n${errors.join('\n')}`);
        console.error("Invariant failures:", errors);
     }
   };
@@ -510,15 +512,15 @@ export default function DebugSim() {
   return (
     <div className="mx-auto max-w-6xl space-y-8 pb-12">
       <PageHeader
-        eyebrow="Diagnostics"
-        title="Simulation Debugger"
-        description="Run deterministic scenario checks and long-term promotion simulations."
+        eyebrow={t($ => $.debugSim.eyebrow)}
+        title={t($ => $.debugSim.title)}
+        description={t($ => $.debugSim.description)}
         actions={
           <div className="flex flex-wrap gap-2">
-            <Button variant="secondary" onClick={addCash}>+$1M Cash</Button>
-            <Button variant="secondary" onClick={printState}>Print State</Button>
-            <Button variant="secondary" onClick={runInvariants}>Test Invariants</Button>
-            <Button variant="primary" onClick={runAll}>Run All 200x</Button>
+            <Button variant="secondary" onClick={addCash}>{t($ => $.debugSim.addCash)}</Button>
+            <Button variant="secondary" onClick={printState}>{t($ => $.debugSim.printState)}</Button>
+            <Button variant="secondary" onClick={runInvariants}>{t($ => $.debugSim.testInvariants)}</Button>
+            <Button variant="primary" onClick={runAll}>{t($ => $.debugSim.runAll)}</Button>
           </div>
         }
       />
@@ -528,7 +530,7 @@ export default function DebugSim() {
           <Panel key={i} className="p-4">
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
               <h2 className="text-base font-medium tracking-tight text-white">{test.name}</h2>
-              <Button variant="secondary" className="min-h-9 px-3 text-xs" onClick={() => runTest(i)}>Run 200x</Button>
+              <Button variant="secondary" className="min-h-9 px-3 text-xs" onClick={() => runTest(i)}>{t($ => $.debugSim.run200)}</Button>
             </div>
             
             <div className="flex gap-4 mb-4">
@@ -561,35 +563,35 @@ export default function DebugSim() {
             {results[i] && (
               <div className="grid grid-cols-2 gap-4">
                 <div className="bg-neutral-950 p-3 rounded">
-                  <h4 className="text-sm font-bold text-white mb-2">Results (200 fights)</h4>
-                  <p className="text-sm text-neutral-300">Red Wins: <span className="font-bold text-red-400">{results[i].redWins}</span> ({(results[i].redWins / 2).toFixed(1)}%)</p>
-                  <p className="text-sm text-neutral-300">Blue Wins: <span className="font-bold text-blue-400">{results[i].blueWins}</span> ({(results[i].blueWins / 2).toFixed(1)}%)</p>
-                  <p className="text-sm text-neutral-300">Draws: <span className="font-bold text-white">{results[i].draws}</span> ({(results[i].draws / 2).toFixed(1)}%)</p>
-                  
+                  <h4 className="text-sm font-bold text-white mb-2">{t($ => $.debugSim.results, { count: 200 })}</h4>
+                  <p className="text-sm text-neutral-300">{t($ => $.debugSim.redWins)}: <span className="font-bold text-red-400">{results[i].redWins}</span> ({(results[i].redWins / 2).toFixed(1)}%)</p>
+                  <p className="text-sm text-neutral-300">{t($ => $.debugSim.blueWins)}: <span className="font-bold text-blue-400">{results[i].blueWins}</span> ({(results[i].blueWins / 2).toFixed(1)}%)</p>
+                  <p className="text-sm text-neutral-300">{t($ => $.debugSim.draws)}: <span className="font-bold text-white">{results[i].draws}</span> ({(results[i].draws / 2).toFixed(1)}%)</p>
+
                   <div className="mt-4 grid grid-cols-2 gap-2 text-sm text-neutral-400">
                     <div>
-                      <span className="block text-white font-bold">Rates</span>
-                      Fin: {results[i].finishRate}%<br/>
-                      Dec: {results[i].decisionRate}%<br/>
-                      Doc: {results[i].docStoppageRate}%<br/>
+                      <span className="block text-white font-bold">{t($ => $.debugSim.rates)}</span>
+                      {t($ => $.debugSim.finishShort)}: {results[i].finishRate}%<br/>
+                      {t($ => $.debugSim.decisionShort)}: {results[i].decisionRate}%<br/>
+                      {t($ => $.debugSim.doctorShort)}: {results[i].docStoppageRate}%<br/>
                       KO/TKO: {results[i].koTkoRate}%<br/>
-                      Sub: {results[i].subRate}%
+                      {t($ => $.debugSim.submissionShort)}: {results[i].subRate}%
                     </div>
                     <div>
-                      <span className="block text-white font-bold">Averages</span>
-                      Rnd: {results[i].avgRound}<br/>
-                      Perf: {results[i].avgPerf}/100<br/>
-                      <span className="block text-white font-bold mt-2">Extras</span>
+                      <span className="block text-white font-bold">{t($ => $.debugSim.averages)}</span>
+                      {t($ => $.debugSim.roundShort)}: {results[i].avgRound}<br/>
+                      {t($ => $.debugSim.performanceShort)}: {results[i].avgPerf}/100<br/>
+                      <span className="block text-white font-bold mt-2">{t($ => $.debugSim.extras)}</span>
                       10-8s: {results[i].tenEightCount} ({results[i].tenEightRate}%)<br/>
-                      Med Susp: {results[i].medSuspensions}<br/>
-                      RS Errors: {results[i].roundStatsErrors}
+                      {t($ => $.debugSim.medicalShort)}: {results[i].medSuspensions}<br/>
+                      {t($ => $.debugSim.roundStatsShort)}: {results[i].roundStatsErrors}
                       {results[i].upsetCount !== undefined && (
-                        <><br/><span className="text-yellow-400">Upsets: {results[i].upsetCount} ({((results[i].upsetCount / 200) * 100).toFixed(1)}%)</span></>
+                        <><br/><span className="text-yellow-400">{t($ => $.debugSim.upsets)}: {results[i].upsetCount} ({((results[i].upsetCount / 200) * 100).toFixed(1)}%)</span></>
                       )}
                     </div>
                   </div>
 
-                  <h4 className="text-sm font-bold text-white mt-4 mb-2">Methods</h4>
+                  <h4 className="text-sm font-bold text-white mt-4 mb-2">{t($ => $.debugSim.methods)}</h4>
                   {Object.entries(results[i].methods)
                     .sort((a, b) => (b[1] as number) - (a[1] as number))
                     .map(([method, count]) => (
@@ -597,7 +599,7 @@ export default function DebugSim() {
                   ))}
                 </div>
                 <div className="bg-neutral-950 p-3 rounded h-64 overflow-y-auto">
-                  <h4 className="text-sm font-bold text-white mb-2">Sample Commentary (1 fight)</h4>
+                  <h4 className="text-sm font-bold text-white mb-2">{t($ => $.debugSim.sampleCommentary)}</h4>
                   {results[i].sampleCommentary.map((c: string, idx: number) => (
                     <p key={idx} className={`text-xs mb-1 ${c.startsWith('---') ? 'text-white font-bold mt-2' : 'text-neutral-400'}`}>{c}</p>
                   ))}
@@ -609,17 +611,17 @@ export default function DebugSim() {
       </div>
 
       <Panel className="mt-8">
-        <h2 className="mb-4 text-lg font-medium tracking-tight text-white">Autopilot Testing</h2>
+        <h2 className="mb-4 text-lg font-medium tracking-tight text-white">{t($ => $.debugSim.autopilotTesting)}</h2>
         <div className="mb-6 flex flex-wrap gap-2">
-          <Button variant="secondary" onClick={() => runAutoSim(180)}>Run 180 Days</Button>
-          <Button variant="secondary" onClick={() => runAutoSim(365)}>Run 365 Days</Button>
-          <Button variant="secondary" onClick={() => runAutoSim(730)}>Run 730 Days</Button>
-          <Button variant="primary" onClick={runTournamentTestWorkflow}>Run GP Test Workflow</Button>
+          <Button variant="secondary" onClick={() => runAutoSim(180)}>{t($ => $.debugSim.runDays, { count: 180 })}</Button>
+          <Button variant="secondary" onClick={() => runAutoSim(365)}>{t($ => $.debugSim.runDays, { count: 365 })}</Button>
+          <Button variant="secondary" onClick={() => runAutoSim(730)}>{t($ => $.debugSim.runDays, { count: 730 })}</Button>
+          <Button variant="primary" onClick={runTournamentTestWorkflow}>{t($ => $.debugSim.runGpWorkflow)}</Button>
         </div>
 
         {testLog.length > 0 && (
           <div className="bg-neutral-950 border border-neutral-800 p-4 rounded-lg font-mono text-xs text-neutral-400 space-y-1 mb-6 max-h-60 overflow-y-auto text-left">
-            <h4 className="font-bold text-white mb-2 uppercase">Test Workflow Output</h4>
+            <h4 className="font-bold text-white mb-2 uppercase">{t($ => $.debugSim.workflowOutput)}</h4>
             {testLog.map((log, idx) => (
               <p key={idx}>{log}</p>
             ))}
@@ -628,32 +630,32 @@ export default function DebugSim() {
 
         {report && (
           <div className="space-y-4">
-            <h3 className="text-lg font-bold text-white">Simulation Report</h3>
-            
+            <h3 className="text-lg font-bold text-white">{t($ => $.debugSim.simulationReport)}</h3>
+
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                <div className="bg-neutral-950 p-4 border border-neutral-800 rounded">
-                 <p className="text-xs text-neutral-500 uppercase">10-8 Judge Scores</p>
+                 <p className="text-xs text-neutral-500 uppercase">{t($ => $.debugSim.tenEightScores)}</p>
                  <p className="text-xl font-bold text-white">{report.tenEightRate.toFixed(1)}%</p>
-                 <p className="text-xs text-neutral-400">{report.tenEightCount} / {report.totalRoundsScored} total scores</p>
+                 <p className="text-xs text-neutral-400">{report.tenEightCount} / {t($ => $.debugSim.totalScores, { count: report.totalRoundsScored })}</p>
                </div>
                <div className="bg-neutral-950 p-4 border border-neutral-800 rounded">
-                 <p className="text-xs text-neutral-500 uppercase">Awards Generated</p>
+                 <p className="text-xs text-neutral-500 uppercase">{t($ => $.debugSim.awardsGenerated)}</p>
                  <p className="text-xl font-bold text-white">{report.awardsGenerated}</p>
                </div>
                <div className="bg-neutral-950 p-4 border border-neutral-800 rounded">
-                 <p className="text-xs text-neutral-500 uppercase">Events Completed</p>
+                 <p className="text-xs text-neutral-500 uppercase">{t($ => $.debugSim.eventsCompleted)}</p>
                  <p className="text-xl font-bold text-white">{report.eventsCompleted}</p>
-                 <p className="text-xs text-neutral-400">{report.fightsSimulated} fights</p>
+                 <p className="text-xs text-neutral-400">{t($ => $.debugSim.fightsCount, { count: report.fightsSimulated })}</p>
                </div>
                <div className="bg-neutral-950 p-4 border border-neutral-800 rounded">
-                 <p className="text-xs text-neutral-500 uppercase">Medical Suspensions</p>
+                 <p className="text-xs text-neutral-500 uppercase">{t($ => $.debugSim.medicalSuspensions)}</p>
                  <p className="text-xl font-bold text-white">{report.medicalSuspensionsGiven}</p>
-                 <p className="text-xs text-neutral-400">Total given in sim</p>
+                 <p className="text-xs text-neutral-400">{t($ => $.debugSim.totalGiven)}</p>
                </div>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                <div className="bg-neutral-950 p-4 border border-neutral-800 rounded">
-                  <h4 className="font-bold text-white mb-2">Title Status Counts</h4>
+                  <h4 className="font-bold text-white mb-2">{t($ => $.debugSim.titleStatusCounts)}</h4>
                   <ul className="text-sm text-neutral-300">
                     {Object.entries(report.titleStatuses).map(([status, count]) => (
                       <li key={status} className="flex justify-between w-48">
@@ -664,30 +666,30 @@ export default function DebugSim() {
                   </ul>
                </div>
                <div className="bg-neutral-950 p-4 border border-neutral-800 rounded">
-                  <h4 className="font-bold text-white mb-2">Finish Methods</h4>
+                  <h4 className="font-bold text-white mb-2">{t($ => $.debugSim.finishMethods)}</h4>
                   <ul className="text-sm text-neutral-300">
                      <li className="flex justify-between w-48"><span>KO/TKO</span><span className="font-bold">{report.methods.knockouts} ({report.koTkoRate}%)</span></li>
-                     <li className="flex justify-between w-48"><span>Submission</span><span className="font-bold">{report.methods.submissions} ({report.subRate}%)</span></li>
-                     <li className="flex justify-between w-48"><span>Decision</span><span className="font-bold">{report.methods.decisions}</span></li>
-                     <li className="flex justify-between w-48"><span>Draw</span><span className="font-bold">{report.methods.draws} ({report.drawRate}%)</span></li>
+                     <li className="flex justify-between w-48"><span>{t($ => $.debugSim.submission)}</span><span className="font-bold">{report.methods.submissions} ({report.subRate}%)</span></li>
+                     <li className="flex justify-between w-48"><span>{t($ => $.debugSim.decision)}</span><span className="font-bold">{report.methods.decisions}</span></li>
+                     <li className="flex justify-between w-48"><span>{t($ => $.debugSim.draw)}</span><span className="font-bold">{report.methods.draws} ({report.drawRate}%)</span></li>
                   </ul>
                </div>
                <div className="bg-neutral-950 p-4 border border-neutral-800 rounded">
-                  <h4 className="font-bold text-white mb-2">Deals & Ledger</h4>
+                  <h4 className="font-bold text-white mb-2">{t($ => $.debugSim.dealsLedger)}</h4>
                   <ul className="text-sm text-neutral-300 space-y-1">
-                     <li className="flex justify-between w-56"><span>Active Sponsors</span><span className="font-bold text-green-400">{report.activeSponsors}</span></li>
-                     <li className="flex justify-between w-56"><span>Expired Sponsors</span><span className="font-bold text-neutral-500">{report.expiredSponsors}</span></li>
-                     <li className="flex justify-between w-56"><span>Active Media</span><span className="font-bold text-green-400">{report.activeMedia}</span></li>
-                     <li className="flex justify-between w-56"><span>Expired Media</span><span className="font-bold text-neutral-500">{report.expiredMedia}</span></li>
-                     <li className="border-t border-neutral-800 pt-1 flex justify-between w-56"><span>Ledger Entries</span><span className="font-bold">{report.ledgerTotal}</span></li>
-                     <li className="flex justify-between w-56"><span>Summary Rows</span><span className="font-bold text-blue-400">{report.ledgerSummaryRows}</span></li>
-                     <li className="flex justify-between w-56"><span>Cash-Affecting</span><span className="font-bold text-yellow-400">{report.ledgerCashRows}</span></li>
+                     <li className="flex justify-between w-56"><span>{t($ => $.debugSim.activeSponsors)}</span><span className="font-bold text-green-400">{report.activeSponsors}</span></li>
+                     <li className="flex justify-between w-56"><span>{t($ => $.debugSim.expiredSponsors)}</span><span className="font-bold text-neutral-500">{report.expiredSponsors}</span></li>
+                     <li className="flex justify-between w-56"><span>{t($ => $.debugSim.activeMedia)}</span><span className="font-bold text-green-400">{report.activeMedia}</span></li>
+                     <li className="flex justify-between w-56"><span>{t($ => $.debugSim.expiredMedia)}</span><span className="font-bold text-neutral-500">{report.expiredMedia}</span></li>
+                     <li className="border-t border-neutral-800 pt-1 flex justify-between w-56"><span>{t($ => $.debugSim.ledgerEntries)}</span><span className="font-bold">{report.ledgerTotal}</span></li>
+                     <li className="flex justify-between w-56"><span>{t($ => $.debugSim.summaryRows)}</span><span className="font-bold text-blue-400">{report.ledgerSummaryRows}</span></li>
+                     <li className="flex justify-between w-56"><span>{t($ => $.debugSim.cashAffecting)}</span><span className="font-bold text-yellow-400">{report.ledgerCashRows}</span></li>
                   </ul>
                </div>
             </div>
             {report.ledgerByType && Object.keys(report.ledgerByType).length > 0 && (
               <div className="bg-neutral-950 p-4 border border-neutral-800 rounded">
-                <h4 className="font-bold text-white mb-2">Ledger Entries by Type</h4>
+                <h4 className="font-bold text-white mb-2">{t($ => $.debugSim.ledgerByType)}</h4>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
                   {Object.entries(report.ledgerByType)
                     .sort((a, b) => (b[1] as number) - (a[1] as number))
@@ -703,45 +705,45 @@ export default function DebugSim() {
             
             {/* Tournaments Report Block */}
             <div className="bg-neutral-900/40 p-4 border border-neutral-800 rounded space-y-4">
-              <h4 className="font-bold text-white mb-2 uppercase tracking-wide text-xs text-purple-400">Detailed Tournament Stats</h4>
+              <h4 className="font-bold text-white mb-2 uppercase tracking-wide text-xs text-purple-400">{t($ => $.debugSim.tournamentStats)}</h4>
               <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                 <div className="bg-neutral-950 p-3 border border-neutral-800 rounded text-center">
-                  <p className="text-[10px] text-neutral-500 uppercase">Planned</p>
+                  <p className="text-[10px] text-neutral-500 uppercase">{t($ => $.debugSim.planned)}</p>
                   <p className="text-lg font-bold text-blue-400">{report.plannedTournamentsCount}</p>
                 </div>
                 <div className="bg-neutral-950 p-3 border border-neutral-800 rounded text-center">
-                  <p className="text-[10px] text-neutral-500 uppercase">Active</p>
+                  <p className="text-[10px] text-neutral-500 uppercase">{t($ => $.debugSim.active)}</p>
                   <p className="text-lg font-bold text-purple-400">{report.activeTournamentsCount}</p>
                 </div>
                 <div className="bg-neutral-950 p-3 border border-neutral-800 rounded text-center">
-                  <p className="text-[10px] text-neutral-500 uppercase">Completed 4-Man / 8-Man</p>
+                  <p className="text-[10px] text-neutral-500 uppercase">{t($ => $.debugSim.completedFormats)}</p>
                   <p className="text-lg font-bold text-green-400">{report.completed4ManCount} / {report.completed8ManCount}</p>
                 </div>
                 <div className="bg-neutral-950 p-3 border border-neutral-800 rounded text-center">
-                  <p className="text-[10px] text-neutral-500 uppercase">Cancelled</p>
+                  <p className="text-[10px] text-neutral-500 uppercase">{t($ => $.debugSim.cancelled)}</p>
                   <p className="text-lg font-bold text-neutral-500">{report.cancelledTournamentsCount}</p>
                 </div>
                 <div className="bg-neutral-950 p-3 border border-neutral-800 rounded text-center">
-                  <p className="text-[10px] text-neutral-500 uppercase">Stuck Tournaments</p>
+                  <p className="text-[10px] text-neutral-500 uppercase">{t($ => $.debugSim.stuckTournaments)}</p>
                   <p className={`text-lg font-bold ${report.stuckTournamentsCount > 0 ? 'text-red-400' : 'text-green-400'}`}>{report.stuckTournamentsCount}</p>
                 </div>
               </div>
 
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-2">
                 <div className="bg-neutral-950 p-3 border border-neutral-800 rounded text-center">
-                  <p className="text-[10px] text-neutral-500 uppercase">GP Shots Pending</p>
+                  <p className="text-[10px] text-neutral-500 uppercase">{t($ => $.debugSim.gpShotsPending)}</p>
                   <p className="text-base font-bold text-white">{report.titleShotsPending}</p>
                 </div>
                 <div className="bg-neutral-950 p-3 border border-neutral-800 rounded text-center">
-                  <p className="text-[10px] text-neutral-500 uppercase">GP Shots Used</p>
+                  <p className="text-[10px] text-neutral-500 uppercase">{t($ => $.debugSim.gpShotsUsed)}</p>
                   <p className="text-base font-bold text-neutral-400">{report.titleShotsUsed}</p>
                 </div>
                 <div className="bg-neutral-950 p-3 border border-neutral-800 rounded text-center">
-                  <p className="text-[10px] text-neutral-500 uppercase">Reserve Replacements</p>
+                  <p className="text-[10px] text-neutral-500 uppercase">{t($ => $.debugSim.reserveReplacements)}</p>
                   <p className="text-base font-bold text-white">{report.reserveReplacementsCount}</p>
                 </div>
                 <div className="bg-neutral-950 p-3 border border-neutral-800 rounded text-center">
-                  <p className="text-[10px] text-neutral-500 uppercase">Missing FightArchiveIds</p>
+                  <p className="text-[10px] text-neutral-500 uppercase">{t($ => $.debugSim.missingArchiveIds)}</p>
                   <p className="text-base font-bold text-red-400">{report.missingFightArchiveIdCount}</p>
                 </div>
               </div>
@@ -749,41 +751,41 @@ export default function DebugSim() {
               {/* Event Cadence Safeguard Block */}
               <div className="bg-neutral-950 p-3 border border-neutral-800 rounded flex justify-between items-center text-xs">
                 <div>
-                  <span className="text-neutral-500 uppercase font-bold tracking-wider text-[10px]">Event Cadence Status:</span>
+                  <span className="text-neutral-500 uppercase font-bold tracking-wider text-[10px]">{t($ => $.debugSim.cadenceStatus)}</span>
                   <span className={`ml-2 font-bold ${report.eventCadenceStalled ? 'text-red-400' : 'text-green-400'}`}>
-                    {report.eventCadenceStalled ? 'STALLED' : 'HEALTHY'}
+                    {report.eventCadenceStalled ? t($ => $.debugSim.stalled) : t($ => $.debugSim.healthy)}
                   </span>
                 </div>
                 <div className="text-neutral-400">
-                  Last Completed Event: <span className="font-bold text-white">{report.daysSinceLastEvent}</span> days ago
+                  {t($ => $.debugSim.lastCompletedEvent)}: <span className="font-bold text-white">{t($ => $.debugSim.daysAgo, { count: report.daysSinceLastEvent })}</span>
                 </div>
                 <div className="text-neutral-400">
-                  Stall News Posted: <span className="font-bold text-white">{report.cadenceStalledNewsCount}</span>
+                  {t($ => $.debugSim.stallNewsPosted)}: <span className="font-bold text-white">{report.cadenceStalledNewsCount}</span>
                 </div>
               </div>
 
               {/* Calendar Planning Metrics Block */}
               <div className="bg-neutral-950 p-4 border border-neutral-800 rounded space-y-3">
-                <p className="text-[10px] text-neutral-500 uppercase font-black tracking-wider">Annual Calendar & Season Planning Metrics</p>
+                <p className="text-[10px] text-neutral-500 uppercase font-black tracking-wider">{t($ => $.debugSim.calendarMetrics)}</p>
                 <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-center text-xs">
                   <div className="bg-neutral-900 p-2 rounded">
-                    <p className="text-neutral-500 text-[9px] uppercase">Total Slots</p>
+                    <p className="text-neutral-500 text-[9px] uppercase">{t($ => $.debugSim.totalSlots)}</p>
                     <p className="text-sm font-bold text-white mt-0.5">{report.calendarSlotsCount}</p>
                   </div>
                   <div className="bg-neutral-900 p-2 rounded">
-                    <p className="text-neutral-500 text-[9px] uppercase">Planned</p>
+                    <p className="text-neutral-500 text-[9px] uppercase">{t($ => $.debugSim.planned)}</p>
                     <p className="text-sm font-bold text-blue-400 mt-0.5">{report.calendarPlannedCount}</p>
                   </div>
                   <div className="bg-neutral-900 p-2 rounded">
-                    <p className="text-neutral-500 text-[9px] uppercase">Scheduled</p>
+                    <p className="text-neutral-500 text-[9px] uppercase">{t($ => $.debugSim.scheduled)}</p>
                     <p className="text-sm font-bold text-purple-400 mt-0.5">{report.calendarScheduledCount}</p>
                   </div>
                   <div className="bg-neutral-900 p-2 rounded">
-                    <p className="text-neutral-500 text-[9px] uppercase">Completed</p>
+                    <p className="text-neutral-500 text-[9px] uppercase">{t($ => $.debugSim.completed)}</p>
                     <p className="text-sm font-bold text-green-400 mt-0.5">{report.calendarCompletedCount}</p>
                   </div>
                   <div className="bg-neutral-900 p-2 rounded">
-                    <p className="text-neutral-500 text-[9px] uppercase">Missed/Cancelled</p>
+                    <p className="text-neutral-500 text-[9px] uppercase">{t($ => $.debugSim.missedCancelled)}</p>
                     <p className="text-sm font-bold text-red-400 mt-0.5">
                       {report.calendarMissedCount} / {report.calendarCancelledCount}
                     </p>
@@ -791,24 +793,24 @@ export default function DebugSim() {
                 </div>
                 <div className="flex gap-4 text-[11px] text-neutral-400">
                   <div>
-                    GP Slots: <span className="font-bold text-white">{report.calendarGPCount}</span>
+                    {t($ => $.debugSim.gpSlots)}: <span className="font-bold text-white">{report.calendarGPCount}</span>
                   </div>
                   <div>
-                    Title Defenses: <span className="font-bold text-white">{report.calendarTitleFightCount}</span>
+                    {t($ => $.debugSim.titleDefenses)}: <span className="font-bold text-white">{report.calendarTitleFightCount}</span>
                   </div>
                   <div>
-                    Tentpoles: <span className="font-bold text-white">{report.calendarTentpoleCount}</span>
+                    {t($ => $.debugSim.tentpoles)}: <span className="font-bold text-white">{report.calendarTentpoleCount}</span>
                   </div>
                 </div>
               </div>
 
               {report.stuckTournaments.length > 0 && (
                 <div className="bg-red-950/20 p-3 border border-red-900/50 rounded text-xs space-y-1">
-                  <p className="font-bold text-red-400 uppercase">Stuck/Delayed Tournaments Detail:</p>
+                  <p className="font-bold text-red-400 uppercase">{t($ => $.debugSim.stuckDetails)}</p>
                   <ul className="list-disc pl-4 space-y-1 text-neutral-300">
                     {report.stuckTournaments.map((d: any) => (
                       <li key={d.tournamentId}>
-                        <span className="font-bold">{d.name}</span> ({d.format}) - Age: <span className="font-bold text-white">{d.ageDays}d</span> | Needed: <span className="text-blue-300">{d.currentRoundNeeded}</span> | Status: <span className="italic text-yellow-500">{d.reasonCannotSchedule || 'Waiting to schedule'}</span>
+                        <span className="font-bold">{d.name}</span> ({d.format}) - {t($ => $.debugSim.age)}: <span className="font-bold text-white">{d.ageDays}d</span> | {t($ => $.debugSim.needed)}: <span className="text-blue-300">{d.currentRoundNeeded}</span> | {t($ => $.debugSim.status)}: <span className="italic text-yellow-500">{d.reasonCannotSchedule || t($ => $.debugSim.waitingToSchedule)}</span>
                       </li>
                     ))}
                   </ul>
@@ -818,50 +820,50 @@ export default function DebugSim() {
 
             {/* General Invariants Checks Block */}
             <div className="bg-neutral-900/40 p-4 border border-neutral-800 rounded space-y-2">
-              <h4 className="font-bold text-white mb-2 uppercase tracking-wide text-xs text-blue-400">General Codebase Invariants</h4>
+              <h4 className="font-bold text-white mb-2 uppercase tracking-wide text-xs text-blue-400">{t($ => $.debugSim.generalInvariants)}</h4>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
                 <div className="flex justify-between p-2 bg-neutral-950 rounded border border-neutral-850">
-                  <span className="text-neutral-400">Duplicate Champions</span>
+                  <span className="text-neutral-400">{t($ => $.debugSim.duplicateChampions)}</span>
                   <span className={`font-bold ${report.duplicateChampionsCount > 0 ? 'text-red-400' : 'text-green-400'}`}>{report.duplicateChampionsCount}</span>
                 </div>
                 <div className="flex justify-between p-2 bg-neutral-950 rounded border border-neutral-850">
-                  <span className="text-neutral-400">Completed Events w/o Result</span>
+                  <span className="text-neutral-400">{t($ => $.debugSim.completedWithoutResult)}</span>
                   <span className={`font-bold ${report.completedEventMissingResult > 0 ? 'text-red-400' : 'text-green-400'}`}>{report.completedEventMissingResult}</span>
                 </div>
                 <div className="flex justify-between p-2 bg-neutral-950 rounded border border-neutral-850">
-                  <span className="text-neutral-400">Suspended Fighter Booked</span>
+                  <span className="text-neutral-400">{t($ => $.debugSim.suspendedBooked)}</span>
                   <span className={`font-bold ${report.suspendedFightersBooked > 0 ? 'text-red-400' : 'text-green-400'}`}>{report.suspendedFightersBooked}</span>
                 </div>
                 <div className="flex justify-between p-2 bg-neutral-950 rounded border border-neutral-850">
-                  <span className="text-neutral-400">Ledger Inconsistencies</span>
+                  <span className="text-neutral-400">{t($ => $.debugSim.ledgerInconsistencies)}</span>
                   <span className={`font-bold ${report.ledgerInconsistencies > 0 ? 'text-red-400' : 'text-green-400'}`}>{report.ledgerInconsistencies}</span>
                 </div>
                 <div className="flex justify-between p-2 bg-neutral-950 rounded border border-neutral-850">
-                  <span className="text-neutral-400">Past Scheduled Events</span>
+                  <span className="text-neutral-400">{t($ => $.debugSim.pastScheduledEvents)}</span>
                   <span className={`font-bold ${report.pastScheduledEventsCount > 0 ? 'text-red-400' : 'text-green-400'}`}>{report.pastScheduledEventsCount}</span>
                 </div>
                 <div className="flex justify-between p-2 bg-neutral-950 rounded border border-neutral-850">
-                  <span className="text-neutral-400">Scheduled w/ 0 Fights</span>
+                  <span className="text-neutral-400">{t($ => $.debugSim.scheduledNoFights)}</span>
                   <span className={`font-bold ${report.scheduledEventsWith0Fights > 0 ? 'text-red-400' : 'text-green-400'}`}>{report.scheduledEventsWith0Fights}</span>
                 </div>
                 <div className="flex justify-between p-2 bg-neutral-950 rounded border border-neutral-850">
-                  <span className="text-neutral-400">Upcoming Unavailable Fighters</span>
+                  <span className="text-neutral-400">{t($ => $.debugSim.unavailableFighters)}</span>
                   <span className={`font-bold ${report.upcomingUnavailableFighterCount > 0 ? 'text-red-400' : 'text-green-400'}`}>{report.upcomingUnavailableFighterCount}</span>
                 </div>
                 <div className="flex justify-between p-2 bg-neutral-950 rounded border border-neutral-850">
-                  <span className="text-neutral-400">Slot/Event Date Mismatch</span>
+                  <span className="text-neutral-400">{t($ => $.debugSim.dateMismatch)}</span>
                   <span className={`font-bold ${report.slotEventDateMismatchCount > 0 ? 'text-red-400' : 'text-green-400'}`}>{report.slotEventDateMismatchCount}</span>
                 </div>
                 <div className="flex justify-between p-2 bg-neutral-950 rounded border border-neutral-850">
-                  <span className="text-neutral-400">Fake GP Events</span>
+                  <span className="text-neutral-400">{t($ => $.debugSim.fakeGpEvents)}</span>
                   <span className={`font-bold ${report.fakeGPEventCount > 0 ? 'text-red-400' : 'text-green-400'}`}>{report.fakeGPEventCount}</span>
                 </div>
                 <div className="flex justify-between p-2 bg-neutral-950 rounded border border-neutral-850">
-                  <span className="text-neutral-400">Fake GP Slots</span>
+                  <span className="text-neutral-400">{t($ => $.debugSim.fakeGpSlots)}</span>
                   <span className={`font-bold ${report.fakeGPSlotCount > 0 ? 'text-red-400' : 'text-green-400'}`}>{report.fakeGPSlotCount}</span>
                 </div>
                 <div className="flex justify-between p-2 bg-neutral-950 rounded border border-neutral-850">
-                  <span className="text-neutral-400">Stale Planned Slots</span>
+                  <span className="text-neutral-400">{t($ => $.debugSim.staleSlots)}</span>
                   <span className={`font-bold ${report.stalePlannedSlotCount > 0 ? 'text-red-400' : 'text-green-400'}`}>{report.stalePlannedSlotCount}</span>
                 </div>
               </div>
@@ -869,7 +871,7 @@ export default function DebugSim() {
 
             {report.tournamentWinners.length > 0 && (
               <div className="bg-neutral-950 p-4 border border-neutral-800 rounded">
-                <h4 className="font-bold text-white mb-2">Grand Prix Winners</h4>
+                <h4 className="font-bold text-white mb-2">{t($ => $.debugSim.gpWinners)}</h4>
                 <ul className="text-sm text-neutral-300 space-y-1">
                   {report.tournamentWinners.map((w: string, idx: number) => (
                     <li key={idx} className="text-green-400 font-semibold">• {w}</li>
@@ -880,7 +882,7 @@ export default function DebugSim() {
 
             {report.invalidTournamentStates.length > 0 && (
               <div className="bg-red-950 p-4 border border-red-800 rounded">
-                <h4 className="font-bold text-red-400 mb-2">Tournament Invariant Errors</h4>
+                <h4 className="font-bold text-red-400 mb-2">{t($ => $.debugSim.tournamentErrors)}</h4>
                 <ul className="text-sm text-red-300 space-y-1">
                   {report.invalidTournamentStates.map((err: string, idx: number) => (
                     <li key={idx}>• {err}</li>
@@ -891,7 +893,7 @@ export default function DebugSim() {
 
             {report.titleShotDebtInvariantErrors.length > 0 && (
               <div className="bg-red-950 p-4 border border-red-800 rounded">
-                <h4 className="font-bold text-red-400 mb-2">Title Shot Debt Invariant Errors</h4>
+                <h4 className="font-bold text-red-400 mb-2">{t($ => $.debugSim.titleShotErrors)}</h4>
                 <ul className="text-sm text-red-300 space-y-1">
                   {report.titleShotDebtInvariantErrors.map((err: string, idx: number) => (
                     <li key={idx}>• {err}</li>
@@ -902,12 +904,12 @@ export default function DebugSim() {
 
             {report.roundStatsErrors > 0 && (
               <div className="bg-red-950 p-4 border border-red-800 rounded">
-                <p className="text-sm text-red-400 font-bold">⚠ {report.roundStatsErrors} roundStats validation errors detected (rounds with missing/empty judges)</p>
+                <p className="text-sm text-red-400 font-bold">{t($ => $.debugSim.roundStatsErrors, { count: report.roundStatsErrors })}</p>
               </div>
             )}
             {report.titleInvariantErrors.length > 0 && (
               <div className="bg-red-950 p-4 border border-red-800 rounded">
-                <h4 className="font-bold text-red-400 mb-2">Title Invariant Errors</h4>
+                <h4 className="font-bold text-red-400 mb-2">{t($ => $.debugSim.titleErrors)}</h4>
                 <ul className="text-sm text-red-300 space-y-1">
                   {report.titleInvariantErrors.map((err: string, idx: number) => (
                     <li key={idx}>• {err}</li>
@@ -917,7 +919,7 @@ export default function DebugSim() {
             )}
             {report.calendarIntegrityErrors && report.calendarIntegrityErrors.length > 0 && (
               <div className="bg-red-950 p-4 border border-red-800 rounded">
-                <h4 className="font-bold text-red-400 mb-2">Calendar Integrity Errors</h4>
+                <h4 className="font-bold text-red-400 mb-2">{t($ => $.debugSim.calendarErrors)}</h4>
                 <ul className="text-sm text-red-300 space-y-1">
                   {report.calendarIntegrityErrors.map((err: string, idx: number) => (
                     <li key={idx}>• {err}</li>

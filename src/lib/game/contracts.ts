@@ -1,5 +1,7 @@
 import { addDays, differenceInCalendarDays } from 'date-fns';
+import '../../i18n';
 import { Contract, ContractCounterOffer, Fighter, Promotion } from '../../types/game';
+import { fixedT, readLanguage, type Language } from '../localization';
 import { getFighterOverall, isProspect } from './fighterRatings';
 
 export const CONTRACT_DAYS_PER_FIGHT = 180;
@@ -88,27 +90,28 @@ export function getContractExpectation(fighter: Fighter, promotion: Promotion): 
 
 export type OfferEvaluation = { accepted: true; reason: string } | { accepted: false; reason: string; counterOffer?: ContractCounterOffer };
 
-export function evaluateOffer(fighter: Fighter, promotion: Promotion, offerPay: number, offerBonus: number, offerFights: number, currentDate: string): OfferEvaluation {
+export function evaluateOffer(fighter: Fighter, promotion: Promotion, offerPay: number, offerBonus: number, offerFights: number, currentDate: string, language: Language = readLanguage()): OfferEvaluation {
+  const t = fixedT(language);
   const expectation = getContractExpectation(fighter, promotion);
 
   if (expectation.interest < 20 && offerPay < expectation.basePay * 2) {
-    return { accepted: false, reason: "I'm not interested in fighting for a promotion of your caliber right now." };
+    return { accepted: false, reason: t($ => $.generated.contracts.notInterested) };
   }
 
   const expectedTotal = expectation.basePay + expectation.winBonus;
   const valueRatio = (offerPay + offerBonus) / expectedTotal;
 
   if (valueRatio >= 1.0) {
-    return { accepted: true, reason: 'Offer accepted. Let\'s make some money.' };
+    return { accepted: true, reason: t($ => $.generated.contracts.accepted) };
   }
   if (valueRatio >= 0.8 && expectation.interest > 70) {
-    return { accepted: true, reason: 'It\'s a bit low, but I want to fight here. Accepted.' };
+    return { accepted: true, reason: t($ => $.generated.contracts.acceptedLow) };
   }
 
   const credible = valueRatio >= 0.8 || (expectation.interest >= 60 && valueRatio >= 0.7);
   return {
     accepted: false,
-    reason: credible ? 'The financial terms are close. Here is my counter-offer.' : 'The financial terms are not acceptable to me right now.',
+    reason: credible ? t($ => $.generated.contracts.counterOffer) : t($ => $.generated.contracts.rejected),
     ...(credible ? { counterOffer: createCounterOffer(expectation.basePay, expectation.winBonus, offerFights, expectation.interest, currentDate) } : {})
   };
 }

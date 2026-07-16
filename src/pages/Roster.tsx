@@ -13,6 +13,8 @@ import { DataSurface, PageHeader, Panel, StatusBadge } from '../components/ui';
 import { getFighterOverall, isProspect } from '../lib/game/fighterRatings';
 import { formatHeight, formatWeight } from '../lib/displayUnits';
 import { useSettingsStore } from '../store/settingsStore';
+import { useTranslation } from 'react-i18next';
+import { formatCurrency, formatFighterStyle, formatWeightClass } from '../lib/localization';
 
 function cn(...inputs: any[]) {
   return twMerge(clsx(inputs));
@@ -21,9 +23,10 @@ function cn(...inputs: any[]) {
 type SortKey = 'name' | 'rank' | 'age' | 'weight' | 'record' | 'style' | 'overall' | 'potential' | 'popularity' | 'status' | 'contract';
 
 export default function Roster() {
+  const { t } = useTranslation('translation');
   const gameState = useGameStore();
   const { fighters, setView } = gameState;
-  const unitSystem = useSettingsStore(settings => settings.unitSystem);
+  const { unitSystem, language } = useSettingsStore();
   const [search, setSearch] = useState('');
   const [filterWeight, setFilterWeight] = useState<string>('All');
   const [filterStyle, setFilterStyle] = useState<string>('All');
@@ -130,49 +133,34 @@ export default function Roster() {
     return result;
   }, [fighters, search, filterWeight, filterStyle, filterStatus, filterArchetype, filterContract, sortConfig]);
 
-  const weightOptions = [
-    { value: 'All', label: 'All Weights' },
-    { value: 'Heavyweight', label: 'Heavyweight' },
-    { value: 'Middleweight', label: 'Middleweight' },
-    { value: 'Welterweight', label: 'Welterweight' },
-    { value: 'Lightweight', label: 'Lightweight' },
-    { value: 'Featherweight', label: 'Featherweight' },
-    { value: 'Bantamweight', label: 'Bantamweight' }
-  ];
+  const weightOptions = ['Heavyweight', 'Middleweight', 'Welterweight', 'Lightweight', 'Featherweight', 'Bantamweight'].map(value => ({ value, label: formatWeightClass(value, language) }));
+  weightOptions.unshift({ value: 'All', label: t($ => $.roster.filters.allWeights) });
 
-  const styleOptions = [
-    { value: 'All', label: 'All Styles' },
-    { value: 'Boxer', label: 'Boxer' },
-    { value: 'Wrestler', label: 'Wrestler' },
-    { value: 'BJJ', label: 'BJJ' },
-    { value: 'Kickboxer', label: 'Kickboxer' },
-    { value: 'Muay Thai', label: 'Muay Thai' },
-    { value: 'Sambo', label: 'Sambo' },
-    { value: 'Balanced', label: 'Balanced' }
-  ];
+  const styleOptions = ['Boxer', 'Wrestler', 'BJJ', 'Kickboxer', 'Muay Thai', 'Sambo', 'Balanced'].map(value => ({ value, label: formatFighterStyle(value, language) }));
+  styleOptions.unshift({ value: 'All', label: t($ => $.roster.filters.allStyles) });
 
   const archetypeOptions = [
-    { value: 'All', label: 'Any Archetype' },
-    { value: 'Star', label: 'Star' },
-    { value: 'Prospect', label: 'Prospect' },
-    { value: 'Veteran', label: 'Veteran' }
+    { value: 'All', label: t($ => $.roster.filters.anyArchetype) },
+    { value: 'Star', label: t($ => $.roster.filters.star) },
+    { value: 'Prospect', label: t($ => $.roster.filters.prospect) },
+    { value: 'Veteran', label: t($ => $.roster.filters.veteran) }
   ];
 
   const statusOptions = [
-    { value: 'All', label: 'Any Status' },
-    { value: 'Ready', label: 'Ready to Fight' },
-    { value: 'Injured', label: 'Injured' },
-    { value: 'Suspended', label: 'Medically Suspended' },
-    { value: 'Fatigued', label: 'Fatigued' }
+    { value: 'All', label: t($ => $.roster.filters.anyStatus) },
+    { value: 'Ready', label: t($ => $.roster.filters.readyToFight) },
+    { value: 'Injured', label: t($ => $.rankings.injured) },
+    { value: 'Suspended', label: t($ => $.roster.filters.medicallySuspended) },
+    { value: 'Fatigued', label: t($ => $.roster.filters.fatigued) }
   ];
-  const contractOptions = [{ value: 'All', label: 'Any Contract' }, { value: 'Expiring', label: 'Expiring Soon' }];
+  const contractOptions = [{ value: 'All', label: t($ => $.roster.filters.anyContract) }, { value: 'Expiring', label: t($ => $.roster.filters.expiringSoon) }];
 
   return (
     <div className="space-y-6">
-      <PageHeader eyebrow="Competition" title="Promotion Roster" description={`${roster.length} contracted fighters`} />
+      <PageHeader eyebrow={t($ => $.roster.eyebrow)} title={t($ => $.roster.title)} description={t($ => $.roster.fighterCount, { count: roster.length })} />
 
       <Panel className="flex flex-wrap gap-3 p-4">
-        <input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search fighter" aria-label="Search roster" className="h-10 w-44 rounded border border-neutral-800 bg-neutral-950 px-3 text-sm text-white outline-none focus:border-neutral-500" />
+        <input value={search} onChange={event => setSearch(event.target.value)} placeholder={t($ => $.roster.searchPlaceholder)} aria-label={t($ => $.roster.searchLabel)} className="h-10 w-44 rounded border border-neutral-800 bg-neutral-950 px-3 text-sm text-white outline-none focus:border-neutral-500" />
         <Select value={filterWeight} onChange={setFilterWeight} options={weightOptions} className="w-40" />
         <Select value={filterStyle} onChange={setFilterStyle} options={styleOptions} className="w-40" />
         <Select value={filterArchetype} onChange={setFilterArchetype} options={archetypeOptions} className="w-40" />
@@ -186,34 +174,34 @@ export default function Roster() {
           <thead className="border-b border-[#2a2c31] bg-black/10 font-mono text-[10px] uppercase tracking-[0.14em] text-neutral-500">
             <tr>
               <th className="p-4 cursor-pointer hover:bg-neutral-900 transition-colors group" onClick={() => handleSort('name')}>
-                Fighter <SortIcon sortKey="name" /> <button type="button" onClick={event => { event.stopPropagation(); handleSort('rank'); }} className="ml-2">Rank<SortIcon sortKey="rank" /></button>
+                {t($ => $.roster.columns.fighter)} <SortIcon sortKey="name" /> <button type="button" onClick={event => { event.stopPropagation(); handleSort('rank'); }} className="ml-2">{t($ => $.roster.columns.rank)}<SortIcon sortKey="rank" /></button>
               </th>
               <th className="p-4 cursor-pointer hover:bg-neutral-900 transition-colors group" onClick={() => handleSort('age')}>
-                Age <SortIcon sortKey="age" />
+                {t($ => $.roster.columns.age)} <SortIcon sortKey="age" />
               </th>
               <th className="p-4 cursor-pointer hover:bg-neutral-900 transition-colors group" onClick={() => handleSort('weight')}>
-                Weight <SortIcon sortKey="weight" />
+                {t($ => $.roster.columns.weight)} <SortIcon sortKey="weight" />
               </th>
               <th className="p-4 cursor-pointer hover:bg-neutral-900 transition-colors group" onClick={() => handleSort('record')}>
-                Record <SortIcon sortKey="record" />
+                {t($ => $.roster.columns.record)} <SortIcon sortKey="record" />
               </th>
               <th className="p-4 cursor-pointer hover:bg-neutral-900 transition-colors group" onClick={() => handleSort('style')}>
-                Style <SortIcon sortKey="style" />
+                {t($ => $.roster.columns.style)} <SortIcon sortKey="style" />
               </th>
               <th className="p-4 cursor-pointer hover:bg-neutral-900 transition-colors group" onClick={() => handleSort('overall')}>
-                OVR <SortIcon sortKey="overall" />
+                {t($ => $.roster.columns.overall)} <SortIcon sortKey="overall" />
               </th>
               <th className="p-4 cursor-pointer hover:bg-neutral-900 transition-colors group" onClick={() => handleSort('potential')}>
-                POT <SortIcon sortKey="potential" />
+                {t($ => $.roster.columns.potential)} <SortIcon sortKey="potential" />
               </th>
               <th className="p-4 text-center cursor-pointer hover:bg-neutral-900 transition-colors group" onClick={() => handleSort('popularity')}>
-                Pop / Mor / Mom <SortIcon sortKey="popularity" />
+                {t($ => $.roster.columns.popularityMoraleMomentum)} <SortIcon sortKey="popularity" />
               </th>
               <th className="p-4 text-center cursor-pointer hover:bg-neutral-900 transition-colors group" onClick={() => handleSort('status')}>
-                Status <SortIcon sortKey="status" />
+                {t($ => $.roster.columns.status)} <SortIcon sortKey="status" />
               </th>
               <th className="p-4 text-right cursor-pointer hover:bg-neutral-900 transition-colors group" onClick={() => handleSort('contract')}>
-                Contract <SortIcon sortKey="contract" />
+                {t($ => $.roster.columns.contract)} <SortIcon sortKey="contract" />
               </th>
             </tr>
           </thead>
@@ -236,47 +224,47 @@ export default function Roster() {
                         <FighterAvatar id={f.id} name={`${f.firstName} ${f.lastName}`} nationality={f.nationality} className="h-8 w-8" />
                         <FighterRankBadge fighterId={f.id} /><div className="font-bold text-white">{f.firstName} {f.lastName}</div>
                         <CountryFlag nationality={f.nationality} className="text-sm" />
-                        {f.isChampion && <span className="text-yellow-500 text-xs font-bold" title="Champion">👑</span>}
+                        {f.isChampion && <span className="text-yellow-500 text-xs font-bold" title={t($ => $.roster.champion)}>👑</span>}
                       </div>
                       {f.nickname && <div className="text-xs text-neutral-400">"{f.nickname}"</div>}
                       <div className="text-[10px] text-neutral-500">{formatHeight(f.heightCm, unitSystem)} · {formatWeight(f.fightWeightLb, unitSystem)}/{formatWeight(f.walkAroundWeightLb, unitSystem)}</div>
                       
                       <div className="mt-1 flex gap-1">
-                        {isStar && <StatusBadge tone="warning">Star</StatusBadge>}
-                        {prospect && <StatusBadge>Prospect</StatusBadge>}
-                        {isVeteran && <StatusBadge>Veteran</StatusBadge>}
+                        {isStar && <StatusBadge tone="warning">{t($ => $.roster.filters.star)}</StatusBadge>}
+                        {prospect && <StatusBadge>{t($ => $.roster.filters.prospect)}</StatusBadge>}
+                        {isVeteran && <StatusBadge>{t($ => $.roster.filters.veteran)}</StatusBadge>}
                       </div>
                     </div>
                   </td>
                   <td className="p-4">{f.age}</td>
-                  <td className="p-4">{f.weightClass}</td>
+                  <td className="p-4">{formatWeightClass(f.weightClass, language)}</td>
                   <td className="p-4">{f.record.wins}-{f.record.losses}-{f.record.draws}</td>
-                  <td className="p-4">{f.style}</td>
+                  <td className="p-4">{formatFighterStyle(f.style, language)}</td>
                   <td className="p-4 font-mono text-white">{getFighterOverall(f)}</td>
                   <td className="p-4 font-mono text-white">{f.potential}</td>
                   <td className="p-4 text-center font-mono text-xs">
                     <div className="flex justify-center gap-2">
-                      <span className="text-white" title="Popularity">{f.popularity}</span>
+                      <span className="text-white" title={t($ => $.roster.popularity)}>{f.popularity}</span>
                       <span className="text-neutral-600">/</span>
-                      <span className={f.morale > 60 ? 'text-green-400' : 'text-red-400'} title="Morale">{f.morale}</span>
+                      <span className={f.morale > 60 ? 'text-green-400' : 'text-red-400'} title={t($ => $.roster.morale)}>{f.morale}</span>
                       <span className="text-neutral-600">/</span>
-                      <span className={f.momentum > 60 ? 'text-green-400' : 'text-red-400'} title="Momentum">{f.momentum}</span>
+                      <span className={f.momentum > 60 ? 'text-green-400' : 'text-red-400'} title={t($ => $.roster.momentum)}>{f.momentum}</span>
                     </div>
                   </td>
                   <td className="p-4 text-center">
                     {f.injuryStatus ? (
-                      <span title={`${f.injuryStatus.daysRemaining} days`}><StatusBadge tone="danger">{f.injuryStatus.type}</StatusBadge></span>
+                      <span title={t($ => $.roster.days, { count: f.injuryStatus.daysRemaining })}><StatusBadge tone="danger">{f.injuryStatus.type}</StatusBadge></span>
                     ) : f.medicalSuspension ? (
-                      <span title={`${f.medicalSuspension.daysRemaining} days`}><StatusBadge tone="warning">Suspended</StatusBadge></span>
+                      <span title={t($ => $.roster.days, { count: f.medicalSuspension.daysRemaining })}><StatusBadge tone="warning">{t($ => $.roster.suspended)}</StatusBadge></span>
                     ) : f.fatigue > 50 ? (
-                      <StatusBadge tone="warning">Fatigued</StatusBadge>
+                      <StatusBadge tone="warning">{t($ => $.roster.filters.fatigued)}</StatusBadge>
                     ) : (
-                      <StatusBadge tone="success">Ready</StatusBadge>
+                      <StatusBadge tone="success">{t($ => $.roster.ready)}</StatusBadge>
                     )}
                   </td>
                   <td className="p-4 text-right">
-                    <div className="font-mono text-white">{f.contract?.fightsRemaining} <span className="text-neutral-500 text-xs">left</span></div>
-                    <div className="text-xs text-neutral-400">${(f.contract?.payPerFight || 0).toLocaleString()}</div>
+                    <div className="font-mono text-white"><span className="text-neutral-500 text-xs">{t($ => $.roster.fightsLeft, { count: f.contract?.fightsRemaining ?? 0 })}</span></div>
+                    <div className="text-xs text-neutral-400">{formatCurrency(f.contract?.payPerFight || 0, language)}</div>
                   </td>
                 </tr>
               );
@@ -285,7 +273,7 @@ export default function Roster() {
         </table>
         {roster.length === 0 && (
           <div className="p-8 text-center text-neutral-500">
-            No fighters found. Go to Free Agents to sign fighters.
+            {t($ => $.roster.empty)}
           </div>
         )}
         </div>

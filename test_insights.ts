@@ -13,9 +13,14 @@ state.fighters[suspended.id] = { ...suspended, medicalSuspension: { id: 'suspens
 assert.equal(getFighterReadiness(red).status, 'ready');
 assert.equal(getFighterReadiness(state.fighters[injured.id]).status, 'injured');
 assert.equal(getFighterReadiness(state.fighters[suspended.id]).status, 'suspended');
+assert.equal(getFighterReadiness(red, 'vi').status, getFighterReadiness(red, 'en').status);
+assert.notEqual(getFighterReadiness(red, 'vi').label, getFighterReadiness(red, 'en').label);
 
 const comparison = compareFighters(red, blue);
 assert.deepEqual(comparison, compareFighters(red, blue));
+const vietnameseComparison = compareFighters(red, blue, 'vi');
+assert.deepEqual({ ...comparison, styleNote: '', mismatchWarning: undefined, readiness: { red: { ...comparison.readiness.red, label: '', detail: '' }, blue: { ...comparison.readiness.blue, label: '', detail: '' } } }, { ...vietnameseComparison, styleNote: '', mismatchWarning: undefined, readiness: { red: { ...vietnameseComparison.readiness.red, label: '', detail: '' }, blue: { ...vietnameseComparison.readiness.blue, label: '', detail: '' } } });
+assert.notEqual(comparison.styleNote, vietnameseComparison.styleNote);
 assert.ok(comparison.redChance >= 10 && comparison.redChance <= 90);
 assert.ok(comparison.blueChance >= 10 && comparison.blueChance <= 90);
 

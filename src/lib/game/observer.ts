@@ -1,5 +1,7 @@
 import { differenceInCalendarDays } from 'date-fns';
+import '../../i18n';
 import type { FightCampFocus, Fighter, FightMatchup, GameState } from '../../types/game';
+import { fixedT, readLanguage, type Language } from '../localization';
 import { getContractEndDate } from './contracts';
 import { getFighterOverall, isProspect } from './fighterRatings';
 import { getPairKey } from './news';
@@ -15,7 +17,8 @@ export function chooseObserverCampFocus(fight: FightMatchup, red: Fighter, blue:
   return 'balanced';
 }
 
-function resolveCounterOffers(state: GameState): GameState {
+function resolveCounterOffers(state: GameState, language: Language): GameState {
+  const t = fixedT(language);
   const fighters = { ...state.fighters };
   const news = [...state.news];
   const divisionDepth = Object.values(fighters).reduce<Record<string, number>>((counts, fighter) => {
@@ -35,15 +38,15 @@ function resolveCounterOffers(state: GameState): GameState {
       counterOffer: undefined
     } : { ...fighter, counterOffer: undefined };
     const newsId = `observer-counter-${fighter.id}-${state.currentDate}`;
-    if (accepted && !news.some(item => item.id === newsId)) news.unshift({ id: newsId, date: state.currentDate, type: 'contract', title: `Counter-offer accepted: ${fighter.lastName}`, content: `${fighter.firstName} ${fighter.lastName} agreed to a ${offer.fights}-fight contract.` });
+    if (accepted && !news.some(item => item.id === newsId)) news.unshift({ id: newsId, date: state.currentDate, type: 'contract', title: t($ => $.generated.observer.counterAcceptedTitle, { name: fighter.lastName }), content: t($ => $.generated.observer.counterAccepted, { name: `${fighter.firstName} ${fighter.lastName}`, count: offer.fights }) });
   });
 
   return { ...state, fighters, news };
 }
 
-export function runObserverDecisions(state: GameState): GameState {
+export function runObserverDecisions(state: GameState, language: Language = readLanguage()): GameState {
   if (state.mode !== 'observer' || !state.autopilot.enabled) return state;
-  let nextState = resolveCounterOffers(state);
+  let nextState = resolveCounterOffers(state, language);
   const events = Object.fromEntries(Object.entries(nextState.events).map(([id, event]) => [id, event.isCompleted || event.date < nextState.currentDate ? event : {
     ...event,
     fights: event.fights.map(fight => {
@@ -57,13 +60,13 @@ export function runObserverDecisions(state: GameState): GameState {
   for (const event of Object.values(nextState.events).filter(event => !event.isCompleted && event.date >= nextState.currentDate)) {
     const daysUntil = differenceInCalendarDays(new Date(event.date), new Date(nextState.currentDate));
     for (const fight of event.fights) {
-      nextState = applyPromotionSocialAction(nextState, fight.id, 'announce');
+      nextState = applyPromotionSocialAction(nextState, fight.id, 'announce', language);
       const red = nextState.fighters[fight.redCornerId];
       const blue = nextState.fighters[fight.blueCornerId];
       if (!red || !blue || daysUntil < 1 || daysUntil > 14) continue;
       const rivalry = nextState.storylines.some(storyline => storyline.isActive && storyline.type === 'Rivalry' && getPairKey(storyline.fighterIds) === getPairKey([red.id, blue.id]));
       const promote = fight.isTitleFight || Boolean(fight.tournamentId) || rivalry || Math.abs(getFighterOverall(red) - getFighterOverall(blue)) < 10 || red.popularity + blue.popularity >= 120;
-      if (promote) nextState = applyPromotionSocialAction(nextState, fight.id, 'hype');
+      if (promote) nextState = applyPromotionSocialAction(nextState, fight.id, 'hype', language);
     }
   }
   return nextState;

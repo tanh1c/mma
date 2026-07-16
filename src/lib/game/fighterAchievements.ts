@@ -1,4 +1,6 @@
 import type { GameState } from '../../types/game';
+import '../../i18n';
+import { fixedT, formatWeightClass, readLanguage, type Language } from '../localization';
 
 export type FighterAchievementCategory = 'Titles' | 'Grand Prix' | 'Awards' | 'Milestones';
 export type FighterAchievementTone = 'neutral' | 'success' | 'warning' | 'danger';
@@ -14,7 +16,8 @@ export type FighterAchievement = {
 
 const categoryOrder: FighterAchievementCategory[] = ['Titles', 'Grand Prix', 'Awards', 'Milestones'];
 
-export function deriveFighterAchievements(state: GameState, fighterId: string): FighterAchievement[] {
+export function deriveFighterAchievements(state: GameState, fighterId: string, language: Language = readLanguage()): FighterAchievement[] {
+  const t = fixedT(language);
   const fighter = state.fighters[fighterId];
   if (!fighter) return [];
 
@@ -22,24 +25,24 @@ export function deriveFighterAchievements(state: GameState, fighterId: string): 
   const achievements: FighterAchievement[] = [];
 
   if (fighter.isChampion) {
-    achievements.push({ category: 'Titles', title: 'Current Champion', description: `Current ${fighter.weightClass} champion.`, date: state.currentDate, tone: 'warning' });
+    achievements.push({ category: 'Titles', title: t($ => $.generated.achievements.currentChampionTitle), description: t($ => $.generated.achievements.currentChampion, { weightClass: formatWeightClass(fighter.weightClass, language) }), date: state.currentDate, tone: 'warning' });
   }
 
   for (const reign of state.titleHistory.filter(item => item.fighterId === fighterId)) {
-    const belt = reign.beltType === 'interim' ? 'Interim Champion' : 'Undisputed Champion';
-    const status = reign.dateLost ? `Held until ${reign.dateLost}` : 'Current or most recent reign';
+    const belt = reign.beltType === 'interim' ? t($ => $.generated.achievements.interimChampion) : t($ => $.generated.achievements.undisputedChampion);
+    const status = reign.dateLost ? t($ => $.generated.achievements.heldUntil, { date: reign.dateLost }) : t($ => $.generated.achievements.currentReign);
     achievements.push({
       category: 'Titles',
       title: belt,
-      description: `${reign.weightClass} title won ${reign.dateWon}. ${status}.`,
+      description: t($ => $.generated.achievements.titleWon, { weightClass: formatWeightClass(reign.weightClass, language), date: reign.dateWon, status }),
       date: reign.dateWon,
       tone: 'warning'
     });
     if (reign.defenses > 0) {
       achievements.push({
         category: 'Titles',
-        title: 'Successful Title Defense',
-        description: `${reign.defenses} successful defense${reign.defenses === 1 ? '' : 's'} during this ${reign.weightClass} reign.`,
+        title: t($ => $.generated.achievements.defenseTitle),
+        description: t($ => $.generated.achievements.defenses, { count: reign.defenses, weightClass: formatWeightClass(reign.weightClass, language) }),
         date: reign.dateLost || state.currentDate,
         tone: 'success'
       });
@@ -47,7 +50,7 @@ export function deriveFighterAchievements(state: GameState, fighterId: string): 
   }
 
   for (const fight of fights.filter(fight => fight.winnerId === fighterId && fight.titleChangeInfo?.type === 'unified')) {
-    achievements.push({ category: 'Titles', title: 'Undisputed Unification', description: `Unified the title at ${fight.eventName}.`, date: fight.date, tone: 'warning', fightArchiveId: fight.id });
+    achievements.push({ category: 'Titles', title: t($ => $.generated.achievements.unificationTitle), description: t($ => $.generated.achievements.unification, { event: fight.eventName }), date: fight.date, tone: 'warning', fightArchiveId: fight.id });
   }
 
   for (const tournament of Object.values(state.tournaments || {})) {
@@ -56,29 +59,29 @@ export function deriveFighterAchievements(state: GameState, fighterId: string): 
     const date = tournament.completedDate || tournament.startDate || tournament.createdDate;
     if (tournament.status === 'completed' && tournament.winnerId === fighterId) {
       const format = tournament.format === 'four_man' ? '4-Man' : '8-Man';
-      const titleShot = tournament.titleShotPromised ? ` Title shot ${tournament.titleShotUsed ? 'used' : 'pending'}.` : '';
-      achievements.push({ category: 'Grand Prix', title: 'Grand Prix Champion', description: `Won the ${format} ${tournament.name}.${titleShot}`, date, tone: 'warning' });
+      const titleShot = tournament.titleShotPromised ? tournament.titleShotUsed ? t($ => $.generated.achievements.titleShotUsed) : t($ => $.generated.achievements.titleShotPending) : '';
+      achievements.push({ category: 'Grand Prix', title: t($ => $.generated.achievements.gpChampionTitle), description: t($ => $.generated.achievements.gpChampion, { format, tournament: tournament.name, titleShot }), date, tone: 'warning' });
     } else if (tournament.status === 'completed' && tournament.fights.some(fight => fight.round === 'final' && (fight.redFighterId === fighterId || fight.blueFighterId === fighterId))) {
-      achievements.push({ category: 'Grand Prix', title: 'Grand Prix Finalist', description: `Reached the final of ${tournament.name}.`, date, tone: 'neutral' });
+      achievements.push({ category: 'Grand Prix', title: t($ => $.generated.achievements.gpFinalistTitle), description: t($ => $.generated.achievements.gpFinalist, { tournament: tournament.name }), date, tone: 'neutral' });
     }
     if (participant.replacementForFighterId) {
-      achievements.push({ category: 'Grand Prix', title: 'Grand Prix Reserve', description: `Entered ${tournament.name} as a reserve replacement.`, date: tournament.startDate || tournament.createdDate, tone: 'neutral' });
+      achievements.push({ category: 'Grand Prix', title: t($ => $.generated.achievements.gpReserveTitle), description: t($ => $.generated.achievements.gpReserve, { tournament: tournament.name }), date: tournament.startDate || tournament.createdDate, tone: 'neutral' });
     }
   }
 
   for (const award of Object.values(state.yearlyAwards || {})) {
     const date = `${award.year}-12-31`;
-    if (award.fighterOfTheYearId === fighterId) achievements.push({ category: 'Awards', title: 'Fighter of the Year', description: `Awarded for ${award.year}.`, date, tone: 'warning' });
-    if (award.prospectOfTheYearId === fighterId) achievements.push({ category: 'Awards', title: 'Prospect of the Year', description: `Awarded for ${award.year}.`, date, tone: 'success' });
+    if (award.fighterOfTheYearId === fighterId) achievements.push({ category: 'Awards', title: t($ => $.generated.achievements.fighterOfYear), description: t($ => $.generated.achievements.awardedFor, { year: award.year }), date, tone: 'warning' });
+    if (award.prospectOfTheYearId === fighterId) achievements.push({ category: 'Awards', title: t($ => $.generated.achievements.prospectOfYear), description: t($ => $.generated.achievements.awardedFor, { year: award.year }), date, tone: 'success' });
     for (const [title, fightArchiveId] of [
-      ['Fight of the Year', award.fightOfTheYearId],
-      ['KO of the Year', award.koOfTheYearFightId],
-      ['Submission of the Year', award.submissionOfTheYearFightId],
-      ['Upset of the Year', award.upsetOfTheYearFightId]
+      [t($ => $.generated.achievements.fightOfYear), award.fightOfTheYearId],
+      [t($ => $.generated.achievements.koOfYear), award.koOfTheYearFightId],
+      [t($ => $.generated.achievements.submissionOfYear), award.submissionOfTheYearFightId],
+      [t($ => $.generated.achievements.upsetOfYear), award.upsetOfTheYearFightId]
     ] as const) {
       const fight = fightArchiveId ? state.fightArchive[fightArchiveId] : undefined;
       if (fight && (fight.redFighterId === fighterId || fight.blueFighterId === fighterId)) {
-        achievements.push({ category: 'Awards', title, description: `${award.year} award at ${fight.eventName}.`, date: fight.date, tone: 'warning', fightArchiveId });
+        achievements.push({ category: 'Awards', title, description: t($ => $.generated.achievements.awardAt, { year: award.year, event: fight.eventName }), date: fight.date, tone: 'warning', fightArchiveId });
       }
     }
   }
@@ -95,9 +98,9 @@ export function deriveFighterAchievements(state: GameState, fighterId: string): 
     }
   }
   longestStreak = Math.max(longestStreak, streak);
-  if (longestStreak >= 3) achievements.push({ category: 'Milestones', title: 'Win Streak', description: `Longest promotion win streak: ${longestStreak}.`, date: state.currentDate, tone: 'success' });
-  if (finishWins >= 3) achievements.push({ category: 'Milestones', title: 'Finisher', description: `${finishWins} promotion wins by finish.`, date: state.currentDate, tone: 'danger' });
-  if (titleFights >= 3) achievements.push({ category: 'Milestones', title: 'Title Fight Veteran', description: `${titleFights} promotion title fights.`, date: state.currentDate, tone: 'warning' });
+  if (longestStreak >= 3) achievements.push({ category: 'Milestones', title: t($ => $.generated.achievements.streakTitle), description: t($ => $.generated.achievements.streak, { count: longestStreak }), date: state.currentDate, tone: 'success' });
+  if (finishWins >= 3) achievements.push({ category: 'Milestones', title: t($ => $.generated.achievements.finisherTitle), description: t($ => $.generated.achievements.finisher, { count: finishWins }), date: state.currentDate, tone: 'danger' });
+  if (titleFights >= 3) achievements.push({ category: 'Milestones', title: t($ => $.generated.achievements.titleVeteranTitle), description: t($ => $.generated.achievements.titleVeteran, { count: titleFights }), date: state.currentDate, tone: 'warning' });
 
   return achievements.sort((a, b) => categoryOrder.indexOf(a.category) - categoryOrder.indexOf(b.category) || new Date(b.date).getTime() - new Date(a.date).getTime());
 }

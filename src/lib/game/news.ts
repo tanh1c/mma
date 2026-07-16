@@ -1,6 +1,8 @@
 import { GameState, Storyline } from '../../types/game';
 import { addDays, differenceInCalendarDays } from 'date-fns';
 import { v4 as uuidv4 } from 'uuid';
+import '../../i18n';
+import { fixedT, formatCurrency, readLanguage, type Language } from '../localization';
 
 export const RIVALRY_MAX_INTENSITY = 3;
 export const RIVALRY_COOLDOWN_DAYS = 90;
@@ -14,7 +16,8 @@ function isActiveRivalry(storyline: Storyline, currentDate: string): boolean {
   return storyline.type === 'Rivalry' && storyline.isActive && (storyline.intensity ?? 1) > 0 && (!storyline.expiresDate || storyline.expiresDate >= currentDate);
 }
 
-export function updateRivalryAfterFight(state: GameState, fighterIds: [string, string], currentDate: string, qualifies: boolean, isRematch: boolean): GameState {
+export function updateRivalryAfterFight(state: GameState, fighterIds: [string, string], currentDate: string, qualifies: boolean, isRematch: boolean, language: Language = readLanguage()): GameState {
+  const t = fixedT(language);
   const pairKey = getPairKey(fighterIds);
   const existingIndex = state.storylines.findIndex(storyline => storyline.type === 'Rivalry' && getPairKey(storyline.fighterIds) === pairKey);
   if (!qualifies && existingIndex < 0) return state;
@@ -33,7 +36,7 @@ export function updateRivalryAfterFight(state: GameState, fighterIds: [string, s
     id: existing?.id ?? uuidv4(),
     type: 'Rivalry',
     fighterIds: [...fighterIds].sort(),
-    description: `A bitter rivalry exists between ${names}.`,
+    description: t($ => $.generated.news.rivalryDescription, { names }),
     isActive: true,
     intensity,
     createdDate: existing?.createdDate ?? currentDate,
@@ -57,7 +60,8 @@ export function coolRivalries(state: GameState, currentDate: string): GameState 
   return { ...state, storylines };
 }
 
-export function generateEventNewsAndStorylines(state: GameState, eventId: string): GameState {
+export function generateEventNewsAndStorylines(state: GameState, eventId: string, language: Language = readLanguage()): GameState {
+  const t = fixedT(language);
   const event = state.events[eventId];
   if (!event || !event.isCompleted || !event.results) return state;
 
@@ -69,16 +73,16 @@ export function generateEventNewsAndStorylines(state: GameState, eventId: string
     newState.news.unshift({
       id: uuidv4(),
       date,
-      title: 'Massive Success!',
-      content: `${event.name} was a huge financial success, bringing in $${event.results.profit.toLocaleString()} in profit.`,
+      title: t($ => $.generated.news.massiveSuccessTitle),
+      content: t($ => $.generated.news.massiveSuccess, { event: event.name, profit: formatCurrency(event.results.profit, language) }),
       type: 'event'
     });
   } else if (event.results.profit < 0) {
     newState.news.unshift({
       id: uuidv4(),
       date,
-      title: 'Financial Disappointment',
-      content: `${event.name} failed to turn a profit, losing $${Math.abs(event.results.profit).toLocaleString()}.`,
+      title: t($ => $.generated.news.financialDisappointmentTitle),
+      content: t($ => $.generated.news.financialDisappointment, { event: event.name, loss: formatCurrency(Math.abs(event.results.profit), language) }),
       type: 'event'
     });
   }
@@ -87,8 +91,8 @@ export function generateEventNewsAndStorylines(state: GameState, eventId: string
     newState.news.unshift({
       id: uuidv4(),
       date,
-      title: 'Fans Disappointed with Card',
-      content: `Fans heavily criticized ${event.name} for lackluster fights.`,
+      title: t($ => $.generated.news.fansDisappointedTitle),
+      content: t($ => $.generated.news.fansDisappointed, { event: event.name }),
       type: 'general'
     });
     // Fan backlash storyline
@@ -96,7 +100,7 @@ export function generateEventNewsAndStorylines(state: GameState, eventId: string
       id: uuidv4(),
       type: 'Fan Backlash',
       fighterIds: [],
-      description: `The promotion is facing fan backlash after the disappointing ${event.name}.`,
+      description: t($ => $.generated.news.fanBacklash, { event: event.name }),
       isActive: true
     });
   }
@@ -126,8 +130,8 @@ export function generateEventNewsAndStorylines(state: GameState, eventId: string
         newState.news.unshift({
           id: uuidv4(),
           date,
-          title: `Huge Upset!`,
-          content: `${winner.firstName} ${winner.lastName} shocked the world by defeating the highly favored ${loser.firstName} ${loser.lastName}.`,
+          title: t($ => $.generated.news.hugeUpsetTitle),
+          content: t($ => $.generated.news.hugeUpset, { winner: `${winner.firstName} ${winner.lastName}`, loser: `${loser.firstName} ${loser.lastName}` }),
           type: 'fight'
         });
         
@@ -136,7 +140,7 @@ export function generateEventNewsAndStorylines(state: GameState, eventId: string
             id: uuidv4(),
             type: 'Upset Run',
             fighterIds: [winner.id],
-            description: `${winner.lastName} is on a Cinderella run after a massive upset.`,
+            description: t($ => $.generated.news.upsetRun, { name: winner.lastName }),
             isActive: true
           });
         }
@@ -147,8 +151,8 @@ export function generateEventNewsAndStorylines(state: GameState, eventId: string
         newState.news.unshift({
           id: uuidv4(),
           date,
-          title: `Controversial Decision in ${winner.lastName} vs ${loser.lastName}`,
-          content: `Fans are debating the split decision victory for ${winner.lastName}. Many felt ${loser.lastName} won.`,
+          title: t($ => $.generated.news.controversialDecisionTitle, { winner: winner.lastName, loser: loser.lastName }),
+          content: t($ => $.generated.news.controversialDecision, { winner: winner.lastName, loser: loser.lastName }),
           type: 'fight'
         });
 
@@ -157,7 +161,7 @@ export function generateEventNewsAndStorylines(state: GameState, eventId: string
           id: uuidv4(),
           type: 'Rematch Demand',
           fighterIds: [winner.id, loser.id],
-          description: `Fans are demanding a rematch between ${winner.lastName} and ${loser.lastName} after their controversial bout.`,
+          description: t($ => $.generated.news.rematchDemand, { winner: winner.lastName, loser: loser.lastName }),
           isActive: true
         });
       }
@@ -168,15 +172,15 @@ export function generateEventNewsAndStorylines(state: GameState, eventId: string
            newState.news.unshift({
              id: uuidv4(),
              date,
-             title: `Prospect Watch: ${winner.lastName}`,
-             content: `Undefeated prospect ${winner.firstName} ${winner.lastName} continues to impress and build momentum.`,
+             title: t($ => $.generated.news.prospectWatchTitle, { name: winner.lastName }),
+             content: t($ => $.generated.news.prospectWatch, { name: `${winner.firstName} ${winner.lastName}` }),
              type: 'general'
            });
            newState.storylines.push({
              id: uuidv4(),
              type: 'Prospect Hype',
              fighterIds: [winner.id],
-             description: `${winner.lastName} is one of the hottest prospects in the sport right now.`,
+             description: t($ => $.generated.news.prospectHype, { name: winner.lastName }),
              isActive: true
            });
            winner.popularity = Math.min(100, winner.popularity + 5);
@@ -191,15 +195,15 @@ export function generateEventNewsAndStorylines(state: GameState, eventId: string
           newState.news.unshift({
             id: uuidv4(),
             date,
-            title: `Dominant Champion`,
-            content: `${winner.firstName} ${winner.lastName} looked untouchable in their latest title defense.`,
+            title: t($ => $.generated.news.dominantChampionTitle),
+            content: t($ => $.generated.news.dominantChampion, { name: `${winner.firstName} ${winner.lastName}` }),
             type: 'general'
           });
           newState.storylines.push({
             id: uuidv4(),
             type: 'Champion Dominance',
             fighterIds: [winner.id],
-            description: `${winner.lastName} is looking unbeatable as champion.`,
+            description: t($ => $.generated.news.championDominance, { name: winner.lastName }),
             isActive: true
           });
           winner.popularity = Math.min(100, winner.popularity + 8);
@@ -210,13 +214,13 @@ export function generateEventNewsAndStorylines(state: GameState, eventId: string
       const activeRivalry = newState.storylines.find(storyline => storyline.type === 'Rivalry' && storyline.isActive && getPairKey(storyline.fighterIds) === pairKey);
       const qualifiesForRivalry = res.performanceRating > 85 && (res.method === 'KO/TKO' || res.method.includes('Decision'));
       const isRematch = Object.values(newState.fightArchive).some(archived => archived.eventId !== eventId && getPairKey([archived.redFighterId, archived.blueFighterId]) === pairKey);
-      const nextState = updateRivalryAfterFight(newState, [winner.id, loser.id], date, qualifiesForRivalry, isRematch);
+      const nextState = updateRivalryAfterFight(newState, [winner.id, loser.id], date, qualifiesForRivalry, isRematch, language);
       if (nextState !== newState && !activeRivalry && qualifiesForRivalry) {
         nextState.news.unshift({
           id: uuidv4(),
           date,
-          title: `Fierce Rivalry: ${winner.lastName} vs ${loser.lastName}`,
-          content: `The war between ${winner.lastName} and ${loser.lastName} has sparked a rivalry.`,
+          title: t($ => $.generated.news.fierceRivalryTitle, { winner: winner.lastName, loser: loser.lastName }),
+          content: t($ => $.generated.news.fierceRivalry, { winner: winner.lastName, loser: loser.lastName }),
           type: 'general'
         });
       }
@@ -235,7 +239,8 @@ export function generateEventNewsAndStorylines(state: GameState, eventId: string
   return newState;
 }
 
-export function generateWeeklyNewsAndStorylines(state: GameState, days: number): GameState {
+export function generateWeeklyNewsAndStorylines(state: GameState, days: number, language: Language = readLanguage()): GameState {
+  const t = fixedT(language);
   const newState = { ...state, news: [...state.news], storylines: [...state.storylines], fighters: { ...state.fighters } };
   const date = state.currentDate;
 
@@ -251,15 +256,15 @@ export function generateWeeklyNewsAndStorylines(state: GameState, days: number):
           newState.news.unshift({
             id: uuidv4(),
             date,
-            title: `Contract Dispute: ${f.lastName}`,
-            content: `${f.firstName} ${f.lastName} is unhappy with their current contract and demanding better pay.`,
+            title: t($ => $.generated.news.contractDisputeTitle, { name: f.lastName }),
+            content: t($ => $.generated.news.contractDispute, { name: `${f.firstName} ${f.lastName}` }),
             type: 'contract'
           });
           newState.storylines.push({
             id: uuidv4(),
             type: 'Contract Dispute',
             fighterIds: [f.id],
-            description: `${f.lastName} is in a contract dispute with the promotion.`,
+            description: t($ => $.generated.news.contractDisputeDescription, { name: f.lastName }),
             isActive: true
           });
           f.morale -= 10;
@@ -274,8 +279,8 @@ export function generateWeeklyNewsAndStorylines(state: GameState, days: number):
           newState.news.unshift({
             id: uuidv4(),
             date,
-            title: `${f.lastName} Frustrated by Inactivity`,
-            content: `${f.firstName} ${f.lastName} has publicly complained about not getting a fight booked.`,
+            title: t($ => $.generated.news.inactivityTitle, { name: f.lastName }),
+            content: t($ => $.generated.news.inactivity, { name: `${f.firstName} ${f.lastName}` }),
             type: 'general'
           });
           f.morale -= 5;

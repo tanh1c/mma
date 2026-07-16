@@ -14,21 +14,24 @@ import { useSettingsStore } from '../store/settingsStore';
 import { getFighterSocialFeed, getFighterStorylines } from '../lib/game/social';
 import { ChampionshipBelt, type BeltType } from '../components/ChampionshipBelt';
 import { FighterRankBadge } from '../components/FighterRankBadge';
+import { useTranslation } from 'react-i18next';
+import { formatContractInterest, formatCurrency, formatDate, formatFightMethod, formatFighterStyle, formatReadiness, formatWeightClass } from '../lib/localization';
 
 const tabs = [
-  { id: 'overview', label: 'Overview' },
-  { id: 'achievements', label: 'Achievements' },
-  { id: 'storylines', label: 'Storylines' },
-  { id: 'contract', label: 'Contract' },
-  { id: 'fights', label: 'Fight Log' },
-  { id: 'timeline', label: 'Timeline' }
+  { id: 'overview' },
+  { id: 'achievements' },
+  { id: 'storylines' },
+  { id: 'contract' },
+  { id: 'fights' },
+  { id: 'timeline' }
 ] as const;
 
 type FighterTab = typeof tabs[number]['id'];
 
 export default function FighterDetail() {
+  const { t } = useTranslation('translation');
   const state = useGameStore();
-  const unitSystem = useSettingsStore(settings => settings.unitSystem);
+  const { unitSystem, language } = useSettingsStore();
   const { selectedFighterId, fighters, setView, goBack, signFighter, renewFighter, setCounterOffer: saveCounterOffer, releaseFighter, promotion, fightArchive } = state;
   const f = selectedFighterId ? fighters[selectedFighterId] : null;
   const [activeTab, setActiveTab] = useState<FighterTab>('overview');
@@ -49,7 +52,7 @@ export default function FighterDetail() {
     setActiveTab(f.contract ? 'overview' : 'contract');
   }, [f?.id]);
 
-  if (!f) return <div>Fighter not found.</div>;
+  if (!f) return <div>{t($ => $.fighterDetail.notFound)}</div>;
 
   const fighterFights = Object.values(fightArchive)
     .filter(fight => fight.redFighterId === f.id || fight.blueFighterId === f.id)
@@ -78,7 +81,7 @@ export default function FighterDetail() {
   }, { current: 0, longest: 0 }).longest;
   const currentStreak = fighterFights.reduce((streak, fight) => streak === -1 ? -1 : fight.winnerId === f.id ? streak + 1 : -1, 0);
   const timeline = deriveFighterTimeline(state, f.id);
-  const achievements = deriveFighterAchievements(state, f.id);
+  const achievements = deriveFighterAchievements(state, f.id, language);
   const fighterStorylines = getFighterStorylines(state, f.id);
   const activeStorylines = fighterStorylines.filter(storyline => storyline.isActive);
   const socialActivity = getFighterSocialFeed(state, f.id);
@@ -86,6 +89,29 @@ export default function FighterDetail() {
   const weightCut = getWeightCutPercent(f);
   const titleState = state.titles[f.weightClass];
   const currentBeltType: BeltType | null = titleState?.undisputedChampionId === f.id ? 'undisputed' : titleState?.interimChampionId === f.id ? 'interim' : null;
+  const tabLabels = {
+    overview: t($ => $.fighterDetail.tabs.overview),
+    achievements: t($ => $.fighterDetail.tabs.achievements),
+    storylines: t($ => $.fighterDetail.tabs.storylines),
+    contract: t($ => $.fighterDetail.tabs.contract),
+    fights: t($ => $.fighterDetail.tabs.fights),
+    timeline: t($ => $.fighterDetail.tabs.timeline)
+  };
+  const statusLabel = f.injuryStatus ? formatReadiness('injured', language) : f.medicalSuspension ? formatReadiness('suspended', language) : f.fatigue > 50 ? formatReadiness('fatigued', language) : formatReadiness('ready', language);
+  const achievementCategoryLabels = {
+    Titles: t($ => $.fighterDetail.achievementCategory.titles),
+    'Grand Prix': t($ => $.fighterDetail.achievementCategory.grandPrix),
+    Awards: t($ => $.fighterDetail.achievementCategory.awards),
+    Milestones: t($ => $.fighterDetail.achievementCategory.milestones)
+  };
+  const socialKindLabels = {
+    news: t($ => $.socialHub.kind.news),
+    article: t($ => $.socialHub.kind.article),
+    fighter_post: t($ => $.socialHub.kind.fighterPost),
+    promotion_post: t($ => $.socialHub.kind.promotionPost),
+    thread: t($ => $.socialHub.kind.thread)
+  };
+  const contractExpectation = getContractExpectation(f, promotion);
 
   const completeSigning = (pay: number, bonus: number, fights: number) => {
     if (f.contract) renewFighter(f.id, pay, bonus, fights);
@@ -96,7 +122,7 @@ export default function FighterDetail() {
   const handleSign = () => {
     setNegotiationResult(null);
     if (f.counterOffer && f.counterOffer.expiresDate >= state.currentDate) {
-      setNegotiationResult({ accepted: false, reason: 'Respond to the current counter-offer before making another offer.' });
+      setNegotiationResult({ accepted: false, reason: t($ => $.fighterDetail.respondCounter) });
       return;
     }
     const result = evaluateOffer(f, promotion, offerPay, offerBonus, offerFights, state.currentDate);
@@ -109,7 +135,7 @@ export default function FighterDetail() {
   };
 
   const handleRelease = () => {
-    if (window.confirm(`Are you sure you want to release ${f.lastName}?`)) {
+    if (window.confirm(t($ => $.fighterDetail.releaseConfirm, { name: f.lastName }))) {
       releaseFighter(f.id);
       setView('roster', undefined, { replace: true });
     }
@@ -126,7 +152,7 @@ export default function FighterDetail() {
   const openFight = (fightArchiveId: string) => setView('fight-detail', { fightArchiveId });
 
   return <div className="mx-auto max-w-4xl space-y-6 pb-12">
-    <PageHeader eyebrow={f.weightClass} title={`${f.firstName} ${f.lastName}`} actions={<Button variant="quiet" onClick={() => goBack(f.contract ? 'roster' : 'free-agents')} className="inline-flex items-center gap-2"><ArrowLeft size={16} /> Back</Button>} />
+    <PageHeader eyebrow={formatWeightClass(f.weightClass, language)} title={`${f.firstName} ${f.lastName}`} actions={<Button variant="quiet" onClick={() => goBack(f.contract ? 'roster' : 'free-agents')} className="inline-flex items-center gap-2"><ArrowLeft size={16} /> {t($ => $.common.back)}</Button>} />
 
     <Panel>
       <div className="flex flex-col gap-6 md:flex-row md:items-start">
@@ -134,54 +160,54 @@ export default function FighterDetail() {
           <FighterAvatar id={f.id} name={`${f.firstName} ${f.lastName}`} nationality={f.nationality} className="h-20 w-20 border border-neutral-700" />
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2"><FighterRankBadge fighterId={f.id} former={!f.contract ? f.lastPromotionRank : undefined} /><h2 className="text-2xl font-normal tracking-[-0.03em] text-white sm:text-3xl">{f.firstName} {f.lastName}</h2></div>
-            <div className="mt-1 flex items-center gap-2 text-sm text-neutral-400"><CountryFlag nationality={f.nationality} className="text-base" /><span>{f.nationality} · {f.age} years</span></div>
+            <div className="mt-1 flex items-center gap-2 text-sm text-neutral-400"><CountryFlag nationality={f.nationality} className="text-base" /><span>{f.nationality} · {t($ => $.fighterDetail.years, { count: f.age })}</span></div>
             {f.nickname && <p className="mt-1 text-sm italic text-neutral-400">“{f.nickname}”</p>}
           </div>
         </div>
         <div className="flex min-w-0 flex-col gap-4">
-          {currentBeltType && <div className="flex flex-col items-center"><ChampionshipBelt weightClass={f.weightClass} type={currentBeltType} size="champion" alt={`${f.weightClass} ${currentBeltType} championship belt held by ${f.firstName} ${f.lastName}`} /><p className="font-mono text-[10px] uppercase tracking-[0.14em] text-amber-300">{currentBeltType === 'interim' ? 'Interim Champion' : 'Undisputed Champion'}</p></div>}
+          {currentBeltType && <div className="flex flex-col items-center"><ChampionshipBelt weightClass={f.weightClass} type={currentBeltType} size="champion" alt={t($ => $.fighterDetail.beltAlt, { weightClass: formatWeightClass(f.weightClass, language), type: currentBeltType === 'interim' ? t($ => $.fighterDetail.interimChampion) : t($ => $.fighterDetail.undisputedChampion), name: `${f.firstName} ${f.lastName}` })} /><p className="font-mono text-[10px] uppercase tracking-[0.14em] text-amber-300">{currentBeltType === 'interim' ? t($ => $.fighterDetail.interimChampion) : t($ => $.fighterDetail.undisputedChampion)}</p></div>}
           <div className="grid grid-cols-2 gap-3 text-center sm:grid-cols-5 md:min-w-[30rem]">
             <ProfileStat label="OVR" value={String(overall)} tone={overall >= 80 ? 'success' : overall >= 65 ? 'warning' : 'neutral'} />
             <ProfileStat label="POT" value={String(f.potential)} />
-            <ProfileStat label="Record" value={`${f.record.wins}-${f.record.losses}-${f.record.draws}`} detail={`${f.record.kos} KO · ${f.record.subs} SUB`} />
-            <ProfileStat label="Style" value={f.style} />
-            <ProfileStat label="Status" value={f.injuryStatus ? 'Injured' : f.medicalSuspension ? 'Suspended' : f.fatigue > 50 ? 'Fatigued' : 'Ready'} tone={f.injuryStatus ? 'danger' : f.medicalSuspension || f.fatigue > 50 ? 'warning' : 'success'} />
+            <ProfileStat label={t($ => $.fighterDetail.record)} value={`${f.record.wins}-${f.record.losses}-${f.record.draws}`} detail={`${f.record.kos} KO · ${f.record.subs} SUB`} />
+            <ProfileStat label={t($ => $.fighterDetail.style)} value={formatFighterStyle(f.style, language)} />
+            <ProfileStat label={t($ => $.fighterDetail.status)} value={statusLabel} tone={f.injuryStatus ? 'danger' : f.medicalSuspension || f.fatigue > 50 ? 'warning' : 'success'} />
           </div>
         </div>
       </div>
     </Panel>
 
-    <div role="tablist" aria-label="Fighter detail sections" className="flex flex-wrap border-b border-[#2a2c31]">
-      {tabs.map((tab, index) => <button key={tab.id} id={`fighter-tab-${tab.id}`} type="button" role="tab" aria-selected={activeTab === tab.id} aria-controls={`fighter-panel-${tab.id}`} tabIndex={activeTab === tab.id ? 0 : -1} onClick={() => selectTab(tab.id)} onKeyDown={event => handleTabKeyDown(event, index)} className={`shrink-0 border-b-2 px-4 py-3 font-mono text-[11px] uppercase tracking-[0.14em] transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-3px] focus-visible:outline-white ${activeTab === tab.id ? 'border-white text-white' : 'border-transparent text-neutral-500 hover:text-neutral-200'}`}>{tab.label}</button>)}
+    <div role="tablist" aria-label={t($ => $.fighterDetail.sectionsLabel)} className="flex flex-wrap border-b border-[#2a2c31]">
+      {tabs.map((tab, index) => <button key={tab.id} id={`fighter-tab-${tab.id}`} type="button" role="tab" aria-selected={activeTab === tab.id} aria-controls={`fighter-panel-${tab.id}`} tabIndex={activeTab === tab.id ? 0 : -1} onClick={() => selectTab(tab.id)} onKeyDown={event => handleTabKeyDown(event, index)} className={`shrink-0 border-b-2 px-4 py-3 font-mono text-[11px] uppercase tracking-[0.14em] transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-3px] focus-visible:outline-white ${activeTab === tab.id ? 'border-white text-white' : 'border-transparent text-neutral-500 hover:text-neutral-200'}`}>{tabLabels[tab.id]}</button>)}
     </div>
 
     <section id={`fighter-panel-${activeTab}`} role="tabpanel" aria-labelledby={`fighter-tab-${activeTab}`} tabIndex={0}>
       {activeTab === 'overview' && <div className="space-y-6">
         <Panel>
-          <h2 className="mb-4 text-lg font-medium tracking-tight text-white">Physical Profile</h2>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4"><CareerStat label="Height" value={formatHeight(f.heightCm, unitSystem)} /><CareerStat label="Fight Weight" value={formatWeight(f.fightWeightLb, unitSystem)} /><CareerStat label="Walk-around Weight" value={formatWeight(f.walkAroundWeightLb, unitSystem)} /><CareerStat label="Weight Cut" value={`${weightCut.toFixed(1)}%`} tone={weightCut > 12 ? 'warning' : 'neutral'} /></div>
+          <h2 className="mb-4 text-lg font-medium tracking-tight text-white">{t($ => $.fighterDetail.physicalProfile)}</h2>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4"><CareerStat label={t($ => $.fighterDetail.height)} value={formatHeight(f.heightCm, unitSystem)} /><CareerStat label={t($ => $.fighterDetail.fightWeight)} value={formatWeight(f.fightWeightLb, unitSystem)} /><CareerStat label={t($ => $.fighterDetail.walkAroundWeight)} value={formatWeight(f.walkAroundWeightLb, unitSystem)} /><CareerStat label={t($ => $.fighterDetail.weightCut)} value={`${weightCut.toFixed(1)}%`} tone={weightCut > 12 ? 'warning' : 'neutral'} /></div>
         </Panel>
         <Panel>
-          <h2 className="mb-4 text-lg font-medium tracking-tight text-white">Attributes</h2>
-          <div className="grid gap-x-6 gap-y-2 sm:grid-cols-2"><AttrBar label="Striking" value={f.attributes.striking} /><AttrBar label="Grappling" value={f.attributes.grappling} /><AttrBar label="Wrestling" value={f.attributes.wrestling} /><AttrBar label="Submissions" value={f.attributes.submissions} /><AttrBar label="Cardio" value={f.attributes.cardio} /><AttrBar label="Chin" value={f.attributes.chin} /><AttrBar label="Power" value={f.attributes.power} /><AttrBar label="Speed" value={f.attributes.speed} /><AttrBar label="Defense" value={f.attributes.defense} /><AttrBar label="Fight IQ" value={f.attributes.fightIq} /><AttrBar label="Toughness" value={f.attributes.toughness} /></div>
+          <h2 className="mb-4 text-lg font-medium tracking-tight text-white">{t($ => $.fighterDetail.attributes)}</h2>
+          <div className="grid gap-x-6 gap-y-2 sm:grid-cols-2"><AttrBar label={t($ => $.fighterDetail.attribute.striking)} value={f.attributes.striking} /><AttrBar label={t($ => $.fighterDetail.attribute.grappling)} value={f.attributes.grappling} /><AttrBar label={t($ => $.fighterDetail.attribute.wrestling)} value={f.attributes.wrestling} /><AttrBar label={t($ => $.fighterDetail.attribute.submissions)} value={f.attributes.submissions} /><AttrBar label={t($ => $.fighterDetail.attribute.cardio)} value={f.attributes.cardio} /><AttrBar label={t($ => $.fighterDetail.attribute.chin)} value={f.attributes.chin} /><AttrBar label={t($ => $.fighterDetail.attribute.power)} value={f.attributes.power} /><AttrBar label={t($ => $.fighterDetail.attribute.speed)} value={f.attributes.speed} /><AttrBar label={t($ => $.fighterDetail.attribute.defense)} value={f.attributes.defense} /><AttrBar label={t($ => $.fighterDetail.attribute.fightIq)} value={f.attributes.fightIq} /><AttrBar label={t($ => $.fighterDetail.attribute.toughness)} value={f.attributes.toughness} /></div>
         </Panel>
         <Panel>
-          <h2 className="mb-4 text-lg font-medium tracking-tight text-white">Career Summary</h2>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4"><CareerStat label="Title Fights" value={titleFights} tone="warning" /><CareerStat label="Current Streak" value={currentStreak > 0 ? `${currentStreak} W` : '—'} /><CareerStat label="Best Streak" value={longestStreak} /><CareerStat label="Avg. Performance" value={averagePerformance} /></div>
-          <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4"><CareerStat label="KO/TKO Wins" value={kos} tone="danger" /><CareerStat label="Submission Wins" value={subs} tone="warning" /><CareerStat label="Decision Wins" value={decWins} /><CareerStat label="Decision Losses" value={decLosses} /></div>
-          <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-5"><CareerStat label="4-Man GP" value={gpWins4Man} tone="warning" /><CareerStat label="8-Man GP" value={gpWins8Man} tone="warning" /><CareerStat label="GP Finals" value={gpFinals} /><CareerStat label="GP Record" value={`${gpRecord.wins}-${gpRecord.losses}`} /><CareerStat label="Title Shot" value={f.titleShotPromised ? 'Pending' : '—'} tone={f.titleShotPromised ? 'success' : 'neutral'} /></div>
+          <h2 className="mb-4 text-lg font-medium tracking-tight text-white">{t($ => $.fighterDetail.careerSummary)}</h2>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4"><CareerStat label={t($ => $.fighterDetail.titleFights)} value={titleFights} tone="warning" /><CareerStat label={t($ => $.fighterDetail.currentStreak)} value={currentStreak > 0 ? `${currentStreak} W` : '—'} /><CareerStat label={t($ => $.fighterDetail.bestStreak)} value={longestStreak} /><CareerStat label={t($ => $.fighterDetail.averagePerformance)} value={averagePerformance} /></div>
+          <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4"><CareerStat label={t($ => $.fighterDetail.koWins)} value={kos} tone="danger" /><CareerStat label={t($ => $.fighterDetail.submissionWins)} value={subs} tone="warning" /><CareerStat label={t($ => $.fighterDetail.decisionWins)} value={decWins} /><CareerStat label={t($ => $.fighterDetail.decisionLosses)} value={decLosses} /></div>
+          <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-5"><CareerStat label={t($ => $.fighterDetail.fourManGp)} value={gpWins4Man} tone="warning" /><CareerStat label={t($ => $.fighterDetail.eightManGp)} value={gpWins8Man} tone="warning" /><CareerStat label={t($ => $.fighterDetail.gpFinals)} value={gpFinals} /><CareerStat label={t($ => $.fighterDetail.gpRecord)} value={`${gpRecord.wins}-${gpRecord.losses}`} /><CareerStat label={t($ => $.fighterDetail.titleShot)} value={f.titleShotPromised ? t($ => $.fighterDetail.pending) : '—'} tone={f.titleShotPromised ? 'success' : 'neutral'} /></div>
         </Panel>
       </div>}
 
       {activeTab === 'achievements' && <Panel>
-        <h2 className="text-lg font-medium tracking-tight text-white">Achievements</h2>
-        <p className="mt-1 text-sm text-neutral-500">Titles, Grand Prix results, annual awards, and promotion milestones.</p>
-        {achievements.length === 0 ? <p className="py-10 text-center text-sm text-neutral-500">No achievements yet. Win title fights, Grand Prix tournaments, or yearly awards to fill this section.</p> : <div className="mt-5 space-y-6">{['Titles', 'Grand Prix', 'Awards', 'Milestones'].map(category => {
+        <h2 className="text-lg font-medium tracking-tight text-white">{t($ => $.fighterDetail.achievements)}</h2>
+        <p className="mt-1 text-sm text-neutral-500">{t($ => $.fighterDetail.achievementsDescription)}</p>
+        {achievements.length === 0 ? <p className="py-10 text-center text-sm text-neutral-500">{t($ => $.fighterDetail.noAchievements)}</p> : <div className="mt-5 space-y-6">{(['Titles', 'Grand Prix', 'Awards', 'Milestones'] as const).map(category => {
           const items = achievements.filter(item => item.category === category);
           if (!items.length) return null;
-          return <section key={category}><h3 className="font-mono text-[10px] uppercase tracking-[0.14em] text-neutral-500">{category}</h3><div className="mt-3 grid gap-3 sm:grid-cols-2">{items.map((item, index) => {
+          return <section key={category}><h3 className="font-mono text-[10px] uppercase tracking-[0.14em] text-neutral-500">{achievementCategoryLabels[category]}</h3><div className="mt-3 grid gap-3 sm:grid-cols-2">{items.map((item, index) => {
             const className = `rounded-lg border bg-neutral-950 p-4 text-left ${item.tone === 'success' ? 'border-emerald-900' : item.tone === 'warning' ? 'border-amber-900' : item.tone === 'danger' ? 'border-red-900' : 'border-[#2a2c31]'}`;
-            const content = <><div className="flex items-start justify-between gap-3"><h4 className="font-medium text-white">{item.title}</h4><span className="shrink-0 font-mono text-[10px] text-neutral-500">{item.date}</span></div><p className="mt-2 text-sm text-neutral-400">{item.description}</p></>;
+            const content = <><div className="flex items-start justify-between gap-3"><h4 className="font-medium text-white">{item.title}</h4><span className="shrink-0 font-mono text-[10px] text-neutral-500">{formatDate(item.date, language)}</span></div><p className="mt-2 text-sm text-neutral-400">{item.description}</p></>;
             return item.fightArchiveId ? <button key={`${item.title}-${index}`} type="button" onClick={() => openFight(item.fightArchiveId!)} className={`${className} transition-colors hover:bg-[#1b1c20] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white`}>{content}</button> : <div key={`${item.title}-${index}`} className={className}>{content}</div>;
           })}</div></section>;
         })}</div>}
@@ -189,41 +215,42 @@ export default function FighterDetail() {
 
       {activeTab === 'storylines' && <div className="space-y-6">
         <Panel>
-          <h2 className="text-lg font-medium tracking-tight text-white">Active Storylines</h2>
-          <p className="mt-1 text-sm text-neutral-500">Rivalries, title narratives, disputes, and other live drama involving this fighter.</p>
-          {activeStorylines.length === 0 ? <p className="py-8 text-center text-sm text-neutral-500">No active storylines.</p> : <div className="mt-4 grid gap-3 sm:grid-cols-2">{activeStorylines.map(storyline => <div key={storyline.id} className="rounded-lg border border-[#2a2c31] bg-neutral-950 p-4"><div className="flex flex-wrap items-center justify-between gap-2"><h3 className="font-medium text-white">{storyline.type}</h3>{storyline.intensity && <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-amber-300">Intensity {storyline.intensity}/3</span>}</div><p className="mt-2 text-sm leading-6 text-neutral-400">{storyline.description}</p><div className="mt-3 flex flex-wrap gap-2">{storyline.fighterIds.filter(id => id !== f.id).flatMap(id => fighters[id] ? [<button key={id} type="button" onClick={() => setView('fighter-detail', { fighterId: id })} className="rounded-full border border-neutral-800 px-2.5 py-1 text-xs text-neutral-300 hover:border-neutral-600 hover:text-white">{fighters[id].firstName} {fighters[id].lastName}</button>] : [])}</div><p className="mt-3 font-mono text-[10px] text-neutral-600">{storyline.createdDate ? `Started ${storyline.createdDate}` : 'Active'}{storyline.expiresDate ? ` · Expires ${storyline.expiresDate}` : ''}</p></div>)}</div>}
+          <h2 className="text-lg font-medium tracking-tight text-white">{t($ => $.fighterDetail.activeStorylines)}</h2>
+          <p className="mt-1 text-sm text-neutral-500">{t($ => $.fighterDetail.storylinesDescription)}</p>
+          {activeStorylines.length === 0 ? <p className="py-8 text-center text-sm text-neutral-500">{t($ => $.fighterDetail.noStorylines)}</p> : <div className="mt-4 grid gap-3 sm:grid-cols-2">{activeStorylines.map(storyline => <div key={storyline.id} className="rounded-lg border border-[#2a2c31] bg-neutral-950 p-4"><div className="flex flex-wrap items-center justify-between gap-2"><h3 className="font-medium text-white">{storyline.type}</h3>{storyline.intensity && <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-amber-300">{t($ => $.fighterDetail.intensity, { value: storyline.intensity })}</span>}</div><p className="mt-2 text-sm leading-6 text-neutral-400">{storyline.description}</p><div className="mt-3 flex flex-wrap gap-2">{storyline.fighterIds.filter(id => id !== f.id).flatMap(id => fighters[id] ? [<button key={id} type="button" onClick={() => setView('fighter-detail', { fighterId: id })} className="rounded-full border border-neutral-800 px-2.5 py-1 text-xs text-neutral-300 hover:border-neutral-600 hover:text-white">{fighters[id].firstName} {fighters[id].lastName}</button>] : [])}</div><p className="mt-3 font-mono text-[10px] text-neutral-600">{storyline.createdDate ? t($ => $.fighterDetail.started, { date: formatDate(storyline.createdDate, language) }) : t($ => $.fighterDetail.active)}{storyline.expiresDate ? ` · ${t($ => $.fighterDetail.expires, { date: formatDate(storyline.expiresDate, language) })}` : ''}</p></div>)}</div>}
         </Panel>
         <Panel>
-          <h2 className="text-lg font-medium tracking-tight text-white">Social activity</h2>
-          <p className="mt-1 text-sm text-neutral-500">News, articles, posts, and threads involving {f.lastName}.</p>
-          {socialActivity.length === 0 ? <p className="py-8 text-center text-sm text-neutral-500">No social activity yet.</p> : <div className="mt-4 divide-y divide-[#2a2c31]">{socialActivity.map(entry => <article key={entry.id} className="py-4 first:pt-0 last:pb-0"><div className="flex flex-wrap items-center gap-2"><span className="font-mono text-[9px] uppercase tracking-[0.12em] text-neutral-500">{entry.kind.replace('_', ' ')}</span><time className="font-mono text-[10px] text-neutral-600">{entry.date}</time></div><h3 className="mt-2 font-medium text-white">{entry.headline}</h3><p className="mt-1 text-sm leading-6 text-neutral-400">{entry.body}</p></article>)}</div>}
+          <h2 className="text-lg font-medium tracking-tight text-white">{t($ => $.fighterDetail.socialActivity)}</h2>
+          <p className="mt-1 text-sm text-neutral-500">{t($ => $.fighterDetail.socialDescription, { name: f.lastName })}</p>
+          {socialActivity.length === 0 ? <p className="py-8 text-center text-sm text-neutral-500">{t($ => $.fighterDetail.noSocialActivity)}</p> : <div className="mt-4 divide-y divide-[#2a2c31]">{socialActivity.map(entry => <article key={entry.id} className="py-4 first:pt-0 last:pb-0"><div className="flex flex-wrap items-center gap-2"><span className="font-mono text-[9px] uppercase tracking-[0.12em] text-neutral-500">{socialKindLabels[entry.kind]}</span><time className="font-mono text-[10px] text-neutral-600">{formatDate(entry.date, language)}</time></div><h3 className="mt-2 font-medium text-white">{entry.headline}</h3><p className="mt-1 text-sm leading-6 text-neutral-400">{entry.body}</p></article>)}</div>}
         </Panel>
       </div>}
 
       {activeTab === 'contract' && <Panel>
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3"><h2 className="text-lg font-medium tracking-tight text-white">{f.contract ? 'Contract & Extension' : 'Negotiate Contract'}</h2>{f.contract && <Button variant="danger" onClick={handleRelease} className="inline-flex items-center gap-2"><UserMinus size={16} /> Release Fighter</Button>}</div>
-        {f.contract && <div className="mb-6 flex flex-col justify-between gap-3 rounded-lg border border-[#2a2c31] bg-neutral-950 p-4 sm:flex-row sm:items-center"><div><p className="text-sm text-neutral-400">Current deal: <span className="text-white">${f.contract.payPerFight.toLocaleString()}</span> to show, <span className="text-white">${f.contract.winBonus.toLocaleString()}</span> to win</p><p className={`mt-1 text-sm ${getContractStatus(f.contract, state.currentDate) !== 'active' ? 'text-red-300' : 'text-neutral-400'}`}>Fights remaining: {f.contract.fightsRemaining} · Ends {f.contract.endDate}</p></div>{f.isChampion && getContractStatus(f.contract, state.currentDate) === 'expired' && <p className="text-sm text-red-300">Champion contract expired. Renew immediately or vacate the title.</p>}</div>}
-        {negotiationResult && <div className={`mb-4 rounded-lg border p-4 ${negotiationResult.accepted ? 'border-emerald-900 text-emerald-300' : 'border-red-900 text-red-300'}`}><p className="font-medium">{negotiationResult.accepted ? 'Offer Accepted' : 'Offer Rejected'}</p><p className="mt-1 text-sm">{negotiationResult.reason}</p></div>}
-        {counterOffer && <div className="mb-4 rounded-lg border border-amber-900 bg-amber-950/20 p-4 text-amber-100"><p className="font-medium">Counter-offer</p><p className="mt-1 text-sm">${counterOffer.payPerFight.toLocaleString()} to show · ${counterOffer.winBonus.toLocaleString()} to win · {counterOffer.fights} fights · expires {counterOffer.expiresDate}</p><Button variant="primary" onClick={() => completeSigning(counterOffer.payPerFight, counterOffer.winBonus, counterOffer.fights)} className="mt-3">Accept counter-offer</Button></div>}
-        <p className="mb-4 text-sm text-neutral-400">Expected: <span className="text-white">${getContractExpectation(f, promotion).basePay.toLocaleString()}</span> to show · <span className="text-white">${getContractExpectation(f, promotion).winBonus.toLocaleString()}</span> to win · <span className="text-white">{getContractExpectation(f, promotion).interestLabel}</span></p>
-        <div className="grid gap-4 md:grid-cols-3"><ContractInput label="Pay per Fight ($)" value={offerPay} onChange={setOfferPay} step={1000} /><ContractInput label="Win Bonus ($)" value={offerBonus} onChange={setOfferBonus} step={1000} /><ContractInput label="Fights" value={offerFights} onChange={setOfferFights} min={1} max={8} /></div>
-        {!negotiationResult?.accepted && <Button variant="primary" onClick={handleSign} className="mt-5 inline-flex items-center gap-2"><UserCheck size={16} /> {f.contract ? 'Offer Extension' : 'Offer Contract'}</Button>}
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3"><h2 className="text-lg font-medium tracking-tight text-white">{f.contract ? t($ => $.fighterDetail.contractExtension) : t($ => $.fighterDetail.negotiateContract)}</h2>{f.contract && <Button variant="danger" onClick={handleRelease} className="inline-flex items-center gap-2"><UserMinus size={16} /> {t($ => $.fighterDetail.release)}</Button>}</div>
+        {f.contract && <div className="mb-6 flex flex-col justify-between gap-3 rounded-lg border border-[#2a2c31] bg-neutral-950 p-4 sm:flex-row sm:items-center"><div><p className="text-sm text-neutral-400">{t($ => $.fighterDetail.currentDeal, { pay: formatCurrency(f.contract!.payPerFight, language), bonus: formatCurrency(f.contract!.winBonus, language) })}</p><p className={`mt-1 text-sm ${getContractStatus(f.contract, state.currentDate) !== 'active' ? 'text-red-300' : 'text-neutral-400'}`}>{t($ => $.fighterDetail.fightsRemaining, { count: f.contract.fightsRemaining, date: formatDate(f.contract.endDate, language) })}</p></div>{f.isChampion && getContractStatus(f.contract, state.currentDate) === 'expired' && <p className="text-sm text-red-300">{t($ => $.fighterDetail.championExpired)}</p>}</div>}
+        {negotiationResult && <div className={`mb-4 rounded-lg border p-4 ${negotiationResult.accepted ? 'border-emerald-900 text-emerald-300' : 'border-red-900 text-red-300'}`}><p className="font-medium">{negotiationResult.accepted ? t($ => $.fighterDetail.offerAccepted) : t($ => $.fighterDetail.offerRejected)}</p><p className="mt-1 text-sm">{negotiationResult.reason}</p></div>}
+        {counterOffer && <div className="mb-4 rounded-lg border border-amber-900 bg-amber-950/20 p-4 text-amber-100"><p className="font-medium">{t($ => $.fighterDetail.counterOffer)}</p><p className="mt-1 text-sm">{t($ => $.fighterDetail.counterOfferTerms, { pay: formatCurrency(counterOffer.payPerFight, language), bonus: formatCurrency(counterOffer.winBonus, language), count: counterOffer.fights, date: formatDate(counterOffer.expiresDate, language) })}</p><Button variant="primary" onClick={() => completeSigning(counterOffer.payPerFight, counterOffer.winBonus, counterOffer.fights)} className="mt-3">{t($ => $.fighterDetail.acceptCounter)}</Button></div>}
+        <p className="mb-4 text-sm text-neutral-400">{t($ => $.fighterDetail.expected, { pay: formatCurrency(contractExpectation.basePay, language), bonus: formatCurrency(contractExpectation.winBonus, language), interest: formatContractInterest(contractExpectation.interestLabel, language) })}</p>
+        <div className="grid gap-4 md:grid-cols-3"><ContractInput label={t($ => $.fighterDetail.payPerFight)} value={offerPay} onChange={setOfferPay} step={1000} /><ContractInput label={t($ => $.fighterDetail.winBonus)} value={offerBonus} onChange={setOfferBonus} step={1000} /><ContractInput label={t($ => $.fighterDetail.fights)} value={offerFights} onChange={setOfferFights} min={1} max={8} /></div>
+        {!negotiationResult?.accepted && <Button variant="primary" onClick={handleSign} className="mt-5 inline-flex items-center gap-2"><UserCheck size={16} /> {f.contract ? t($ => $.fighterDetail.offerExtension) : t($ => $.fighterDetail.offerContract)}</Button>}
       </Panel>}
 
       {activeTab === 'fights' && <Panel>
-        <h2 className="mb-4 text-lg font-medium tracking-tight text-white">Fight Log</h2>
-        {fighterFights.length ? <div className="overflow-x-auto custom-scrollbar"><table className="min-w-[640px] w-full text-left text-sm"><thead className="border-b border-[#2a2c31] font-mono text-[10px] uppercase tracking-[0.14em] text-neutral-500"><tr><th className="pb-3 font-normal">Date</th><th className="pb-3 font-normal">Event</th><th className="pb-3 font-normal">Opponent</th><th className="pb-3 font-normal">Result</th><th className="pb-3 font-normal">Method</th><th className="pb-3 font-normal">Round</th></tr></thead><tbody className="divide-y divide-[#2a2c31]">{fighterFights.map(fight => {
+        <h2 className="mb-4 text-lg font-medium tracking-tight text-white">{t($ => $.fighterDetail.fightLog)}</h2>
+        {fighterFights.length ? <div className="overflow-x-auto custom-scrollbar"><table className="min-w-[640px] w-full text-left text-sm"><thead className="border-b border-[#2a2c31] font-mono text-[10px] uppercase tracking-[0.14em] text-neutral-500"><tr><th className="pb-3 font-normal">{t($ => $.fighterDetail.date)}</th><th className="pb-3 font-normal">{t($ => $.fighterDetail.event)}</th><th className="pb-3 font-normal">{t($ => $.fighterDetail.opponent)}</th><th className="pb-3 font-normal">{t($ => $.fighterDetail.result)}</th><th className="pb-3 font-normal">{t($ => $.fighterDetail.method)}</th><th className="pb-3 font-normal">{t($ => $.fighterDetail.round)}</th></tr></thead><tbody className="divide-y divide-[#2a2c31]">{fighterFights.map(fight => {
           const opponentId = fight.redFighterId === f.id ? fight.blueFighterId : fight.redFighterId;
           const opponent = fighters[opponentId];
-          const opponentName = opponent ? `${opponent.firstName} ${opponent.lastName}` : 'Unknown';
-          const result = fight.winnerId === null ? 'Draw' : fight.winnerId === f.id ? 'Win' : 'Loss';
-          return <tr key={fight.id} tabIndex={0} role="button" aria-label={`View fight details against ${opponentName} on ${fight.date}`} onClick={() => openFight(fight.id)} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openFight(fight.id); } }} className="cursor-pointer transition-colors hover:bg-white/[0.02] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-white"><td className="py-3 font-mono text-xs text-neutral-500">{fight.date}</td><td className="py-3 text-neutral-300">{fight.eventName}</td><td className="py-3 text-white">vs. {opponentName}{fight.isTitleFight && <span className="ml-2 text-amber-300">Title</span>}</td><td className={`py-3 font-medium ${result === 'Win' ? 'text-emerald-300' : result === 'Loss' ? 'text-red-300' : 'text-neutral-400'}`}>{result}</td><td className="py-3 text-neutral-400">{fight.method}</td><td className="py-3 font-mono text-xs text-neutral-400">{fight.round} ({fight.time})</td></tr>;
-        })}</tbody></table></div> : <div className="space-y-3 text-center"><p className="py-6 text-sm text-neutral-500">No archived fights yet.</p>{f.history.length > 0 && <div className="text-left"><h3 className="mb-2 font-mono text-[10px] uppercase tracking-[0.14em] text-neutral-500">Legacy history</h3>{f.history.map((entry, index) => <p key={index} className="border-t border-[#2a2c31] py-2 text-sm text-neutral-300">{entry}</p>)}</div>}</div>}
+          const opponentName = opponent ? `${opponent.firstName} ${opponent.lastName}` : t($ => $.fighterDetail.unknown);
+          const result = fight.winnerId === null ? 'draw' : fight.winnerId === f.id ? 'win' : 'loss';
+          const resultLabel = result === 'win' ? t($ => $.fighterDetail.win) : result === 'loss' ? t($ => $.fighterDetail.loss) : t($ => $.fighterDetail.draw);
+          return <tr key={fight.id} tabIndex={0} role="button" aria-label={t($ => $.fighterDetail.viewFight, { opponent: opponentName, date: formatDate(fight.date, language) })} onClick={() => openFight(fight.id)} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openFight(fight.id); } }} className="cursor-pointer transition-colors hover:bg-white/[0.02] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-white"><td className="py-3 font-mono text-xs text-neutral-500">{formatDate(fight.date, language)}</td><td className="py-3 text-neutral-300">{fight.eventName}</td><td className="py-3 text-white">{t($ => $.fighterDetail.versus, { name: opponentName })}{fight.isTitleFight && <span className="ml-2 text-amber-300">{t($ => $.fight.common.title)}</span>}</td><td className={`py-3 font-medium ${result === 'win' ? 'text-emerald-300' : result === 'loss' ? 'text-red-300' : 'text-neutral-400'}`}>{resultLabel}</td><td className="py-3 text-neutral-400">{formatFightMethod(fight.method, language)}</td><td className="py-3 font-mono text-xs text-neutral-400">{fight.round} ({fight.time})</td></tr>;
+        })}</tbody></table></div> : <div className="space-y-3 text-center"><p className="py-6 text-sm text-neutral-500">{t($ => $.fighterDetail.noFights)}</p>{f.history.length > 0 && <div className="text-left"><h3 className="mb-2 font-mono text-[10px] uppercase tracking-[0.14em] text-neutral-500">{t($ => $.fighterDetail.legacyHistory)}</h3>{f.history.map((entry, index) => <p key={index} className="border-t border-[#2a2c31] py-2 text-sm text-neutral-300">{entry}</p>)}</div>}</div>}
       </Panel>}
 
       {activeTab === 'timeline' && <Panel>
-        <h2 className="mb-4 text-lg font-medium tracking-tight text-white">Career Timeline</h2>
-        {timeline.length ? <div className="space-y-4 border-l border-[#2a2c31] pl-5">{timeline.map((item, index) => <div key={`${item.date}-${index}`} className="relative"><span className={`absolute -left-[1.62rem] top-1.5 h-2.5 w-2.5 rounded-full ${item.type.includes('win') || item.type === 'title_defense' || item.type === 'unification' ? 'bg-emerald-400' : item.type.includes('loss') ? 'bg-red-400' : item.type === 'injury' ? 'bg-amber-300' : 'bg-neutral-500'}`} />{item.fightId ? <button type="button" onClick={() => openFight(item.fightId!)} className="text-left text-sm font-medium text-white hover:text-neutral-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">{item.title}</button> : <p className="text-sm font-medium text-white">{item.title}</p>}<p className="mt-1 font-mono text-[10px] text-neutral-500">{item.date}</p><p className="mt-1 text-sm text-neutral-400">{item.description}</p></div>)}</div> : <p className="py-8 text-center text-sm text-neutral-500">No career timeline entries yet.</p>}
+        <h2 className="mb-4 text-lg font-medium tracking-tight text-white">{t($ => $.fighterDetail.careerTimeline)}</h2>
+        {timeline.length ? <div className="space-y-4 border-l border-[#2a2c31] pl-5">{timeline.map((item, index) => <div key={`${item.date}-${index}`} className="relative"><span className={`absolute -left-[1.62rem] top-1.5 h-2.5 w-2.5 rounded-full ${item.type.includes('win') || item.type === 'title_defense' || item.type === 'unification' ? 'bg-emerald-400' : item.type.includes('loss') ? 'bg-red-400' : item.type === 'injury' ? 'bg-amber-300' : 'bg-neutral-500'}`} />{item.fightId ? <button type="button" onClick={() => openFight(item.fightId!)} className="text-left text-sm font-medium text-white hover:text-neutral-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">{item.title}</button> : <p className="text-sm font-medium text-white">{item.title}</p>}<p className="mt-1 font-mono text-[10px] text-neutral-500">{formatDate(item.date, language)}</p><p className="mt-1 text-sm text-neutral-400">{item.description}</p></div>)}</div> : <p className="py-8 text-center text-sm text-neutral-500">{t($ => $.fighterDetail.noTimeline)}</p>}
       </Panel>}
     </section>
   </div>;

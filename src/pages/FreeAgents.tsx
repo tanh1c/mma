@@ -8,10 +8,16 @@ import { FighterAvatar } from '../components/FighterAvatar';
 import { FighterRankBadge } from '../components/FighterRankBadge';
 import { DataSurface, PageHeader, Panel, StatusBadge } from '../components/ui';
 import { getFighterOverall, isProspect } from '../lib/game/fighterRatings';
+import { useTranslation } from 'react-i18next';
+import { useSettingsStore } from '../store/settingsStore';
+import { formatContractInterest, formatCurrency, formatFighterStyle, formatWeightClass } from '../lib/localization';
+import { formatHeight, formatWeight } from '../lib/displayUnits';
 
 type SortKey = 'name' | 'age' | 'weight' | 'record' | 'style' | 'overall' | 'popularity' | 'potential' | 'ask' | 'interest';
 
 export default function FreeAgents() {
+  const { t } = useTranslation('translation');
+  const { unitSystem, language } = useSettingsStore();
   const { fighters, promotion, setView } = useGameStore();
   const [search, setSearch] = useState('');
   const [filterWeight, setFilterWeight] = useState('All');
@@ -46,16 +52,23 @@ export default function FreeAgents() {
     return result;
   }, [fighters, search, filterWeight, filterStyle, filterArchetype, filterMinPop, sortConfig, promotion]);
 
-  const weightOptions = ['All', 'Heavyweight', 'Middleweight', 'Welterweight', 'Lightweight', 'Featherweight', 'Bantamweight'].map(value => ({ value, label: value === 'All' ? 'All Weights' : value }));
-  const styleOptions = ['All', 'Boxer', 'Wrestler', 'BJJ', 'Kickboxer', 'Muay Thai', 'Sambo', 'Balanced'].map(value => ({ value, label: value === 'All' ? 'All Styles' : value }));
-  const archetypeOptions = ['All', 'Star', 'Prospect', 'Veteran'].map(value => ({ value, label: value === 'All' ? 'Any Archetype' : value }));
-  const minPopOptions = [{ value: '0', label: 'Any Popularity' }, { value: '25', label: 'Pop 25+' }, { value: '50', label: 'Pop 50+' }, { value: '75', label: 'Pop 75+' }];
+  const weightOptions = ['Heavyweight', 'Middleweight', 'Welterweight', 'Lightweight', 'Featherweight', 'Bantamweight'].map(value => ({ value, label: formatWeightClass(value, language) }));
+  weightOptions.unshift({ value: 'All', label: t($ => $.roster.filters.allWeights) });
+  const styleOptions = ['Boxer', 'Wrestler', 'BJJ', 'Kickboxer', 'Muay Thai', 'Sambo', 'Balanced'].map(value => ({ value, label: formatFighterStyle(value, language) }));
+  styleOptions.unshift({ value: 'All', label: t($ => $.roster.filters.allStyles) });
+  const archetypeOptions = [
+    { value: 'All', label: t($ => $.roster.filters.anyArchetype) },
+    { value: 'Star', label: t($ => $.roster.filters.star) },
+    { value: 'Prospect', label: t($ => $.roster.filters.prospect) },
+    { value: 'Veteran', label: t($ => $.roster.filters.veteran) }
+  ];
+  const minPopOptions = [{ value: '0', label: t($ => $.freeAgents.anyPopularity) }, ...['25', '50', '75'].map(value => ({ value, label: t($ => $.freeAgents.popularityAtLeast, { value }) }))];
 
   return (
     <div className="space-y-6">
-      <PageHeader eyebrow="Recruitment" title="Free Agents" description={`${agents.length} fighters match the current search`} />
+      <PageHeader eyebrow={t($ => $.freeAgents.eyebrow)} title={t($ => $.freeAgents.title)} description={t($ => $.freeAgents.fighterCount, { count: agents.length })} />
       <Panel className="flex flex-wrap gap-3 p-4">
-        <input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search fighter" aria-label="Search free agents" className="h-10 w-44 rounded border border-neutral-800 bg-neutral-950 px-3 text-sm text-white outline-none focus:border-neutral-500" />
+        <input value={search} onChange={event => setSearch(event.target.value)} placeholder={t($ => $.roster.searchPlaceholder)} aria-label={t($ => $.freeAgents.searchLabel)} className="h-10 w-44 rounded border border-neutral-800 bg-neutral-950 px-3 text-sm text-white outline-none focus:border-neutral-500" />
         <Select value={filterWeight} onChange={setFilterWeight} options={weightOptions} className="w-40" />
         <Select value={filterStyle} onChange={setFilterStyle} options={styleOptions} className="w-40" />
         <Select value={filterArchetype} onChange={setFilterArchetype} options={archetypeOptions} className="w-40" />
@@ -65,22 +78,22 @@ export default function FreeAgents() {
         <div className="overflow-x-auto custom-scrollbar">
           <table className="min-w-[800px] w-full text-left text-sm text-neutral-400">
             <thead className="border-b border-[#2a2c31] bg-black/10 font-mono text-[10px] uppercase tracking-[0.14em] text-neutral-500"><tr>
-              {([['Fighter', 'name'], ['Age', 'age'], ['Weight', 'weight'], ['Record', 'record'], ['Style', 'style'], ['OVR', 'overall'], ['Pop', 'popularity'], ['POT', 'potential'], ['Ask Pay/Bonus', 'ask'], ['Interest', 'interest']] as Array<[string, SortKey]>).map(([label, key]) => <th key={key} className="cursor-pointer p-4 font-normal hover:bg-white/[0.03]" onClick={() => handleSort(key)}>{label}<SortIcon sortKey={key} /></th>)}
+              {([[t($ => $.freeAgents.columns.fighter), 'name'], [t($ => $.freeAgents.columns.age), 'age'], [t($ => $.freeAgents.columns.weight), 'weight'], [t($ => $.freeAgents.columns.record), 'record'], [t($ => $.freeAgents.columns.style), 'style'], [t($ => $.freeAgents.columns.overall), 'overall'], [t($ => $.freeAgents.columns.popularity), 'popularity'], [t($ => $.freeAgents.columns.potential), 'potential'], [t($ => $.freeAgents.columns.ask), 'ask'], [t($ => $.freeAgents.columns.interest), 'interest']] as Array<[string, SortKey]>).map(([label, key]) => <th key={key} className="cursor-pointer p-4 font-normal hover:bg-white/[0.03]" onClick={() => handleSort(key)}>{label}<SortIcon sortKey={key} /></th>)}
             </tr></thead>
             <tbody className="divide-y divide-[#2a2c31]">
               {agents.map(fighter => {
                 const expectation = getContractExpectation(fighter, promotion);
                 const interestTone = expectation.interest > 70 ? 'success' : expectation.interest > 40 ? 'warning' : 'danger';
                 return <tr key={fighter.id} onClick={() => setView('fighter-detail', { fighterId: fighter.id })} className="cursor-pointer transition-colors hover:bg-white/[0.02]">
-                  <td className="p-4"><div className="flex items-center gap-2"><FighterAvatar id={fighter.id} name={`${fighter.firstName} ${fighter.lastName}`} nationality={fighter.nationality} className="h-8 w-8" /><div><div className="flex items-center gap-2 font-medium text-white"><FighterRankBadge fighterId={fighter.id} former={fighter.lastPromotionRank} /><span>{fighter.firstName} {fighter.lastName}</span><CountryFlag nationality={fighter.nationality} className="text-sm" /></div>{fighter.nickname && <div className="text-xs text-neutral-500">&quot;{fighter.nickname}&quot;</div>}<div className="text-[10px] text-neutral-500">{fighter.heightCm} cm · {fighter.fightWeightLb}/{fighter.walkAroundWeightLb} lb</div></div></div></td>
-                  <td className="p-4">{fighter.age}</td><td className="p-4">{fighter.weightClass}</td><td className="p-4">{fighter.record.wins}-{fighter.record.losses}-{fighter.record.draws}</td><td className="p-4">{fighter.style}</td><td className="p-4 font-mono text-white">{getFighterOverall(fighter)}</td><td className="p-4">{fighter.popularity}</td><td className="p-4">{fighter.potential}</td>
-                  <td className="p-4"><p className="font-mono text-xs text-neutral-200">${expectation.basePay.toLocaleString()} / ${expectation.winBonus.toLocaleString()}</p><p className="mt-1 text-xs text-neutral-500">for {expectation.fights} fights</p></td>
-                  <td className="p-4"><StatusBadge tone={interestTone}>{expectation.interestLabel}</StatusBadge></td>
+                  <td className="p-4"><div className="flex items-center gap-2"><FighterAvatar id={fighter.id} name={`${fighter.firstName} ${fighter.lastName}`} nationality={fighter.nationality} className="h-8 w-8" /><div><div className="flex items-center gap-2 font-medium text-white"><FighterRankBadge fighterId={fighter.id} former={fighter.lastPromotionRank} /><span>{fighter.firstName} {fighter.lastName}</span><CountryFlag nationality={fighter.nationality} className="text-sm" /></div>{fighter.nickname && <div className="text-xs text-neutral-500">&quot;{fighter.nickname}&quot;</div>}<div className="text-[10px] text-neutral-500">{formatHeight(fighter.heightCm, unitSystem)} · {formatWeight(fighter.fightWeightLb, unitSystem)}/{formatWeight(fighter.walkAroundWeightLb, unitSystem)}</div></div></div></td>
+                  <td className="p-4">{fighter.age}</td><td className="p-4">{formatWeightClass(fighter.weightClass, language)}</td><td className="p-4">{fighter.record.wins}-{fighter.record.losses}-{fighter.record.draws}</td><td className="p-4">{formatFighterStyle(fighter.style, language)}</td><td className="p-4 font-mono text-white">{getFighterOverall(fighter)}</td><td className="p-4">{fighter.popularity}</td><td className="p-4">{fighter.potential}</td>
+                  <td className="p-4"><p className="font-mono text-xs text-neutral-200">{formatCurrency(expectation.basePay, language)} / {formatCurrency(expectation.winBonus, language)}</p><p className="mt-1 text-xs text-neutral-500">{t($ => $.freeAgents.fights, { count: expectation.fights })}</p></td>
+                  <td className="p-4"><StatusBadge tone={interestTone}>{formatContractInterest(expectation.interestLabel, language)}</StatusBadge></td>
                 </tr>;
               })}
             </tbody>
           </table>
-          {agents.length === 0 && <div className="p-8 text-center text-neutral-500">No free agents match your filters.</div>}
+          {agents.length === 0 && <div className="p-8 text-center text-neutral-500">{t($ => $.freeAgents.empty)}</div>}
         </div>
       </DataSurface>
     </div>

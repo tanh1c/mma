@@ -34,7 +34,7 @@ for (const token of ['aria-expanded', 'aria-haspopup="listbox"', 'role="listbox"
 assert.ok(!select.includes('role="combobox"'));
 
 const app = readFileSync('src/App.tsx', 'utf8');
-for (const token of ['accept=".json"', 'reader.readAsText(file)', 'saveGame', 'loadGame', 'exportGame', 'importGame', "case 'inbox'"]) assert.ok(app.includes(token));
+for (const token of ['accept=".json"', 'reader.readAsText(file)', 'saveGame', 'loadGame', 'exportGame', 'importGame', "case 'inbox'", 'useTranslation', '$.common.save', '$.search.placeholder']) assert.ok(app.includes(token));
 const shell = readFileSync('src/components/AppShell.tsx', 'utf8');
 const dashboard = readFileSync('src/pages/Dashboard.tsx', 'utf8');
 const eventBuilder = readFileSync('src/pages/EventBuilder.tsx', 'utf8');
@@ -44,19 +44,23 @@ const eventSimulation = readFileSync('src/pages/EventSimulation.tsx', 'utf8');
 const roster = readFileSync('src/pages/Roster.tsx', 'utf8');
 const freeAgents = readFileSync('src/pages/FreeAgents.tsx', 'utf8');
 const socialHub = readFileSync('src/pages/News.tsx', 'utf8');
-for (const token of ['Social Hub', 'All', 'News', 'Articles', 'Fighter Posts', 'Threads', 'socialFeed', 'applyPromotionSocialAction', 'Trending Storylines', 'engagement', 'replies', "setView('fighter-detail'", "setView('event-builder'"]) assert.ok(socialHub.includes(token), `Social Hub missing ${token}`);
+for (const token of ['$.socialHub.title', '$.socialHub.filters.all', '$.socialHub.filters.news', '$.socialHub.filters.articles', '$.socialHub.filters.fighterPosts', '$.socialHub.filters.threads', 'socialFeed', 'applyPromotionSocialAction', '$.socialHub.trending', 'engagement', 'replies', "setView('fighter-detail'", "setView('event-builder'"]) assert.ok(socialHub.includes(token), `Social Hub missing ${token}`);
 assert.ok(shell.includes("view: 'inbox'"));
 assert.ok(shell.includes("view: 'settings'"));
-for (const token of ['useEffect', "event.key === 'Escape'", '{isOpen && <aside', "closest('[data-navigation-action]')"]) assert.ok(shell.includes(token), `Mobile shell missing ${token}`);
+for (const token of ['useEffect', "event.key === 'Escape'", '{isOpen && <aside', "closest('[data-navigation-action]')", 'useTranslation', '$.navigation.dashboard', '$.shell.openNavigation', 'formatCurrency', 'formatDate']) assert.ok(shell.includes(token), `Mobile shell missing ${token}`);
 assert.ok(socialHub.includes('flex flex-wrap gap-2'), 'Social Hub filters must wrap on mobile');
 assert.ok(fighterDetail.includes('flex flex-wrap border-b'), 'Fighter detail tabs must wrap on mobile');
-for (const token of ['grid grid-cols-1 gap-4 sm:grid-cols-2', 'grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto]', 'min-w-0', 'Move ${slotLabel} up', 'Move ${slotLabel} down', 'Remove ${slotLabel}']) assert.ok(eventBuilder.includes(token), `Event Builder mobile layout missing ${token}`);
+for (const token of ['grid grid-cols-1 gap-4 sm:grid-cols-2', 'grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto]', 'min-w-0', '$.eventBuilder.card.moveUp', '$.eventBuilder.card.moveDown', '$.eventBuilder.card.remove']) assert.ok(eventBuilder.includes(token), `Event Builder mobile layout missing ${token}`);
 assert.ok(app.includes("case 'settings'"));
 const settings = readFileSync('src/pages/Settings.tsx', 'utf8');
-for (const token of ['Metric', 'US / Imperial', 'type="radio"', 'setUnitSystem']) assert.ok(settings.includes(token), `Settings missing ${token}`);
+for (const token of ['useTranslation', 'type="radio"', 'setUnitSystem', 'setLanguage', '$.settings.metric', '$.common.vietnamese']) assert.ok(settings.includes(token), `Settings missing ${token}`);
+for (const path of ['Inbox.tsx', 'Calendar.tsx', 'Rankings.tsx', 'MmaGuide.tsx', 'Dashboard.tsx', 'EventBuilder.tsx', 'Tournaments.tsx']) {
+  const source = readFileSync(`src/pages/${path}`, 'utf8');
+  assert.ok(source.includes('useTranslation'), `${path} must use translations.`);
+}
 assert.ok(dashboard.includes('getPromotionInbox'));
 assert.ok(eventBuilder.includes('campFocus'));
-for (const token of ['OVR', 'POT', 'Height', 'Fight Weight', 'Walk-around Weight', 'Weight Cut', 'Toughness', 'Storylines', 'getFighterStorylines', 'getFighterSocialFeed', 'Intensity', 'expiresDate', "setView('fighter-detail'", 'Social activity']) assert.ok(fighterDetail.includes(token), `Fighter detail missing ${token}`);
+for (const token of ['OVR', 'POT', 'formatHeight', '$.fighterDetail.fightWeight', '$.fighterDetail.walkAroundWeight', '$.fighterDetail.weightCut', '$.fighterDetail.attribute.toughness', '$.fighterDetail.tabs.storylines', 'getFighterStorylines', 'getFighterSocialFeed', '$.fighterDetail.intensity', 'expiresDate', "setView('fighter-detail'", '$.fighterDetail.socialActivity']) assert.ok(fighterDetail.includes(token), `Fighter detail missing ${token}`);
 assert.ok(roster.includes('getFighterOverall'));
 for (const source of [fighterDetail, roster]) {
   assert.ok(source.includes('useSettingsStore'));
@@ -79,16 +83,16 @@ for (const source of [eventBuilder, eventSimulation]) {
   assert.ok(source.includes("titleFightType === 'interim' ? 'interim' : 'undisputed'"));
   assert.ok(source.includes('size="marker"'));
 }
-for (const token of ["setView('fight-detail'", 'fightArchiveId', 'View fight details']) assert.ok(eventSimulation.includes(token), `Past event results missing ${token}`);
+for (const token of ["setView('fight-detail'", 'fightArchiveId', '$.fight.event.viewDetailsLabel']) assert.ok(eventSimulation.includes(token), `Past event results missing ${token}`);
 for (const path of ['EventBuilder.tsx', 'Dashboard.tsx', 'EventSimulation.tsx', 'FightBattle.tsx', 'Tournaments.tsx', 'Roster.tsx', 'FreeAgents.tsx', 'FighterDetail.tsx', 'News.tsx', 'FightDetail.tsx', 'HistoryStats.tsx']) {
   const source = readFileSync(`src/pages/${path}`, 'utf8');
   assert.ok(source.includes('FighterRankBadge'), `Missing ranking context in ${path}`);
 }
 assert.ok(readFileSync('src/pages/Roster.tsx', 'utf8').includes("'rank'"), 'Roster must support rank sorting.');
-assert.ok(readFileSync('src/pages/FightDetail.tsx', 'utf8').includes('At fight:'), 'Fight history must distinguish rank-at-fight.');
-assert.ok(readFileSync('src/pages/FightDetail.tsx', 'utf8').includes('Current:'), 'Fight history must distinguish current rank.');
+assert.ok(readFileSync('src/pages/FightDetail.tsx', 'utf8').includes('$.fight.common.atFight'), 'Fight history must distinguish rank-at-fight.');
+assert.ok(readFileSync('src/pages/FightDetail.tsx', 'utf8').includes('$.fight.common.current'), 'Fight history must distinguish current rank.');
 const fightBattle = readFileSync('src/pages/FightBattle.tsx', 'utf8');
-for (const token of ['role="meter"', 'aria-valuemin={0}', 'aria-valuemax={100}', 'aria-valuenow={value}', 'aria-live="polite"', 'Pause', 'Resume', '([1, 2, 4] as const)', 'x{speed}', 'Skip to result', 'Round {session.round}', 'session.position', 'min-w-0']) assert.ok(fightBattle.includes(token), `Live fight stage missing ${token}`);
-for (const token of ["corner === 'red' ? 'Red corner' : 'Blue corner'", '`${label} Condition`', '`${label} Stamina`', 'aria-label={label}']) assert.ok(fightBattle.includes(token), `Live fight meter missing ${token}`);
+for (const token of ['role="meter"', 'aria-valuemin={0}', 'aria-valuemax={100}', 'aria-valuenow={value}', 'aria-live="polite"', '$.fight.battle.pause', '$.fight.battle.resume', '([1, 2, 4] as const)', 'x{speed}', '$.fight.battle.skip', '$.fight.common.round', 'positionLabels[session.position]', 'min-w-0']) assert.ok(fightBattle.includes(token), `Live fight stage missing ${token}`);
+for (const token of ['$.fight.battle.redCorner', '$.fight.battle.blueCorner', '$.fight.battle.condition', '$.fight.battle.stamina', 'aria-label={label}']) assert.ok(fightBattle.includes(token), `Live fight meter missing ${token}`);
 for (const token of ['fight-strike', 'fight-takedown', 'fight-clinch', 'fight-ground', 'fight-submission', 'fight-knockdown', 'fight-recovery', 'fight-finish', 'prefers-reduced-motion']) assert.ok(css.includes(token), `Live fight motion CSS missing ${token}`);
 console.log('UI visual contracts passed.');

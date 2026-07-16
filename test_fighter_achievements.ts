@@ -55,6 +55,9 @@ assert.ok(achievements.some(item => item.title === 'Successful Title Defense' &&
 assert.ok(achievements.some(item => item.title === 'Grand Prix Champion' && item.description.includes('4-Man')));
 assert.ok(achievements.some(item => item.title === 'Fighter of the Year'));
 assert.ok(achievements.some(item => item.title === 'Fight of the Year' && item.fightArchiveId === 'fight-1'));
+const vietnameseAchievements = deriveFighterAchievements(state, fighter.id, 'vi');
+assert.deepEqual(achievements.map(({ title: _title, description: _description, ...item }) => item), vietnameseAchievements.map(({ title: _title, description: _description, ...item }) => item));
+assert.notEqual(achievements[0].title, vietnameseAchievements[0].title);
 assert.ok(!deriveFighterAchievements(state, 'fighter-2').length);
 
 console.log('Fighter achievement checks passed.');

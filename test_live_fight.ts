@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import i18n from './src/i18n';
 import { generateInitialWorld } from './src/lib/game/generator';
 import { createFightSession, fightSessionToResult, runFightSession, stepFightSession, validateFightSession } from './src/lib/game/liveFight';
 import { simulateFight, validateRoundStats } from './src/lib/game/fightSimulator';
@@ -19,6 +20,25 @@ assert.deepEqual(stepFightSession(first), first);
 assert.ok(first.timeline.length > 1);
 assert.ok(first.red.condition >= 0 && first.red.condition <= 100);
 assert.ok(first.blue.condition >= 0 && first.blue.condition <= 100);
+
+const withoutFightProse = (value: typeof first) => ({
+  ...value,
+  language: undefined,
+  commentary: [],
+  timeline: value.timeline.map(event => ({ ...event, headline: '', commentary: '' })),
+  roundStats: value.roundStats.map(round => ({ ...round, summary: '', keyMoments: [] })),
+  currentRoundStats: { ...value.currentRoundStats, keyMoments: [] }
+});
+const englishFight = runFightSession(createFightSession(matchup, red, blue, 12345, 'en'));
+const vietnameseFight = runFightSession(createFightSession(matchup, red, blue, 12345, 'vi'));
+assert.deepEqual(withoutFightProse(englishFight), withoutFightProse(vietnameseFight));
+assert.notDeepEqual(englishFight.commentary, vietnameseFight.commentary);
+assert.deepEqual(englishFight, runFightSession(createFightSession(matchup, red, blue, 12345, 'en')));
+const vietnameseStart = createFightSession(matchup, red, blue, 54321, 'vi');
+await i18n.changeLanguage('en');
+const vietnameseAfterGlobalChange = runFightSession(vietnameseStart);
+assert.equal(vietnameseAfterGlobalChange.language, 'vi');
+assert.ok(vietnameseAfterGlobalChange.commentary.some(line => /hiệp|trọng tài|võ sĩ|góc đài/i.test(line)));
 
 const result = fightSessionToResult(first);
 assert.deepEqual(simulateFight(matchup, red, blue, 12345), result);

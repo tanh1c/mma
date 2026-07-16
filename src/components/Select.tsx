@@ -3,6 +3,7 @@ import { ChevronDown, Check } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
+import { useTranslation } from 'react-i18next';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -23,6 +24,7 @@ interface SelectProps {
 }
 
 export function Select({ value, onChange, options, placeholder, className }: SelectProps) {
+  const { t } = useTranslation('translation');
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -47,7 +49,7 @@ export function Select({ value, onChange, options, placeholder, className }: Sel
         aria-haspopup="listbox"
         className="flex min-h-11 w-full items-center justify-between gap-2 rounded-lg border border-[#2a2c31] bg-[#101114] px-3 text-sm text-white transition-colors hover:border-neutral-500 hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
       >
-        <span className="truncate">{selectedOption ? selectedOption.label : (placeholder || 'Select...')}</span>
+        <span className="truncate">{selectedOption ? selectedOption.label : (placeholder || t($ => $.common.select))}</span>
         <ChevronDown size={16} className={cn('text-neutral-400 transition-transform', isOpen && 'rotate-180')} />
       </button>
 
