@@ -29,7 +29,7 @@ delete legacyFighter.contract.endDate;
 const migrated = validateAndMigrateState(legacy)!;
 const migratedFighter = Object.values(migrated.fighters).find(candidate => candidate.contract)!;
 assert.ok(migratedFighter.contract!.endDate >= migrated.currentDate);
-assert.equal(migrated.saveVersion, 9);
+assert.equal(migrated.saveVersion, 10);
 
 const expiryState = generateInitialWorld(3);
 const expiring = Object.values(expiryState.fighters).find(candidate => candidate.contract)!;

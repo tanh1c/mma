@@ -230,8 +230,9 @@ export function scheduleTournamentRound(
         throw new Error("Quarterfinals must be completed to schedule semifinals.");
       }
     } else {
-      if (tourney.status !== 'planned') {
-        throw new Error("Semifinals can only be scheduled for a planned tournament.");
+      const retryingUnfinishedRound = tourney.status === 'active' && tourney.fights.filter(f => f.round === 'semifinal').every(f => !f.isCompleted && !f.eventId);
+      if (tourney.status !== 'planned' && !retryingUnfinishedRound) {
+        throw new Error("Semifinals can only be scheduled for a planned tournament or retried before any semifinal completes.");
       }
     }
   } else if (round === 'final') {
@@ -905,9 +906,22 @@ export function runAutopilotTournaments(state: GameState): GameState {
       if (activeTourney.earliestRoundDate && newState.currentDate < activeTourney.earliestRoundDate) {
          return newState;
       }
-      
+
       const isEightMan = activeTourney.format === 'eight_man';
-      
+      const fourManSemifinals = activeTourney.fights.filter(f => f.round === 'semifinal');
+      const retryFourManSemifinals = !isEightMan && fourManSemifinals.every(f => !f.isCompleted && !f.eventId);
+      if (retryFourManSemifinals) {
+        const upcomingEvent = Object.values(newState.events).find(e => !e.isCompleted && e.date >= state.currentDate);
+        if (upcomingEvent) {
+          try {
+            newState = scheduleSemifinals(newState, activeTourney.id, upcomingEvent.id);
+          } catch (e) {
+            // Retry on the next eligible event.
+          }
+        }
+        return newState;
+      }
+
       // Schedule Semifinals if 8-man and quarterfinals are done
       if (isEightMan) {
         const quarterfinalsDone = activeTourney.fights.filter(f => f.round === 'quarterfinal').every(q => q.isCompleted);

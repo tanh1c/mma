@@ -7,6 +7,8 @@ import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { CountryFlag } from '../components/CountryFlag';
 import { FighterAvatar } from '../components/FighterAvatar';
+import { FighterRankBadge } from '../components/FighterRankBadge';
+import { getFighterRankSortValue } from '../lib/game/rankings';
 import { DataSurface, PageHeader, Panel, StatusBadge } from '../components/ui';
 import { getFighterOverall, isProspect } from '../lib/game/fighterRatings';
 import { formatHeight, formatWeight } from '../lib/displayUnits';
@@ -16,10 +18,11 @@ function cn(...inputs: any[]) {
   return twMerge(clsx(inputs));
 }
 
-type SortKey = 'name' | 'age' | 'weight' | 'record' | 'style' | 'overall' | 'potential' | 'popularity' | 'status' | 'contract';
+type SortKey = 'name' | 'rank' | 'age' | 'weight' | 'record' | 'style' | 'overall' | 'potential' | 'popularity' | 'status' | 'contract';
 
 export default function Roster() {
-  const { fighters, setView } = useGameStore();
+  const gameState = useGameStore();
+  const { fighters, setView } = gameState;
   const unitSystem = useSettingsStore(settings => settings.unitSystem);
   const [search, setSearch] = useState('');
   const [filterWeight, setFilterWeight] = useState<string>('All');
@@ -73,6 +76,10 @@ export default function Roster() {
         case 'name':
           aValue = `${a.firstName} ${a.lastName}`;
           bValue = `${b.firstName} ${b.lastName}`;
+          break;
+        case 'rank':
+          aValue = getFighterRankSortValue(gameState, a.id);
+          bValue = getFighterRankSortValue(gameState, b.id);
           break;
         case 'age':
           aValue = a.age;
@@ -179,7 +186,7 @@ export default function Roster() {
           <thead className="border-b border-[#2a2c31] bg-black/10 font-mono text-[10px] uppercase tracking-[0.14em] text-neutral-500">
             <tr>
               <th className="p-4 cursor-pointer hover:bg-neutral-900 transition-colors group" onClick={() => handleSort('name')}>
-                Fighter <SortIcon sortKey="name" />
+                Fighter <SortIcon sortKey="name" /> <button type="button" onClick={event => { event.stopPropagation(); handleSort('rank'); }} className="ml-2">Rank<SortIcon sortKey="rank" /></button>
               </th>
               <th className="p-4 cursor-pointer hover:bg-neutral-900 transition-colors group" onClick={() => handleSort('age')}>
                 Age <SortIcon sortKey="age" />
@@ -227,7 +234,7 @@ export default function Roster() {
                     <div className="flex flex-col gap-1">
                       <div className="flex items-center gap-2">
                         <FighterAvatar id={f.id} name={`${f.firstName} ${f.lastName}`} nationality={f.nationality} className="h-8 w-8" />
-                        <div className="font-bold text-white">{f.firstName} {f.lastName}</div>
+                        <FighterRankBadge fighterId={f.id} /><div className="font-bold text-white">{f.firstName} {f.lastName}</div>
                         <CountryFlag nationality={f.nationality} className="text-sm" />
                         {f.isChampion && <span className="text-yellow-500 text-xs font-bold" title="Champion">👑</span>}
                       </div>

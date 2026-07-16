@@ -5,6 +5,8 @@ import { Trophy, TrendingUp, Users, DollarSign, Calendar, FastForward, Settings,
 import { calculateEventProjections } from '../lib/game/economy';
 import { getPromotionInbox } from '../lib/game/inbox';
 import { Button, Panel, PageHeader, Stat, StatusBadge } from '../components/ui';
+import { ChampionshipBelt } from '../components/ChampionshipBelt';
+import { FighterRankBadge } from '../components/FighterRankBadge';
 
 export default function Dashboard() {
   const gameState = useGameStore();
@@ -262,9 +264,9 @@ export default function Dashboard() {
                     const blue = fighters[fight.blueCornerId];
                     return (
                       <div key={idx} className="flex flex-wrap justify-between items-center gap-2 text-sm p-2 bg-neutral-900 rounded">
-                        <span className="font-medium">{red?.lastName}</span>
+                        <span className="flex items-center gap-1 font-medium">{red && <FighterRankBadge fighterId={red.id} />}{red?.lastName}</span>
                         <span className="text-neutral-500 text-xs">vs</span>
-                        <span className="font-medium">{blue?.lastName}</span>
+                        <span className="flex items-center gap-1 font-medium">{blue && <FighterRankBadge fighterId={blue.id} />}{blue?.lastName}</span>
                         <span className="text-neutral-500 text-xs ml-4">{fight.weightClass}</span>
                       </div>
                     );
@@ -331,17 +333,21 @@ export default function Dashboard() {
                 const isInterim = titles[champ.weightClass]?.interimChampionId === champ.id;
                 
                 return (
-                  <div 
-                    key={champ.id} 
+                  <button
+                    type="button"
+                    key={champ.id}
                     onClick={() => setView('fighter-detail', { fighterId: champ.id })}
-                    className="bg-neutral-950 p-3 rounded-md border border-neutral-800 cursor-pointer hover:border-neutral-600 transition-colors relative"
+                    className="flex min-w-0 items-center gap-2 rounded-md border border-neutral-800 bg-neutral-950 p-3 text-left transition-colors hover:border-neutral-600"
                   >
-                    <p className={`text-xs ${isInterim ? 'text-neutral-400' : 'text-yellow-500'} uppercase font-bold mb-1`}>
-                      {isInterim ? 'Interim ' : ''}{belt ? belt.shortName : champ.weightClass}
-                    </p>
-                    <p className="font-bold text-white truncate">{champ.firstName} {champ.lastName}</p>
-                    <p className="text-xs text-neutral-400">{champ.record.wins}-{champ.record.losses}-{champ.record.draws}</p>
-                  </div>
+                    <ChampionshipBelt weightClass={champ.weightClass} type={isInterim ? 'interim' : 'undisputed'} size="card" alt="" />
+                    <span className="min-w-0 flex-1">
+                      <span className={`mb-1 block text-xs ${isInterim ? 'text-neutral-400' : 'text-yellow-500'} uppercase font-bold`}>
+                        {isInterim ? 'Interim ' : ''}{belt ? belt.shortName : champ.weightClass}
+                      </span>
+                      <span className="block truncate font-bold text-white">{champ.firstName} {champ.lastName}</span>
+                      <span className="block text-xs text-neutral-400">{champ.record.wins}-{champ.record.losses}-{champ.record.draws}</span>
+                    </span>
+                  </button>
                 );
               })}
             </div>

@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import {
   Award,
   BookOpen,
@@ -72,6 +72,15 @@ export function AppShell({ currentView, onNavigate, title, date, money, reputati
     setIsOpen(false);
   };
 
+  useEffect(() => {
+    if (!isOpen) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setIsOpen(false);
+    };
+    document.addEventListener('keydown', closeOnEscape);
+    return () => document.removeEventListener('keydown', closeOnEscape);
+  }, [isOpen]);
+
   const navigation = (mobile = false) => (
     <nav className="h-full space-y-5 overflow-y-auto custom-scrollbar" aria-label="Game navigation">
       {APP_NAV_GROUPS.map(group => (
@@ -117,11 +126,13 @@ export function AppShell({ currentView, onNavigate, title, date, money, reputati
     </aside>
 
     {isOpen && <button type="button" aria-label="Close navigation" className="fixed inset-0 z-40 bg-black/70 md:hidden" onClick={() => setIsOpen(false)} />}
-    <aside className={`fixed inset-y-0 left-0 z-50 flex w-72 flex-col border-r border-[#2a2c31] bg-[#0d0e10] transition-transform md:hidden ${isOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+    {isOpen && <aside className="fixed inset-y-0 left-0 z-50 flex w-72 flex-col border-r border-[#2a2c31] bg-[#0d0e10] md:hidden">
       <div className="flex items-center justify-between">{brand}<button type="button" onClick={() => setIsOpen(false)} className="mr-4 min-h-11 min-w-11 rounded-full text-neutral-400 hover:bg-white/5 hover:text-white" aria-label="Close navigation"><X size={18} /></button></div>
       <div className="min-h-0 flex-1 p-3">{navigation(true)}</div>
-      <div className="border-t border-[#2a2c31] p-3">{utilities}</div>
-    </aside>
+      <div className="border-t border-[#2a2c31] p-3" onClick={event => {
+        if ((event.target as Element).closest('[data-navigation-action]')) setIsOpen(false);
+      }}>{utilities}</div>
+    </aside>}
 
     <div className="min-w-0 flex-1">
       <header className="sticky top-0 z-30 flex min-h-16 items-center gap-3 border-b border-[#2a2c31] bg-[#0a0a0a]/95 px-4 backdrop-blur md:px-6">

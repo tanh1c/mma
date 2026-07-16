@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { generateInitialWorld } from './src/lib/game/generator';
 import { addSocialFeedItems, applyPromotionSocialAction, generatePostFightSocial, generateScheduledFightSocial, getFighterSocialFeed, getFighterStorylines, syncLegacyNewsToSocialFeed } from './src/lib/game/social';
 import { validateAndMigrateState, CURRENT_SAVE_VERSION } from './src/lib/game/save';
-import { advanceTime } from './src/lib/engine';
+import { advanceTime, finalizeEventFinancials } from './src/lib/engine';
 import { calculateEventProjections } from './src/lib/game/economy';
 
 const state = generateInitialWorld(31);
@@ -28,7 +28,7 @@ const legacy: any = structuredClone(state);
 legacy.saveVersion = 8;
 delete legacy.socialFeed;
 const migrated = validateAndMigrateState(legacy)!;
-assert.equal(CURRENT_SAVE_VERSION, 9);
+assert.equal(CURRENT_SAVE_VERSION, 10);
 assert.ok(Array.isArray(migrated.socialFeed));
 assert.ok(Object.values(migrated.events).flatMap(event => event.fights).every(fight => fight.socialHype === 0));
 
@@ -72,5 +72,28 @@ const zeroProjection = calculateEventProjections([{ ...fight, socialHype: 0 }], 
 const hypeProjection = calculateEventProjections([{ ...fight, socialHype: 10 }], projectionFighters, venue, event.ticketPrice, event.marketingSpend, state.promotion, state.storylines, state.titles, state.tournaments);
 assert.ok(hypeProjection.eventHype > zeroProjection.eventHype);
 assert.ok(hypeProjection.eventHype - zeroProjection.eventHype <= 10);
+
+const maxReputationState = structuredClone(state);
+const [fanRed, fanBlue] = Object.values(maxReputationState.fighters).filter(candidate => candidate.weightClass === 'Lightweight').slice(0, 2);
+const fanVenue = Object.values(maxReputationState.venues).find(candidate => candidate.capacity <= 1000)!;
+maxReputationState.promotion = { ...maxReputationState.promotion, reputation: 100, fanbase: 1000 };
+fanRed.popularity = 100;
+fanBlue.popularity = 100;
+maxReputationState.events = {
+  fanbaseEvent: {
+    id: 'fanbaseEvent',
+    name: 'Fanbase Growth Test',
+    date: maxReputationState.currentDate,
+    venueId: fanVenue.id,
+    ticketPrice: 20,
+    marketingSpend: 0,
+    isCompleted: false,
+    fights: [{ id: 'fanbase-fight', redCornerId: fanRed.id, blueCornerId: fanBlue.id, weightClass: 'Lightweight', isTitleFight: false, rounds: 3, result: { winnerId: fanRed.id, loserId: fanBlue.id, method: 'Unanimous Decision', round: 3, time: '5:00', commentary: [], performanceRating: 70 } }]
+  }
+};
+const maxReputationFanbase = finalizeEventFinancials(maxReputationState, 'fanbaseEvent');
+assert.equal(maxReputationFanbase.promotion.reputation, 100);
+assert.ok(maxReputationFanbase.events.fanbaseEvent.results!.attendance > 0);
+assert.ok(maxReputationFanbase.promotion.fanbase > maxReputationState.promotion.fanbase);
 
 console.log('Social Hub tests passed.');

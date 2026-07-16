@@ -3,6 +3,7 @@ import { Activity, ArrowLeft, Award } from 'lucide-react';
 import { useGameStore } from '../store/gameStore';
 import type { FightArchiveItem } from '../types/game';
 import { Button, DataSurface, PageHeader, Panel, StatusBadge } from '../components/ui';
+import { FighterRankBadge } from '../components/FighterRankBadge';
 
 export const FightDetail: React.FC = () => {
   const { fightArchive, selectedFightArchiveId, goBack, fighters, belts } = useGameStore();
@@ -21,9 +22,9 @@ export const FightDetail: React.FC = () => {
     <Panel className="border-t-2 border-t-[#2a2c31]">
       <div className="mb-6 flex flex-col justify-between gap-1 font-mono text-[10px] uppercase tracking-[0.14em] text-neutral-500 sm:flex-row"><span>{archiveItem.eventName}</span><span>{archiveItem.date}</span></div>
       <div className="flex items-center justify-between gap-3">
-        <FighterResult name={redName} record={archiveItem.redRecordAfter} winner={archiveItem.winnerId === archiveItem.redFighterId} tone="red" />
+        <FighterResult name={redName} record={archiveItem.redRecordAfter} winner={archiveItem.winnerId === archiveItem.redFighterId} tone="red" rank={<><span>At fight: {archiveItem.redRankAtFight ?? '—'}</span><span className="inline-flex items-center gap-1">Current: <FighterRankBadge fighterId={archiveItem.redFighterId} /></span></>} />
         <div className="flex w-28 shrink-0 flex-col items-center text-center"><span className="font-mono text-sm text-neutral-600">VS</span>{archiveItem.isTitleFight && <Award className="mt-2 h-5 w-5 text-amber-300" />}<span className="mt-1 font-mono text-[10px] uppercase tracking-[0.14em] text-neutral-500">{archiveItem.isTitleFight && belt ? belt.shortName : archiveItem.weightClass}</span>{archiveItem.tournamentRound && <span className="mt-2"><StatusBadge tone="warning">GP {archiveItem.tournamentRound === 'quarterfinal' ? 'Quarterfinal' : archiveItem.tournamentRound === 'semifinal' ? 'Semifinal' : 'Final'}</StatusBadge></span>}</div>
-        <FighterResult name={blueName} record={archiveItem.blueRecordAfter} winner={archiveItem.winnerId === archiveItem.blueFighterId} tone="blue" />
+        <FighterResult name={blueName} record={archiveItem.blueRecordAfter} winner={archiveItem.winnerId === archiveItem.blueFighterId} tone="blue" rank={<><span>At fight: {archiveItem.blueRankAtFight ?? '—'}</span><span className="inline-flex items-center gap-1">Current: <FighterRankBadge fighterId={archiveItem.blueFighterId} /></span></>} />
       </div>
     </Panel>
 
@@ -41,8 +42,8 @@ export const FightDetail: React.FC = () => {
   </div>;
 };
 
-function FighterResult({ name, record, winner, tone }: { name: string; record?: string; winner: boolean; tone: 'red' | 'blue' }) {
-  return <div className={`w-5/12 border-b pb-3 text-center ${tone === 'red' ? 'border-red-900' : 'border-blue-900'}`}><h2 className="text-xl font-normal tracking-[-0.03em] text-white md:text-3xl">{name}</h2>{record && <p className="mt-1 text-sm text-neutral-500">{record}</p>}{winner && <span className="mt-2 inline-block"><StatusBadge tone="success">Winner</StatusBadge></span>}</div>;
+function FighterResult({ name, record, winner, tone, rank }: { name: string; record?: string; winner: boolean; tone: 'red' | 'blue'; rank: React.ReactNode }) {
+  return <div className={`w-5/12 border-b pb-3 text-center ${tone === 'red' ? 'border-red-900' : 'border-blue-900'}`}><h2 className="text-xl font-normal tracking-[-0.03em] text-white md:text-3xl">{name}</h2><div className="mt-2 flex flex-wrap justify-center gap-2 font-mono text-[10px] text-neutral-500">{rank}</div>{record && <p className="mt-1 text-sm text-neutral-500">{record}</p>}{winner && <span className="mt-2 inline-block"><StatusBadge tone="success">Winner</StatusBadge></span>}</div>;
 }
 
 function ResultItem({ label, value, last = false }: { label: string; value: React.ReactNode; last?: boolean }) {

@@ -586,6 +586,30 @@ try {
   }
   console.log("✅ EMERGENCY RESERVE SIGNING REGRESSION PASSED!");
 
+  console.log("\n=== RUNNING ACTIVE 4-MAN SEMIFINAL RETRY REGRESSION ===");
+  let retryState = generateInitialWorld(2027);
+  retryState.currentDate = '2026-06-01';
+  const retryCandidates = Object.values(retryState.fighters).filter(f => f.weightClass === 'Lightweight' && !f.isChampion).slice(0, 6).map(f => ({ ...f, contract: { fightsRemaining: 4, payPerFight: 5000, winBonus: 5000, exclusivity: true, endDate: '2027-12-31' }, injuryStatus: null, medicalSuspension: null, fatigue: 0 }));
+  retryCandidates.forEach(f => { retryState.fighters[f.id] = f; });
+  retryState = createGrandPrixTournament(retryState, { weightClass: 'Lightweight', name: 'Active Semifinal Retry GP', titleShotPromised: false, participantIds: retryCandidates.slice(0, 4).map(f => f.id), reserveIds: retryCandidates.slice(4).map(f => f.id) });
+  const retryTournamentId = Object.keys(retryState.tournaments).find(id => retryState.tournaments[id].name === 'Active Semifinal Retry GP')!;
+  retryState.tournaments[retryTournamentId] = {
+    ...retryState.tournaments[retryTournamentId],
+    status: 'active',
+    earliestRoundDate: null,
+    roundDelayReason: 'Prior semifinal host was cancelled.',
+    fights: retryState.tournaments[retryTournamentId].fights.map(slot => slot.round === 'semifinal' ? { ...slot, eventId: undefined, fightId: undefined, isCompleted: false } : slot)
+  };
+  retryState.events = {
+    'retry-host': { id: 'retry-host', name: 'Retry Host Event', date: '2026-06-15', venueId: Object.keys(retryState.venues)[0], ticketPrice: 30, marketingSpend: 1000, fights: [], isCompleted: false }
+  };
+  retryState = runAutopilotTournaments(retryState);
+  const retriedSemifinals = retryState.tournaments[retryTournamentId].fights.filter(slot => slot.round === 'semifinal');
+  if (retriedSemifinals.some(slot => slot.eventId !== 'retry-host' || !slot.fightId) || retryState.events['retry-host'].fights.filter(fight => fight.tournamentId === retryTournamentId && fight.tournamentRound === 'semifinal').length !== 2) {
+    throw new Error('Observer autopilot must reschedule an unscheduled active 4-man semifinal round.');
+  }
+  console.log("✅ ACTIVE 4-MAN SEMIFINAL RETRY REGRESSION PASSED!");
+
   console.log("\n=== RUNNING MULTIPLE TITLE-SHOT PROMISE REGRESSION ===");
   const promiseState = generateInitialWorld(3030);
   const promiseWinner = Object.values(promiseState.fighters).find(fighter => fighter.weightClass === 'Lightweight')!;

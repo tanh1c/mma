@@ -1,8 +1,9 @@
 import { addDays, format } from "date-fns";
 import { create } from 'zustand';
-import { GameState, Fighter, Event, FightResult } from '../types/game';
+import { GameState, Fighter, Event } from '../types/game';
 import { generateInitialWorld } from '../lib/game/generator';
-import { advanceTime, simulateSingleFightPreview, applyFightResult, finalizeEventFinancials } from '../lib/engine';
+import { advanceTime, applyFightResult, finalizeEventFinancials } from '../lib/engine';
+import { createFightSession, fightSessionToResult, runFightSession, stepFightSession, type FightSession } from '../lib/game/liveFight';
 import { updateRankings } from '../lib/game/rankings';
 import { v4 as uuidv4 } from 'uuid';
 import { createNewGame, saveGameLocally, loadGameLocally, exportGameToJSON, importGameFromJSON, CURRENT_SAVE_VERSION } from '../lib/game/save';
@@ -18,9 +19,9 @@ import { runObserverDecisions } from '../lib/game/observer';
 export interface ActiveSimulation {
   eventId: string | null;
   activeFightIndex: number;
-  pendingResult: FightResult | null;
-  revealedLines: number;
-  status: 'idle' | 'replaying' | 'result-ready' | 'completed';
+  session: FightSession | null;
+  status: 'idle' | 'running' | 'paused' | 'finished' | 'completed';
+  playbackSpeed: 1 | 2 | 4;
 }
 
 export type GameView = 'dashboard' | 'inbox' | 'roster' | 'free-agents' | 'event-builder' | 'simulation' | 'rankings' | 'news' | 'fighter-detail' | 'debug' | 'history' | 'fight-detail' | 'tournaments' | 'calendar' | 'mma-guide' | 'settings';
@@ -69,8 +70,11 @@ interface GameStore extends GameState {
   createEvent: (event: Omit<Event, 'id' | 'isCompleted'>) => void;
   updateEvent: (eventId: string, event: Omit<Event, 'id' | 'isCompleted'>) => void;
   startEventSimulation: (eventId: string) => void;
-  updateActiveSimulation: (data: Partial<ActiveSimulation>) => void;
-  simulateNextFightPreview: () => void;
+  startLiveFight: () => void;
+  advanceLiveFight: () => void;
+  setLiveFightPlayback: (speed: 1 | 2 | 4) => void;
+  toggleLiveFightPause: () => void;
+  skipLiveFight: () => void;
   confirmPendingFightAndAdvance: () => void;
   finalizeCurrentEvent: () => void;
   exportGame: () => void;
@@ -310,9 +314,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
             newState.activeEventSimulation = {
               eventId: recheckedEvent.id,
               activeFightIndex: startIndex,
-              pendingResult: null,
-              revealedLines: 0,
-              status: 'idle'
+              session: null,
+              status: 'idle',
+              playbackSpeed: 1
             };
           }
           stoppedEarly = true;
@@ -351,9 +355,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
             newState.activeEventSimulation = {
               eventId: recheckedEvent.id,
               activeFightIndex: startIndex,
-              pendingResult: null,
-              revealedLines: 0,
-              status: 'idle'
+              session: null,
+              status: 'idle',
+              playbackSpeed: 1
             };
           }
           stoppedEarly = true;
@@ -798,9 +802,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
       const simState: ActiveSimulation = {
         eventId,
         activeFightIndex: startIndex,
-        pendingResult: null,
-        revealedLines: 0,
-        status: 'idle'
+        session: null,
+        status: 'idle',
+        playbackSpeed: 1
       };
 
       return {
@@ -812,68 +816,63 @@ export const useGameStore = create<GameStore>((set, get) => ({
     });
   },
 
-  updateActiveSimulation: (data) => {
-    set((state) => {
-      if (!state.activeEventSimulation) return state;
-      return {
-        activeEventSimulation: {
-          ...state.activeEventSimulation,
-          ...data
-        }
-      };
-    });
-  },
-
-  simulateNextFightPreview: () => {
-    set((state) => {
-      const sim = state.activeEventSimulation;
-      if (!sim || !sim.eventId) return state;
-      
-      const event = state.events[sim.eventId];
-      if (!event || event.isCompleted) return state;
-
-      if (sim.activeFightIndex < 0) {
-        return state;
+  startLiveFight: () => set((state) => {
+    const sim = state.activeEventSimulation;
+    if (!sim?.eventId || sim.session || sim.activeFightIndex < 0) return state;
+    const event = state.events[sim.eventId];
+    const matchup = event?.fights[sim.activeFightIndex];
+    if (!event || event.isCompleted || !matchup || matchup.result) return state;
+    const red = state.fighters[matchup.redCornerId];
+    const blue = state.fighters[matchup.blueCornerId];
+    if (!red || !blue) return state;
+    return {
+      activeEventSimulation: {
+        ...sim,
+        session: createFightSession(matchup, red, blue),
+        status: 'running'
       }
+    };
+  }),
 
-      const pendingResult = simulateSingleFightPreview(state, sim.eventId, sim.activeFightIndex);
-      
-      if (!pendingResult) return state;
+  advanceLiveFight: () => set((state) => {
+    const sim = state.activeEventSimulation;
+    if (!sim?.session || sim.status !== 'running') return state;
+    const session = stepFightSession(sim.session);
+    return { activeEventSimulation: { ...sim, session, status: session.phase === 'finished' ? 'finished' : 'running' } };
+  }),
 
-      return {
-        activeEventSimulation: {
-          ...sim,
-          pendingResult,
-          revealedLines: 0,
-          status: 'replaying'
-        }
-      };
-    });
-  },
+  setLiveFightPlayback: (playbackSpeed) => set((state) => {
+    const sim = state.activeEventSimulation;
+    return sim ? { activeEventSimulation: { ...sim, playbackSpeed } } : state;
+  }),
+
+  toggleLiveFightPause: () => set((state) => {
+    const sim = state.activeEventSimulation;
+    if (!sim || (sim.status !== 'running' && sim.status !== 'paused')) return state;
+    return { activeEventSimulation: { ...sim, status: sim.status === 'running' ? 'paused' : 'running' } };
+  }),
+
+  skipLiveFight: () => set((state) => {
+    const sim = state.activeEventSimulation;
+    if (!sim?.session || sim.status === 'finished' || sim.status === 'completed') return state;
+    return { activeEventSimulation: { ...sim, session: runFightSession(sim.session), status: 'finished' } };
+  }),
 
   confirmPendingFightAndAdvance: () => {
     set((state) => {
       const sim = state.activeEventSimulation;
-      if (!sim || !sim.eventId || !sim.pendingResult) return state;
-      
+      if (!sim?.eventId || !sim.session || sim.status !== 'finished') return state;
       const event = state.events[sim.eventId];
-      if (!event || event.isCompleted) return state;
-
-      const matchup = event.fights[sim.activeFightIndex];
-      // Check if this fight already has a result (idempotency against double-clicks)
-      if (!matchup || matchup.result) return state;
-      
-      const tempState = applyFightResult(state, sim.eventId, sim.activeFightIndex, sim.pendingResult);
-      
+      const matchup = event?.fights[sim.activeFightIndex];
+      if (!event || event.isCompleted || !matchup || matchup.result) return state;
+      const tempState = applyFightResult(state, sim.eventId, sim.activeFightIndex, fightSessionToResult(sim.session));
       const nextIndex = sim.activeFightIndex - 1;
-      
       return {
         ...tempState,
         activeEventSimulation: {
           ...sim,
           activeFightIndex: nextIndex,
-          pendingResult: null,
-          revealedLines: 0,
+          session: null,
           status: nextIndex < 0 ? 'completed' : 'idle'
         }
       };

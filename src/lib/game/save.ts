@@ -9,7 +9,7 @@ import { syncLegacyNewsToSocialFeed } from './social';
 import { getLocalizedFighterName, isLatinFighterName } from '../names';
 
 const SAVE_KEY = 'cage-dynasty-save';
-export const CURRENT_SAVE_VERSION = 9;
+export const CURRENT_SAVE_VERSION = 10;
 
 export function createNewGame(): GameState {
   const state = generateInitialWorld();

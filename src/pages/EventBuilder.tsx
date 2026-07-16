@@ -11,6 +11,9 @@ import { Select } from '../components/Select';
 import { getEventName } from '../lib/branding';
 import { CountryFlag } from '../components/CountryFlag';
 import { FighterAvatar } from '../components/FighterAvatar';
+import { ChampionshipBelt } from '../components/ChampionshipBelt';
+import { FighterRankBadge } from '../components/FighterRankBadge';
+import { getFighterRankContext } from '../lib/game/rankings';
 import { Button, Panel, PageHeader } from '../components/ui';
 
 export default function EventBuilder() {
@@ -112,7 +115,7 @@ export default function EventBuilder() {
     return matchesSearch && (readinessFilter === 'All' || (readinessFilter === 'Ready' ? readiness.status === 'ready' : readiness.status === 'fatigued'));
   }).map(fighter => {
     const readiness = getFighterReadiness(fighter);
-    return { value: fighter.id, label: `${fighter.firstName} ${fighter.lastName} · OVR ${getFighterOverall(fighter)} (${fighter.record.wins}-${fighter.record.losses}) ${fighter.isChampion ? '👑' : ''}${readiness.status === 'ready' ? '' : ` [${readiness.label.toUpperCase()}]`}`, disabled: !readiness.eligible };
+    return { value: fighter.id, label: `${getFighterRankContext(gameState, fighter.id)?.label ?? 'UR'} · ${fighter.firstName} ${fighter.lastName} · OVR ${getFighterOverall(fighter)} (${fighter.record.wins}-${fighter.record.losses}) ${readiness.status === 'ready' ? '' : ` [${readiness.label.toUpperCase()}]`}`, disabled: !readiness.eligible };
   });
   const recommendations = useMemo(() => recommendMatchups(gameState, selectedWC as WeightClass, bookedFighterIds).filter(recommendation => hasContractThroughEvent(recommendation.red.id) && hasContractThroughEvent(recommendation.blue.id)), [gameState, selectedWC, fights, eventDate]);
   const comparison = redFighter && blueFighter && fighters[redFighter] && fighters[blueFighter] ? compareFighters(fighters[redFighter], fighters[blueFighter]) : null;
@@ -408,7 +411,7 @@ export default function EventBuilder() {
               <input type="text" value={eventName} onChange={e => setEventName(e.target.value)} className="w-full bg-neutral-950 border border-neutral-800 rounded px-3 py-2 text-white text-sm focus:border-neutral-500 focus:ring-1 focus:ring-neutral-500 outline-none transition-colors" />
             </div>
             
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
                 <label className="block text-xs text-neutral-400 mb-1">Date</label>
                 <input type="date" value={eventDate} onChange={e => setEventDate(e.target.value)} min={currentDate} className="w-full bg-neutral-950 border border-neutral-800 rounded px-3 py-2 text-white text-sm focus:border-blue-500 outline-none" />
@@ -419,7 +422,7 @@ export default function EventBuilder() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
                 <label className="block text-xs text-neutral-400 mb-1">Ticket Price ($)</label>
                 <input type="number" min="10" value={ticketPrice} onChange={e => setTicketPrice(Number(e.target.value))} className="w-full bg-neutral-950 border border-neutral-800 rounded px-3 py-2 text-white text-sm focus:border-blue-500 outline-none" />
@@ -451,9 +454,9 @@ export default function EventBuilder() {
               />
             </div>
 
-            <div className="grid grid-cols-[1fr_auto] gap-2">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto]">
               <input value={fighterSearch} onChange={event => setFighterSearch(event.target.value)} placeholder="Search fighter" aria-label="Search fighters" className="min-w-0 rounded border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-white outline-none focus:border-neutral-500" />
-              <Select value={readinessFilter} onChange={value => setReadinessFilter(value as typeof readinessFilter)} options={[{ value: 'All', label: 'All readiness' }, { value: 'Ready', label: 'Ready' }, { value: 'Risky', label: 'Tired' }]} className="w-32" />
+              <Select value={readinessFilter} onChange={value => setReadinessFilter(value as typeof readinessFilter)} options={[{ value: 'All', label: 'All readiness' }, { value: 'Ready', label: 'Ready' }, { value: 'Risky', label: 'Tired' }]} className="sm:w-32" />
             </div>
 
             <div className="space-y-3">
@@ -591,27 +594,28 @@ export default function EventBuilder() {
                   else slotLabel = 'Prelims';
 
                   return (
-                    <div key={idx} className={`p-3 rounded border flex items-center gap-3 transition-colors ${isMainEvent ? 'bg-neutral-800 border-neutral-600' : 'bg-neutral-950 border-neutral-800'}`}>
+                    <div key={idx} className={`flex flex-wrap items-start gap-3 rounded border p-3 transition-colors sm:flex-nowrap sm:items-center ${isMainEvent ? 'bg-neutral-800 border-neutral-600' : 'bg-neutral-950 border-neutral-800'}`}>
                       {/* Order Controls */}
                       <div className="flex flex-col gap-1">
-                        <button onClick={() => moveFight(idx, 'up')} disabled={idx === 0} className="text-neutral-500 hover:text-white disabled:opacity-30 disabled:hover:text-neutral-500 transition-colors">
+                        <button type="button" aria-label={`Move ${slotLabel} up`} onClick={() => moveFight(idx, 'up')} disabled={idx === 0} className="text-neutral-500 hover:text-white disabled:opacity-30 disabled:hover:text-neutral-500 transition-colors">
                           <ArrowUp size={14} />
                         </button>
-                        <button onClick={() => moveFight(idx, 'down')} disabled={idx === fights.length - 1} className="text-neutral-500 hover:text-white disabled:opacity-30 disabled:hover:text-neutral-500 transition-colors">
+                        <button type="button" aria-label={`Move ${slotLabel} down`} onClick={() => moveFight(idx, 'down')} disabled={idx === fights.length - 1} className="text-neutral-500 hover:text-white disabled:opacity-30 disabled:hover:text-neutral-500 transition-colors">
                           <ArrowDown size={14} />
                         </button>
                       </div>
 
-                      <div className="flex-1">
-                        <div className="text-[10px] text-neutral-400 mb-1 font-bold uppercase flex justify-between tracking-wider">
+                      <div className="min-w-0 flex-1">
+                        <div className="mb-1 flex flex-wrap justify-between gap-1 text-[10px] font-bold uppercase tracking-wider text-neutral-400">
                           <span className={isMainEvent || isCoMain ? 'text-yellow-500/80' : ''}>{slotLabel}</span>
-                          <span className="flex items-center gap-2">
+                          <span className="flex flex-wrap items-center justify-end gap-2">
                             {fight.rounds} RND
                             <span className="w-1 h-1 rounded-full bg-neutral-600"></span>
                             {fight.weightClass} 
+                            {fight.isTitleFight && <ChampionshipBelt weightClass={fight.weightClass} type={fight.titleFightType === 'interim' ? 'interim' : 'undisputed'} size="marker" alt="" />}
                             {fight.isTitleFight && (
-                              <span className="text-yellow-500 ml-1">
-                                🏆 {fight.titleFightType === 'interim' ? 'INTERIM ' : fight.titleFightType === 'unification' ? 'UNIFICATION ' : ''}
+                              <span className="ml-1 text-yellow-500">
+                                {fight.titleFightType === 'interim' ? 'INTERIM ' : fight.titleFightType === 'unification' ? 'UNIFICATION ' : fight.titleFightType === 'vacant_undisputed' ? 'VACANT ' : ''}
                                 {belts['belt_' + fight.weightClass.toLowerCase()]?.shortName || 'TITLE'}
                               </span>
                             )}
@@ -643,23 +647,23 @@ export default function EventBuilder() {
                             )}
                           </span>
                         </div>
-                        <div className="flex justify-between items-center text-sm font-bold text-white bg-neutral-900/50 p-2 rounded">
-                          <div className="w-[45%] text-right flex items-center justify-end gap-2 truncate">
-                            <span className="truncate">{red.firstName} <span className="text-neutral-400">{red.lastName}</span></span>
+                        <div className="flex flex-col gap-2 rounded bg-neutral-900/50 p-2 text-sm font-bold text-white sm:flex-row sm:items-center sm:justify-between">
+                          <div className="flex min-w-0 w-full items-center gap-2 sm:w-[45%] sm:justify-end sm:text-right">
+                            <FighterRankBadge fighterId={red.id} /><span className="truncate">{red.firstName} <span className="text-neutral-400">{red.lastName}</span></span>
                             <CountryFlag nationality={red.nationality} className="text-xs" />
                             <FighterAvatar id={red.id} name={`${red.firstName} ${red.lastName}`} nationality={red.nationality} className="h-6 w-6" />
                             <span className="text-[10px] font-normal text-neutral-500 min-w-[42px]">OVR {getFighterOverall(red)}</span>
                           </div>
-                          <span className="w-[10%] text-center text-neutral-600 text-xs italic">vs</span>
-                          <div className="w-[45%] text-left flex items-center gap-2 truncate">
+                          <span className="w-full text-center text-xs italic text-neutral-600 sm:w-[10%]">vs</span>
+                          <div className="flex min-w-0 w-full items-center gap-2 sm:w-[45%]">
                             <span className="text-[10px] font-normal text-neutral-500 min-w-[42px]">OVR {getFighterOverall(blue)}</span>
                             <FighterAvatar id={blue.id} name={`${blue.firstName} ${blue.lastName}`} nationality={blue.nationality} className="h-6 w-6" />
                             <CountryFlag nationality={blue.nationality} className="text-xs" />
-                            <span className="truncate">{blue.firstName} <span className="text-neutral-400">{blue.lastName}</span></span>
+                            <FighterRankBadge fighterId={blue.id} /><span className="truncate">{blue.firstName} <span className="text-neutral-400">{blue.lastName}</span></span>
                           </div>
                         </div>
                       </div>
-                      <div className="w-40">
+                      <div className="order-last w-full sm:order-none sm:w-40">
                         <p className="mb-1 truncate text-[10px] text-neutral-500" title={campSummary(fight.campFocus)}>Camp: {campSummary(fight.campFocus)}</p>
                         <Select
                           value={fight.campFocus ?? 'balanced'}
@@ -668,7 +672,7 @@ export default function EventBuilder() {
                           className="text-xs"
                         />
                       </div>
-                      <button onClick={() => removeFight(idx)} className="ml-2 text-red-500/50 hover:text-red-400 transition-colors p-2 rounded hover:bg-red-500/10">
+                      <button type="button" aria-label={`Remove ${slotLabel}`} onClick={() => removeFight(idx)} className="rounded p-2 text-red-500/50 transition-colors hover:bg-red-500/10 hover:text-red-400 sm:ml-2">
                         <Trash2 size={16} />
                       </button>
                     </div>

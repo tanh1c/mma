@@ -8,6 +8,7 @@ import { diagnoseActiveTournaments } from '../lib/game/tournament';
 import { getGrandPrixExplanation } from '../lib/game/insights';
 import { CountryFlag } from '../components/CountryFlag';
 import { FighterAvatar } from '../components/FighterAvatar';
+import { FighterRankBadge } from '../components/FighterRankBadge';
 import { Button, Panel, PageHeader } from '../components/ui';
 import { getFighterOverall } from '../lib/game/fighterRatings';
 
@@ -240,7 +241,7 @@ export default function Tournaments() {
                         <div className="flex items-center gap-2">
                           <FighterAvatar id={f.id} name={`${f.firstName} ${f.lastName}`} nationality={f.nationality} className="h-8 w-8" />
                           <div>
-                            <p className="font-bold text-sm">{f.firstName} {f.lastName} <CountryFlag nationality={f.nationality} className="text-xs" /></p>
+                            <p className="flex flex-wrap items-center gap-1 font-bold text-sm"><FighterRankBadge fighterId={f.id} />{f.firstName} {f.lastName} <CountryFlag nationality={f.nationality} className="text-xs" /></p>
                             <p className="text-xs text-neutral-500 font-mono">Elo: {Math.floor(f.rankingScore || 1000)} • OVR: {getFighterOverall(f)} • POT: {f.potential}</p>
                           </div>
                         </div>
@@ -473,11 +474,11 @@ export default function Tournaments() {
                                 </p>
                                 <div className="space-y-1">
                                   <div className={`flex justify-between items-center text-sm p-1 rounded ${slot.winnerId === slot.redFighterId ? 'bg-green-500/10 font-bold text-green-400' : ''}`}>
-                                    <span className="flex items-center gap-1">({redSeed}) {redF && <><FighterAvatar id={redF.id} name={`${redF.firstName} ${redF.lastName}`} nationality={redF.nationality} className="h-5 w-5" /><CountryFlag nationality={redF.nationality} className="text-xs" /></>}{redF ? `${redF.firstName} ${redF.lastName}` : 'TBD'}</span>
+                                    <span className="flex items-center gap-1">({redSeed}) {redF && <><FighterRankBadge fighterId={redF.id} /><FighterAvatar id={redF.id} name={`${redF.firstName} ${redF.lastName}`} nationality={redF.nationality} className="h-5 w-5" /><CountryFlag nationality={redF.nationality} className="text-xs" /></>}{redF ? `${redF.firstName} ${redF.lastName}` : 'TBD'}</span>
                                     {slot.winnerId === slot.redFighterId && <Check size={14} />}
                                   </div>
                                   <div className={`flex justify-between items-center text-sm p-1 rounded ${slot.winnerId === slot.blueFighterId ? 'bg-green-500/10 font-bold text-green-400' : ''}`}>
-                                    <span className="flex items-center gap-1">({blueSeed}) {blueF && <><FighterAvatar id={blueF.id} name={`${blueF.firstName} ${blueF.lastName}`} nationality={blueF.nationality} className="h-5 w-5" /><CountryFlag nationality={blueF.nationality} className="text-xs" /></>}{blueF ? `${blueF.firstName} ${blueF.lastName}` : 'TBD'}</span>
+                                    <span className="flex items-center gap-1">({blueSeed}) {blueF && <><FighterRankBadge fighterId={blueF.id} /><FighterAvatar id={blueF.id} name={`${blueF.firstName} ${blueF.lastName}`} nationality={blueF.nationality} className="h-5 w-5" /><CountryFlag nationality={blueF.nationality} className="text-xs" /></>}{blueF ? `${blueF.firstName} ${blueF.lastName}` : 'TBD'}</span>
                                     {slot.winnerId === slot.blueFighterId && <Check size={14} />}
                                   </div>
                                 </div>
@@ -513,11 +514,11 @@ export default function Tournaments() {
                               </p>
                               <div className="space-y-1">
                                 <div className={`flex justify-between items-center text-sm p-1 rounded ${slot.winnerId === slot.redFighterId ? 'bg-green-500/10 font-bold text-green-400' : ''}`}>
-                                  <span>{redSeed ? `(${redSeed}) ` : ''}{redF ? `${redF.firstName} ${redF.lastName}` : 'TBD'}</span>
+                                  <span className="flex items-center gap-1">{redSeed ? `(${redSeed}) ` : ''}{redF && <FighterRankBadge fighterId={redF.id} />}{redF ? `${redF.firstName} ${redF.lastName}` : 'TBD'}</span>
                                   {slot.winnerId === slot.redFighterId && <Check size={14} />}
                                 </div>
                                 <div className={`flex justify-between items-center text-sm p-1 rounded ${slot.winnerId === slot.blueFighterId ? 'bg-green-500/10 font-bold text-green-400' : ''}`}>
-                                  <span>{blueSeed ? `(${blueSeed}) ` : ''}{blueF ? `${blueF.firstName} ${blueF.lastName}` : 'TBD'}</span>
+                                  <span className="flex items-center gap-1">{blueSeed ? `(${blueSeed}) ` : ''}{blueF && <FighterRankBadge fighterId={blueF.id} />}{blueF ? `${blueF.firstName} ${blueF.lastName}` : 'TBD'}</span>
                                   {slot.winnerId === slot.blueFighterId && <Check size={14} />}
                                 </div>
                               </div>

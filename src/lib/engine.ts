@@ -5,6 +5,7 @@ import { coolRivalries, generateEventNewsAndStorylines, generateWeeklyNewsAndSto
 import { applyTournamentProgression } from './game/tournament';
 import { getContractStatus } from './game/contracts';
 import { improveFighterTowardPotential } from './game/fighterRatings';
+import { getFighterRankContext } from './game/rankings';
 import { generatePostFightSocial, generateScheduledFightSocial, syncLegacyNewsToSocialFeed } from './game/social';
 import { v4 as uuidv4 } from 'uuid';
 import { format, addDays } from 'date-fns';
@@ -729,7 +730,7 @@ export function finalizeEventFinancials(state: GameState, eventId: string): Game
   
   let titleChanges: { 
     fighterId: string; 
-    weightClass: string; 
+    weightClass: WeightClass;
     type: 'new_champion' | 'title_defense' | 'vacant_title_won' | 'interim_won' | 'interim_defense' | 'unified' | 'no_change';
     previousChampionId?: string | null;
   }[] = [];
@@ -899,8 +900,8 @@ export function finalizeEventFinancials(state: GameState, eventId: string): Game
   newState.events[eventId] = newEvent;
   
   let fanbaseChange = 0;
-  if (reputationChange > 0) fanbaseChange = Math.floor(results.attendance * 0.05);
-  else if (reputationChange < 0) fanbaseChange = -Math.floor(newState.promotion.fanbase * 0.02);
+  if (results.fanReaction >= 60) fanbaseChange = Math.floor(results.attendance * 0.05);
+  else if (results.fanReaction < 40) fanbaseChange = -Math.floor(newState.promotion.fanbase * 0.02);
 
   newState.promotion = {
     ...newState.promotion,
@@ -969,7 +970,9 @@ export function finalizeEventFinancials(state: GameState, eventId: string): Game
         medicalSuspensions: f.result.medicalSuspensions,
         titleChangeInfo: f.result.titleChangeInfo,
         redRecordAfter: `${newState.fighters[f.redCornerId]?.record.wins || 0}-${newState.fighters[f.redCornerId]?.record.losses || 0}-${newState.fighters[f.redCornerId]?.record.draws || 0}`,
-        blueRecordAfter: `${newState.fighters[f.blueCornerId]?.record.wins || 0}-${newState.fighters[f.blueCornerId]?.record.losses || 0}-${newState.fighters[f.blueCornerId]?.record.draws || 0}`
+        blueRecordAfter: `${newState.fighters[f.blueCornerId]?.record.wins || 0}-${newState.fighters[f.blueCornerId]?.record.losses || 0}-${newState.fighters[f.blueCornerId]?.record.draws || 0}`,
+        redRankAtFight: getFighterRankContext(state, f.redCornerId)?.label,
+        blueRankAtFight: getFighterRankContext(state, f.blueCornerId)?.label
       };
 
       if (f.tournamentId && f.tournamentFightSlotId && newState.tournaments?.[f.tournamentId]) {

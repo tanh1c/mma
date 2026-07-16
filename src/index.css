@@ -53,3 +53,38 @@ textarea {
 .custom-scrollbar::-webkit-scrollbar-track {
   background: #0a0a0a;
 }
+
+.fight-strike { animation: fight-strike 360ms ease-out; }
+.fight-takedown { animation: fight-takedown 480ms ease-out; }
+.fight-clinch { animation: fight-clinch 520ms ease-in-out; }
+.fight-ground { animation: fight-ground 520ms ease-out; }
+.fight-submission { animation: fight-submission 600ms ease-in-out; }
+.fight-knockdown { animation: fight-knockdown 520ms ease-out; }
+.fight-recovery { animation: fight-recovery 450ms ease-out; }
+.fight-finish { animation: fight-finish 700ms ease-out; }
+
+@keyframes fight-strike { 50% { transform: translateX(12%) scale(1.04); } }
+@keyframes fight-takedown { 45% { transform: translateX(10%) translateY(10%) rotate(-4deg); } }
+@keyframes fight-clinch { 50% { transform: translateX(8%) scale(1.02); } }
+@keyframes fight-ground { 60% { transform: translateY(16%) scaleY(.92); } }
+@keyframes fight-submission { 25%, 75% { transform: scale(.96) rotate(-2deg); filter: saturate(1.5); } }
+@keyframes fight-knockdown { 60% { transform: translateY(18%) rotate(10deg); filter: brightness(1.45); } }
+@keyframes fight-recovery { from { opacity: .65; transform: scale(.96); } }
+@keyframes fight-finish { 50% { transform: scale(1.08); filter: brightness(1.4); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .fight-strike,
+  .fight-takedown,
+  .fight-clinch,
+  .fight-ground,
+  .fight-submission,
+  .fight-knockdown,
+  .fight-recovery,
+  .fight-finish {
+    animation: none;
+    transform: none;
+    filter: none;
+    outline: 2px solid #737373;
+    outline-offset: 3px;
+  }
+}

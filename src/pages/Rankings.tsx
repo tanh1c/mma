@@ -4,6 +4,7 @@ import { WeightClass } from '../types/game';
 import { Select } from '../components/Select';
 import { CountryFlag } from '../components/CountryFlag';
 import { FighterAvatar } from '../components/FighterAvatar';
+import { ChampionshipBelt, type BeltType } from '../components/ChampionshipBelt';
 import { DataSurface, PageHeader, Panel, StatusBadge, type StatusTone } from '../components/ui';
 
 export default function Rankings() {
@@ -35,11 +36,14 @@ export default function Rankings() {
     <div className="mx-auto max-w-5xl space-y-6 pb-12">
       <PageHeader eyebrow="Competition" title="Promotion Rankings" actions={<Select value={selectedWC} onChange={setSelectedWC} options={wcOptions} className="w-full sm:w-48" />} />
 
-      {belt && <Panel className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
-        <div><p className="font-mono text-[10px] uppercase tracking-[0.14em] text-neutral-500">Current division belt</p><h2 className="mt-2 text-2xl font-normal tracking-[-0.03em] text-white">{belt.name}</h2><p className="mt-2 text-sm text-neutral-400">Prestige <span className="font-mono text-white">{Math.floor(belt.prestige)} / 100</span></p></div>
-        <div className="flex w-full flex-col gap-3 md:w-auto md:min-w-80">
+      {belt && <Panel className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex min-w-0 flex-col items-center gap-3 text-center sm:flex-row sm:text-left">
+          <ChampionshipBelt weightClass={selectedWC as WeightClass} type="undisputed" size="hero" alt={`${belt.name} undisputed championship belt`} />
+          <div className="min-w-0"><p className="font-mono text-[10px] uppercase tracking-[0.14em] text-neutral-500">Current division belt</p><h2 className="mt-2 text-2xl font-normal tracking-[-0.03em] text-white">{belt.name}</h2><p className="mt-2 text-sm text-neutral-400">Prestige <span className="font-mono text-white">{Math.floor(belt.prestige)} / 100</span></p></div>
+        </div>
+        <div className="flex w-full flex-col gap-3 lg:w-auto lg:min-w-80">
           {undisputedChampion ? <ChampionCard label="Undisputed" fighter={undisputedChampion} defenses={titleInfo?.undisputedDefenses ?? 0} status={{ ...championStatus, tooltip: statusTooltip }} onOpen={() => setView('fighter-detail', { fighterId: undisputedChampion.id })} /> : <div className="py-2"><StatusBadge tone="danger">Vacant title</StatusBadge></div>}
-          {interimChampion && <ChampionCard label="Interim champion" fighter={interimChampion} defenses={titleInfo?.interimDefenses ?? 0} onOpen={() => setView('fighter-detail', { fighterId: interimChampion.id })} />}
+          {interimChampion && <ChampionCard label="Interim champion" fighter={interimChampion} defenses={titleInfo?.interimDefenses ?? 0} weightClass={selectedWC as WeightClass} type="interim" onOpen={() => setView('fighter-detail', { fighterId: interimChampion.id })} />}
         </div>
       </Panel>}
 
@@ -66,6 +70,6 @@ export default function Rankings() {
   );
 }
 
-function ChampionCard({ label, fighter, defenses, status, onOpen }: { label: string; fighter: { id: string; firstName: string; lastName: string; nationality: string; lastFightDate?: string }; defenses: number; status?: { label: string; tone: StatusTone; tooltip: string }; onOpen: () => void }) {
-  return <div className="border-l border-[#2a2c31] pl-4"><div className="mb-2 flex items-center justify-between gap-3"><p className="font-mono text-[10px] uppercase tracking-[0.14em] text-neutral-500">{label}</p>{status && <span title={status.tooltip} className="cursor-help"><StatusBadge tone={status.tone}>{status.label}</StatusBadge></span>}</div><button type="button" onClick={onOpen} className="flex items-center gap-2 text-left text-white hover:text-neutral-300"><FighterAvatar id={fighter.id} name={`${fighter.firstName} ${fighter.lastName}`} nationality={fighter.nationality} className="h-9 w-9" /><span className="text-lg font-normal tracking-[-0.02em]">{fighter.firstName} {fighter.lastName} <CountryFlag nationality={fighter.nationality} className="text-sm" /></span></button><p className="mt-2 text-xs text-neutral-500">Defenses <span className="text-neutral-200">{defenses}</span> <span className="px-1">·</span> Last fight <span className="text-neutral-200">{fighter.lastFightDate || 'None'}</span></p></div>;
+function ChampionCard({ label, fighter, defenses, status, weightClass, type, onOpen }: { label: string; fighter: { id: string; firstName: string; lastName: string; nationality: string; lastFightDate?: string }; defenses: number; status?: { label: string; tone: StatusTone; tooltip: string }; weightClass?: WeightClass; type?: BeltType; onOpen: () => void }) {
+  return <div className="flex min-w-0 items-center gap-3 border-l border-[#2a2c31] pl-4">{weightClass && type && <ChampionshipBelt weightClass={weightClass} type={type} size="card" alt="" />}<div className="min-w-0 flex-1"><div className="mb-2 flex flex-wrap items-center justify-between gap-3"><p className="font-mono text-[10px] uppercase tracking-[0.14em] text-neutral-500">{label}</p>{status && <span title={status.tooltip} className="cursor-help"><StatusBadge tone={status.tone}>{status.label}</StatusBadge></span>}</div><button type="button" onClick={onOpen} className="flex min-w-0 items-center gap-2 text-left text-white hover:text-neutral-300"><FighterAvatar id={fighter.id} name={`${fighter.firstName} ${fighter.lastName}`} nationality={fighter.nationality} className="h-9 w-9" /><span className="truncate text-lg font-normal tracking-[-0.02em]">{fighter.firstName} {fighter.lastName} <CountryFlag nationality={fighter.nationality} className="text-sm" /></span></button><p className="mt-2 text-xs text-neutral-500">Defenses <span className="text-neutral-200">{defenses}</span> <span className="px-1">·</span> Last fight <span className="text-neutral-200">{fighter.lastFightDate || 'None'}</span></p></div></div>;
 }

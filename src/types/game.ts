@@ -102,6 +102,7 @@ export interface Fighter {
   history: string[]; // brief fight history/results strings
   lastFightDate: string | null;
   titleShotPromised?: boolean;
+  lastPromotionRank?: 'C' | 'IC' | 'UR' | `#${number}`;
 }
 
 export interface Promotion {
@@ -272,6 +273,8 @@ export interface FightArchiveItem {
   };
   redRecordAfter?: string;
   blueRecordAfter?: string;
+  redRankAtFight?: 'C' | 'IC' | 'UR' | `#${number}`;
+  blueRankAtFight?: 'C' | 'IC' | 'UR' | `#${number}`;
 }
 
 export interface EventArchiveItem {
@@ -336,7 +339,7 @@ export interface EventResults {
   rankingChanges?: Record<string, { oldRank: number; newRank: number }>;
   titleChanges?: { 
     fighterId: string; 
-    weightClass: string; 
+    weightClass: WeightClass;
     type: 'new_champion' | 'title_defense' | 'vacant_title_won' | 'interim_won' | 'interim_defense' | 'unified' | 'no_change';
     previousChampionId?: string | null;
   }[];

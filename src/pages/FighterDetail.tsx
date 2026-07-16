@@ -12,6 +12,8 @@ import { getFighterOverall, getWeightCutPercent } from '../lib/game/fighterRatin
 import { formatHeight, formatWeight } from '../lib/displayUnits';
 import { useSettingsStore } from '../store/settingsStore';
 import { getFighterSocialFeed, getFighterStorylines } from '../lib/game/social';
+import { ChampionshipBelt, type BeltType } from '../components/ChampionshipBelt';
+import { FighterRankBadge } from '../components/FighterRankBadge';
 
 const tabs = [
   { id: 'overview', label: 'Overview' },
@@ -82,6 +84,8 @@ export default function FighterDetail() {
   const socialActivity = getFighterSocialFeed(state, f.id);
   const overall = getFighterOverall(f);
   const weightCut = getWeightCutPercent(f);
+  const titleState = state.titles[f.weightClass];
+  const currentBeltType: BeltType | null = titleState?.undisputedChampionId === f.id ? 'undisputed' : titleState?.interimChampionId === f.id ? 'interim' : null;
 
   const completeSigning = (pay: number, bonus: number, fights: number) => {
     if (f.contract) renewFighter(f.id, pay, bonus, fights);
@@ -129,22 +133,25 @@ export default function FighterDetail() {
         <div className="flex min-w-0 flex-1 items-center gap-4">
           <FighterAvatar id={f.id} name={`${f.firstName} ${f.lastName}`} nationality={f.nationality} className="h-20 w-20 border border-neutral-700" />
           <div className="min-w-0">
-            <h2 className="text-2xl font-normal tracking-[-0.03em] text-white sm:text-3xl">{f.firstName} {f.lastName}</h2>
+            <div className="flex flex-wrap items-center gap-2"><FighterRankBadge fighterId={f.id} former={!f.contract ? f.lastPromotionRank : undefined} /><h2 className="text-2xl font-normal tracking-[-0.03em] text-white sm:text-3xl">{f.firstName} {f.lastName}</h2></div>
             <div className="mt-1 flex items-center gap-2 text-sm text-neutral-400"><CountryFlag nationality={f.nationality} className="text-base" /><span>{f.nationality} · {f.age} years</span></div>
             {f.nickname && <p className="mt-1 text-sm italic text-neutral-400">“{f.nickname}”</p>}
           </div>
         </div>
-        <div className="grid grid-cols-2 gap-3 text-center sm:grid-cols-5 md:min-w-[30rem]">
-          <ProfileStat label="OVR" value={String(overall)} tone={overall >= 80 ? 'success' : overall >= 65 ? 'warning' : 'neutral'} />
-          <ProfileStat label="POT" value={String(f.potential)} />
-          <ProfileStat label="Record" value={`${f.record.wins}-${f.record.losses}-${f.record.draws}`} detail={`${f.record.kos} KO · ${f.record.subs} SUB`} />
-          <ProfileStat label="Style" value={f.style} />
-          <ProfileStat label="Status" value={f.injuryStatus ? 'Injured' : f.medicalSuspension ? 'Suspended' : f.fatigue > 50 ? 'Fatigued' : 'Ready'} tone={f.injuryStatus ? 'danger' : f.medicalSuspension || f.fatigue > 50 ? 'warning' : 'success'} />
+        <div className="flex min-w-0 flex-col gap-4">
+          {currentBeltType && <div className="flex flex-col items-center"><ChampionshipBelt weightClass={f.weightClass} type={currentBeltType} size="champion" alt={`${f.weightClass} ${currentBeltType} championship belt held by ${f.firstName} ${f.lastName}`} /><p className="font-mono text-[10px] uppercase tracking-[0.14em] text-amber-300">{currentBeltType === 'interim' ? 'Interim Champion' : 'Undisputed Champion'}</p></div>}
+          <div className="grid grid-cols-2 gap-3 text-center sm:grid-cols-5 md:min-w-[30rem]">
+            <ProfileStat label="OVR" value={String(overall)} tone={overall >= 80 ? 'success' : overall >= 65 ? 'warning' : 'neutral'} />
+            <ProfileStat label="POT" value={String(f.potential)} />
+            <ProfileStat label="Record" value={`${f.record.wins}-${f.record.losses}-${f.record.draws}`} detail={`${f.record.kos} KO · ${f.record.subs} SUB`} />
+            <ProfileStat label="Style" value={f.style} />
+            <ProfileStat label="Status" value={f.injuryStatus ? 'Injured' : f.medicalSuspension ? 'Suspended' : f.fatigue > 50 ? 'Fatigued' : 'Ready'} tone={f.injuryStatus ? 'danger' : f.medicalSuspension || f.fatigue > 50 ? 'warning' : 'success'} />
+          </div>
         </div>
       </div>
     </Panel>
 
-    <div role="tablist" aria-label="Fighter detail sections" className="custom-scrollbar flex overflow-x-auto border-b border-[#2a2c31]">
+    <div role="tablist" aria-label="Fighter detail sections" className="flex flex-wrap border-b border-[#2a2c31]">
       {tabs.map((tab, index) => <button key={tab.id} id={`fighter-tab-${tab.id}`} type="button" role="tab" aria-selected={activeTab === tab.id} aria-controls={`fighter-panel-${tab.id}`} tabIndex={activeTab === tab.id ? 0 : -1} onClick={() => selectTab(tab.id)} onKeyDown={event => handleTabKeyDown(event, index)} className={`shrink-0 border-b-2 px-4 py-3 font-mono text-[11px] uppercase tracking-[0.14em] transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-3px] focus-visible:outline-white ${activeTab === tab.id ? 'border-white text-white' : 'border-transparent text-neutral-500 hover:text-neutral-200'}`}>{tab.label}</button>)}
     </div>
 

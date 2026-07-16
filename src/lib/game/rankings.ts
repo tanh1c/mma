@@ -2,6 +2,29 @@ import { GameState, WeightClass, RankingItem, FightResult, Fighter } from '../..
 
 const ELO_K_FACTOR = 32;
 
+export type RankLabel = 'C' | 'IC' | 'UR' | `#${number}`;
+
+type RankingState = Pick<GameState, 'fighters' | 'rankings' | 'titles'>;
+
+export function getFighterRankContext(state: RankingState, fighterId: string): { label: RankLabel; description: string; sortValue: number } | null {
+  const fighter = state.fighters[fighterId];
+  if (!fighter) return null;
+  const title = state.titles[fighter.weightClass];
+  if (title?.undisputedChampionId === fighterId) return { label: 'C', description: 'Undisputed Champion', sortValue: 0 };
+  if (title?.interimChampionId === fighterId) return { label: 'IC', description: 'Interim Champion', sortValue: 1 };
+  const champions = new Set([title?.undisputedChampionId, title?.interimChampionId].filter(Boolean));
+  const contenderIndex = (state.rankings[fighter.weightClass] || []).filter(item => !champions.has(item.fighterId)).findIndex(item => item.fighterId === fighterId);
+  if (fighter.contract && contenderIndex >= 0 && contenderIndex < 15) {
+    const label = `#${contenderIndex + 1}` as RankLabel;
+    return { label, description: `${fighter.weightClass} contender ${label}`, sortValue: contenderIndex + 2 };
+  }
+  return { label: 'UR', description: `Unranked ${fighter.weightClass} fighter`, sortValue: 999 };
+}
+
+export function getFighterRankSortValue(state: RankingState, fighterId: string): number {
+  return getFighterRankContext(state, fighterId)?.sortValue ?? 1000;
+}
+
 function getMethodMultiplier(method: string): number {
   if (method === 'KO/TKO' || method === 'Submission' || method === 'Corner Stoppage' || method === 'Doctor Stoppage') {
     return 1.2;
@@ -119,6 +142,13 @@ export function buildPromotionRankings(
 
 export function updateRankings(state: GameState, eventId?: string): GameState {
   let newState = initializeRankingScores(state);
+  const fighters = { ...newState.fighters };
+  Object.values(fighters).forEach(fighter => {
+    if (fighter.contract) return;
+    const previous = getFighterRankContext({ ...newState, fighters: { ...fighters, [fighter.id]: { ...fighter, contract: {} as Fighter['contract'] } } }, fighter.id);
+    if (previous && previous.label !== 'UR') fighters[fighter.id] = { ...fighter, lastPromotionRank: previous.label };
+  });
+  newState = { ...newState, fighters };
   
   let affectedWeightClasses: WeightClass[] | undefined = undefined;
 

@@ -1,5 +1,6 @@
 import React from 'react';
 import { useGameStore } from '../store/gameStore';
+import { FighterRankBadge } from '../components/FighterRankBadge';
 import { WEIGHT_CLASSES } from '../lib/game/constants';
 import { Trophy, Calendar, Star, TrendingUp, Award } from 'lucide-react';
 import { PageHeader, Panel, Stat } from '../components/ui';
@@ -635,7 +636,7 @@ export default function HistoryStats() {
                 onClick={() => setView('fight-detail', { fightArchiveId: yearBestFight.id })}
               >
                 <p className="text-sm font-bold text-white">
-                  {fighters[yearBestFight.redFighterId]?.lastName} vs {fighters[yearBestFight.blueFighterId]?.lastName}
+                  <FighterRankBadge fighterId={yearBestFight.redFighterId} /> {fighters[yearBestFight.redFighterId]?.lastName} vs <FighterRankBadge fighterId={yearBestFight.blueFighterId} /> {fighters[yearBestFight.blueFighterId]?.lastName}
                 </p>
                 <p className="text-xs text-neutral-400 mt-0.5">Rating: {yearBestFight.performanceRating}% ({yearBestFight.eventName})</p>
               </div>
@@ -651,7 +652,7 @@ export default function HistoryStats() {
                 onClick={() => setView('fight-detail', { fightArchiveId: yearBiggestUpset.id })}
               >
                 <p className="text-sm font-bold text-white">
-                  {fighters[yearBiggestUpset.winnerId]?.lastName} def. {fighters[yearBiggestUpset.winnerId === yearBiggestUpset.redFighterId ? yearBiggestUpset.blueFighterId : yearBiggestUpset.redFighterId]?.lastName}
+                  <FighterRankBadge fighterId={yearBiggestUpset.winnerId ?? undefined} /> {fighters[yearBiggestUpset.winnerId]?.lastName} def. {fighters[yearBiggestUpset.winnerId === yearBiggestUpset.redFighterId ? yearBiggestUpset.blueFighterId : yearBiggestUpset.redFighterId]?.lastName}
                 </p>
                 <p className="text-xs text-green-500 mt-0.5">Upset margin: +{maxUpsetDiff}%</p>
               </div>
@@ -919,9 +920,9 @@ export default function HistoryStats() {
                        <span className="text-xs text-neutral-500">{f.date}</span>
                     </div>
                     <p className="font-bold text-white text-sm">
-                      {red ? `${red.firstName} ${red.lastName}` : 'Unknown'} 
-                      <span className="text-neutral-500 mx-2">vs</span> 
-                      {blue ? `${blue.firstName} ${blue.lastName}` : 'Unknown'}
+                      {red && <FighterRankBadge fighterId={red.id} />} {red ? `${red.firstName} ${red.lastName}` : 'Unknown'}
+                      <span className="text-neutral-500 mx-2">vs</span>
+                      {blue && <FighterRankBadge fighterId={blue.id} />} {blue ? `${blue.firstName} ${blue.lastName}` : 'Unknown'}
                     </p>
                     <p className="text-xs text-neutral-400 mt-1">
                       {f.winnerId === red?.id ? red?.lastName : blue?.lastName} won by {f.method} (R{f.round})
@@ -963,6 +964,7 @@ export default function HistoryStats() {
                             {th.dateWon} - {th.dateLost || 'Present'}
                           </p>
                           <div className="flex items-center gap-2">
+                            {fighter && <FighterRankBadge fighterId={fighter.id} />}
                             <p className={`font-bold ${isCurrent ? 'text-yellow-500' : th.status === 'cleared' ? 'text-neutral-500 line-through' : 'text-white'}`}>
                               {fighter ? `${fighter.firstName} ${fighter.lastName}` : 'Unknown'}
                             </p>
