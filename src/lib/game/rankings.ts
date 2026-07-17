@@ -39,19 +39,34 @@ export function getRankingActivityStatus(fighter: Fighter, currentDate: string):
   return days > INACTIVITY_RANKING_LIMIT ? 'unranked-inactive' : days > INACTIVITY_PENALTY_START ? 'inactive' : 'active';
 }
 
-export function getEffectiveRankingScore(state: GameState, fighter: Fighter): number {
+type RecentFightRecord = { wins: number; losses: number };
+
+function buildRecentFightRecords(state: GameState): Map<string, RecentFightRecord> {
+  const records = new Map<string, RecentFightRecord>();
+  const currentDate = new Date(state.currentDate);
+  for (const fight of Object.values(state.fightArchive)) {
+    if (differenceInCalendarDays(currentDate, new Date(fight.date)) > 365) continue;
+    for (const fighterId of [fight.redFighterId, fight.blueFighterId]) {
+      const record = records.get(fighterId) ?? { wins: 0, losses: 0 };
+      if (fight.winnerId === fighterId) record.wins++;
+      else if (fight.winnerId) record.losses++;
+      records.set(fighterId, record);
+    }
+  }
+  return records;
+}
+
+function effectiveRankingScore(state: GameState, fighter: Fighter, recent: RecentFightRecord): number {
   const elo = fighter.rankingScore ?? 1000;
   const days = getFighterInactivityDays(fighter, state.currentDate);
   const inactivityPenalty = days <= INACTIVITY_PENALTY_START
     ? 0
     : Math.min(MAX_INACTIVITY_PENALTY, (days - INACTIVITY_PENALTY_START) / (INACTIVITY_RANKING_LIMIT - INACTIVITY_PENALTY_START) * MAX_INACTIVITY_PENALTY);
-  const recentFights = Object.values(state.fightArchive).filter(fight =>
-    differenceInCalendarDays(new Date(state.currentDate), new Date(fight.date)) <= 365 &&
-    (fight.redFighterId === fighter.id || fight.blueFighterId === fighter.id)
-  );
-  const wins = recentFights.filter(fight => fight.winnerId === fighter.id).length;
-  const losses = recentFights.filter(fight => fight.winnerId && fight.winnerId !== fighter.id).length;
-  return elo + wins * 12 - losses * 8 - inactivityPenalty;
+  return elo + recent.wins * 12 - recent.losses * 8 - inactivityPenalty;
+}
+
+export function getEffectiveRankingScore(state: GameState, fighter: Fighter): number {
+  return effectiveRankingScore(state, fighter, buildRecentFightRecords(state).get(fighter.id) ?? { wins: 0, losses: 0 });
 }
 
 function getMethodMultiplier(method: string): number {
@@ -98,7 +113,12 @@ export function buildPromotionRankings(
 } {
   const newRankings: Record<string, RankingItem[]> = {};
   const rankingChanges: Record<string, { oldRank: number; newRank: number }> = {};
-  
+  const recentFightRecords = buildRecentFightRecords(state);
+  const effectiveScores = new Map(Object.values(state.fighters).map(fighter => [
+    fighter.id,
+    effectiveRankingScore(state, fighter, recentFightRecords.get(fighter.id) ?? { wins: 0, losses: 0 })
+  ]));
+
   const weightClasses: WeightClass[] = [
     'Bantamweight', 'Featherweight', 'Lightweight', 
     'Welterweight', 'Middleweight', 'Heavyweight'
@@ -131,7 +151,7 @@ export function buildPromotionRankings(
         const bIsChamp = titleState.undisputedChampionId === b.id || titleState.interimChampionId === b.id;
         if (aIsChamp && !bIsChamp) return -1;
         if (!aIsChamp && bIsChamp) return 1;
-        return getEffectiveRankingScore(state, b) - getEffectiveRankingScore(state, a) || a.id.localeCompare(b.id);
+        return effectiveScores.get(b.id)! - effectiveScores.get(a.id)! || a.id.localeCompare(b.id);
       });
 
     const newRank: RankingItem[] = [];

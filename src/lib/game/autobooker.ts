@@ -13,6 +13,7 @@ import { getFighterOverall } from './fighterRatings';
 import { buildPromotionRankings } from './rankings';
 
 const EVENT_INTERVAL_DAYS = 28;
+const OBSERVER_DIVISION_ROSTER_SIZE = 12;
 
 function calculateDateDifference(d1: string, d2: string) {
   return Math.abs(new Date(d1).getTime() - new Date(d2).getTime()) / (1000 * 3600 * 24);
@@ -1055,17 +1056,19 @@ function maintainRoster(state: GameState, language: Language): GameState {
       }
     }
 
-    // Sign logic if too few
-    if (inWc.length < 6 && newState.promotion.money > 50000) {
+    if (inWc.length < OBSERVER_DIVISION_ROSTER_SIZE && newState.promotion.money > 50000) {
       const freeAgents = Object.values(newState.fighters)
-        .filter(f => !f.contract && f.weightClass === wc && f.careerPhase !== 'retired')
-        .sort((a, b) => scoreObserverRosterCandidate(newState, b) - scoreObserverRosterCandidate(newState, a) || a.id.localeCompare(b.id));
-      
-      if (freeAgents.length > 0) {
-        const toSign = freeAgents[0];
+        .filter(f => !f.contract && f.weightClass === wc && (f.careerPhase === 'developing' || f.careerPhase === 'prime'))
+        .map(fighter => ({ fighter, score: scoreObserverRosterCandidate(newState, fighter) }))
+        .filter(candidate => candidate.score >= 45)
+        .sort((a, b) => b.score - a.score || a.fighter.id.localeCompare(b.fighter.id))
+        .slice(0, OBSERVER_DIVISION_ROSTER_SIZE - inWc.length)
+        .map(candidate => candidate.fighter);
+
+      for (const toSign of freeAgents) {
         const pay = 5000 + (toSign.popularity * 100);
-        newState.fighters[toSign.id] = { 
-          ...toSign, 
+        newState.fighters[toSign.id] = {
+          ...toSign,
           contract: { payPerFight: pay, winBonus: pay, fightsRemaining: 4, exclusivity: true, endDate: getContractEndDate(newState.currentDate, 4) }
         };
         newState.news.unshift({

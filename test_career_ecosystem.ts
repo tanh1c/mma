@@ -106,4 +106,20 @@ assert.equal(maintained.fighters[integratedRetiree.id].contract, null);
 const maintainedAgain = autoBookEventsAndContracts(maintained, 'en');
 assert.equal(Object.keys(maintainedAgain.fighters).filter(id => id.startsWith('emergency:2026-04-15:Lightweight:')).length, 4);
 
+const realisticRoster = structuredClone(base);
+realisticRoster.currentDate = '2026-04-15';
+realisticRoster.mode = 'observer';
+realisticRoster.promotion.money = 5_000_000;
+realisticRoster.autopilot = { ...realisticRoster.autopilot, enabled: true, nextBookingAttemptDate: '2026-04-16' };
+realisticRoster.events = integrated.events;
+for (const fighter of Object.values(realisticRoster.fighters)) {
+  if (fighter.contract) realisticRoster.fighters[fighter.id] = { ...fighter, contract: null };
+}
+const expandedRoster = autoBookEventsAndContracts(realisticRoster, 'en');
+for (const weightClass of WEIGHT_CLASSES) {
+  const signed = Object.values(expandedRoster.fighters).filter(fighter => fighter.weightClass === weightClass && fighter.careerPhase !== 'retired' && fighter.contract);
+  assert.equal(signed.length, 12, `${weightClass} should maintain 12 signed fighters.`);
+}
+assert.equal(Object.values(expandedRoster.fighters).some(fighter => fighter.careerPhase === 'retired' && fighter.contract), false);
+
 console.log('Career ecosystem tests passed.');

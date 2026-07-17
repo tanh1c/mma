@@ -50,6 +50,7 @@ for (const token of ['fighter.hallOfFame', 'hallOfFame.legacyScore', '$.historyS
 assert.ok(shell.includes("view: 'inbox'"));
 assert.ok(shell.includes("view: 'settings'"));
 for (const token of ['useEffect', "event.key === 'Escape'", '{isOpen && <aside', "closest('[data-navigation-action]')", 'useTranslation', '$.navigation.dashboard', '$.shell.openNavigation', 'formatCurrency', 'formatDate']) assert.ok(shell.includes(token), `Mobile shell missing ${token}`);
+assert.match(shell, /<main className="[^"]*\[overflow-wrap:anywhere\]/, 'Main content must wrap long values on mobile');
 assert.ok(socialHub.includes('flex flex-wrap gap-2'), 'Social Hub filters must wrap on mobile');
 assert.ok(fighterDetail.includes('flex flex-wrap border-b'), 'Fighter detail tabs must wrap on mobile');
 for (const token of ['grid grid-cols-1 gap-4 sm:grid-cols-2', 'grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto]', 'min-w-0', '$.eventBuilder.card.moveUp', '$.eventBuilder.card.moveDown', '$.eventBuilder.card.remove']) assert.ok(eventBuilder.includes(token), `Event Builder mobile layout missing ${token}`);

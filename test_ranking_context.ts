@@ -106,4 +106,14 @@ const returnedState = { ...nonChampionExcluded, fighters: { ...nonChampionExclud
 const returnedRankings = buildPromotionRankings(returnedState).newRankings.Lightweight;
 assert.equal(returnedRankings.some(item => item.fighterId === excludedFighter.id), true);
 assert.notEqual(returnedRankings[0].fighterId, excludedFighter.id);
+
+let archiveScans = 0;
+returnedState.fightArchive = new Proxy(returnedState.fightArchive, {
+  ownKeys(target) {
+    archiveScans++;
+    return Reflect.ownKeys(target);
+  }
+});
+buildPromotionRankings(returnedState);
+assert.equal(archiveScans, 1, 'A ranking rebuild must scan the fight archive only once.');
 console.log('Ranking context contracts passed.');

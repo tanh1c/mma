@@ -1,11 +1,27 @@
+import assert from 'node:assert/strict';
 import { generateInitialWorld } from './src/lib/game/generator';
-import { createGrandPrixTournament, scheduleQuarterfinals, scheduleSemifinals, scheduleFinal, applyTournamentProgression, cancelTournament, validateTournamentState, runAutopilotTournaments } from './src/lib/game/tournament';
+import { createGrandPrixTournament, scheduleQuarterfinals, scheduleSemifinals, scheduleFinal, applyTournamentProgression, cancelTournament, validateTournamentState, runAutopilotTournaments, maintainTournamentRosterDepth } from './src/lib/game/tournament';
 import { applyFightResult } from './src/lib/engine';
 import { simulateFight } from './src/lib/game/fightSimulator';
 import { FightMatchup } from './src/types/game';
 import { v4 as uuidv4 } from 'uuid';
 
 console.log("=== RUNNING GRAND PRIX TOURNAMENT UNIT TESTS ===");
+
+const cappedRoster = generateInitialWorld(913);
+cappedRoster.promotion.reputation = 100;
+cappedRoster.promotion.money = 5_000_000;
+const cappedLightweights = Object.values(cappedRoster.fighters).filter(fighter => fighter.weightClass === 'Lightweight');
+for (const fighter of cappedLightweights) {
+  const index = cappedLightweights.indexOf(fighter);
+  cappedRoster.fighters[fighter.id] = {
+    ...fighter,
+    contract: index < 13 ? { fightsRemaining: 4, payPerFight: 10_000, winBonus: 10_000, exclusivity: true, endDate: '2027-01-01' } : null,
+    injuryStatus: index < 4 ? { id: `capped-injury-${index}`, type: 'Hand Injury', daysRemaining: 30 } : null
+  };
+}
+const cappedResult = maintainTournamentRosterDepth(cappedRoster, 'Lightweight', 'en');
+assert.equal(Object.values(cappedResult.fighters).filter(fighter => fighter.weightClass === 'Lightweight' && fighter.contract).length, 13);
 
 try {
   let state = generateInitialWorld();

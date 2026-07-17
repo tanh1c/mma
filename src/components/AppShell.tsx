@@ -168,7 +168,7 @@ export function AppShell({ currentView, onNavigate, title, date, money, reputati
         <div className="hidden items-center gap-2 border-l border-[#2a2c31] pl-4 sm:flex"><CircleDollarSign size={15} className="text-neutral-500" /><span className="font-mono text-sm text-white">{formatCurrency(money, language)}</span></div>
         <button type="button" onClick={onAdvanceWeek} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-white px-3 text-sm text-black transition-colors hover:bg-neutral-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white sm:px-4"><Play size={14} fill="currentColor" /> <span className="hidden sm:inline">{t($ => $.shell.advanceWeek)}</span><span className="sm:hidden">{t($ => $.shell.advance)}</span></button>
       </header>
-      <main className="h-[calc(100svh-4rem)] overflow-y-auto custom-scrollbar"><div className="mx-auto w-full max-w-7xl p-4 sm:p-6 lg:p-8">{children}</div></main>
+      <main className="h-[calc(100svh-4rem)] overflow-y-auto [overflow-wrap:anywhere] custom-scrollbar"><div className="mx-auto w-full max-w-7xl p-4 sm:p-6 lg:p-8">{children}</div></main>
     </div>
   </div>;
 }

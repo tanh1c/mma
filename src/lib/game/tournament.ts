@@ -621,6 +621,7 @@ export function maintainTournamentRosterDepth(state: GameState, weightClass: Wei
   
   let newState = { ...state, fighters: { ...state.fighters }, news: [...state.news] };
   let currentEligibleCount = eligible.length;
+  let signedCount = Object.values(state.fighters).filter(f => f.weightClass === weightClass && f.contract && f.careerPhase !== 'retired').length;
   
   // Scale target based on reputation level
   let targetCount = 6; // Base for 4-man
@@ -639,7 +640,7 @@ export function maintainTournamentRosterDepth(state: GameState, weightClass: Wei
       .filter(f => !f.contract && f.careerPhase !== 'retired' && f.weightClass === weightClass)
       .sort((a, b) => b.popularity - a.popularity || b.potential - a.potential);
       
-    const needed = Math.min(targetCount - currentEligibleCount, maxSignPerTick);
+    const needed = Math.max(0, Math.min(targetCount - currentEligibleCount, 12 - signedCount, maxSignPerTick));
     const toSignList = freeAgents.slice(0, needed);
     
     toSignList.forEach(toSign => {
@@ -660,6 +661,7 @@ export function maintainTournamentRosterDepth(state: GameState, weightClass: Wei
           })
         });
         currentEligibleCount++;
+        signedCount++;
       }
     });
   }

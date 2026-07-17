@@ -30,9 +30,10 @@ function resolveCounterOffers(state: GameState, language: Language): GameState {
   Object.values(fighters).forEach(fighter => {
     const offer = fighter.counterOffer;
     if (!offer || offer.expiresDate < state.currentDate) return;
-    const important = fighter.isChampion || scoreObserverRosterCandidate(state, fighter) >= 45 || (divisionDepth[fighter.weightClass] ?? 0) < 6;
+    const important = fighter.isChampion || scoreObserverRosterCandidate(state, fighter) >= 45 || (divisionDepth[fighter.weightClass] ?? 0) < 12;
     const valid = fighter.careerPhase !== 'retired' && offer.fights > 0 && offer.payPerFight >= 0 && offer.winBonus >= 0;
-    const accepted = important && valid && state.promotion.money - offer.payPerFight - offer.winBonus >= 50000;
+    const accepted = important && valid && (fighter.contract || (divisionDepth[fighter.weightClass] ?? 0) < 12) && state.promotion.money - offer.payPerFight - offer.winBonus >= 50000;
+    if (accepted && !fighter.contract) divisionDepth[fighter.weightClass] = (divisionDepth[fighter.weightClass] ?? 0) + 1;
     fighters[fighter.id] = accepted ? {
       ...fighter,
       contract: { fightsRemaining: offer.fights, payPerFight: offer.payPerFight, winBonus: offer.winBonus, exclusivity: true, endDate: getContractEndDate(state.currentDate, offer.fights), lastNegotiationDate: state.currentDate },
