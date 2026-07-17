@@ -9,6 +9,7 @@ import { initializeRankingScores, buildPromotionRankings } from './rankings';
 import { syncLegacyNewsToSocialFeed } from './social';
 import { getBeltBranding } from '../branding';
 import { getContractEndDate } from './contracts';
+import { deriveCareerPhase, derivePrimeEndAge } from './career';
 import { getFighterOverall, getPhysicalProfile } from './fighterRatings';
 
 type FighterArchetype = 'Champion' | 'Contender' | 'Prospect' | 'Veteran' | 'Journeyman' | 'Can';
@@ -79,7 +80,12 @@ function generateAttributes(rng: PRNG, style: FighterStyle, age: number, baseLev
   return attrs;
 }
 
-export function generateFighter(rng: PRNG, archetype: FighterArchetype, weightClass: WeightClass): Fighter {
+export function generateFighter(
+  rng: PRNG,
+  archetype: FighterArchetype,
+  weightClass: WeightClass,
+  identity?: { fighterId: string; injuryId: string }
+): Fighter {
   const clamp = (val: number, min = 0, max = 100) => Math.max(min, Math.min(max, val));
   
   let age = 25;
@@ -152,9 +158,15 @@ export function generateFighter(rng: PRNG, archetype: FighterArchetype, weightCl
   const physicalProfile = getPhysicalProfile(weightClass, rng.randomInt.bind(rng));
   const attributes = generateAttributes(rng, style, age, baseLevel);
   const overall = getFighterOverall({ attributes, style });
+  const id = identity?.fighterId ?? uuidv4();
+  const injuryStatus = rng.chance(0.05)
+    ? { id: identity?.injuryId ?? uuidv4(), type: 'Minor Injury', daysRemaining: rng.randomInt(7, 30) }
+    : null;
+  const primeEndAge = derivePrimeEndAge({ id, style, attributes, injuryStatus });
+  const careerPhase = deriveCareerPhase(age, primeEndAge);
 
   return {
-    id: uuidv4(),
+    id,
     firstName: name.firstName,
     lastName: name.lastName,
     nickname: hasNickname ? rng.randomItem(nicknames) : '',
@@ -173,15 +185,18 @@ export function generateFighter(rng: PRNG, archetype: FighterArchetype, weightCl
     },
     popularity,
     marketability: clamp(popularity + rng.randomInt(-15, 15)),
-    potential: Math.min(95, Math.max(potential, overall)),
+    potential: careerPhase === 'declining' ? overall : Math.min(95, Math.max(potential, overall)),
     morale: rng.randomInt(60, 100),
     momentum: clamp(50 + (wins - losses) * 2 + rng.randomInt(-10, 10)),
     fatigue: rng.randomInt(0, 10),
-    injuryStatus: rng.chance(0.05) ? { id: uuidv4(), type: 'Minor Injury', daysRemaining: rng.randomInt(7, 30) } : null,
+    injuryStatus,
     contract: null,
     isChampion: false,
     history: [],
-    lastFightDate: null
+    lastFightDate: null,
+    careerPhase,
+    primeEndAge,
+    lastLifecycleYear: 2025
   };
 }
 
@@ -276,7 +291,7 @@ export function generateInitialWorld(seed?: number): GameState {
         titles[wc as WeightClass].status = 'active';
         shouldSign = true;
         titleHistory.push({
-          id: `th_${f.id}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          id: `th_${f.id}_${currentDate}`,
           weightClass: wc as WeightClass,
           fighterId: f.id,
           dateWon: currentDate,
@@ -384,7 +399,8 @@ export function generateInitialWorld(seed?: number): GameState {
     ],
     financeLedger: [],
     tournaments: {},
-    seasonPlans: {}
+    seasonPlans: {},
+    careerEcosystem: { rookieClassYears: [], emergencyProspectDates: {} }
   };
 
   initialState = initializeRankingScores(initialState);

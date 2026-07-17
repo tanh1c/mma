@@ -4,8 +4,9 @@ import { calculateEventFinancials } from './game/economy';
 import { coolRivalries, generateEventNewsAndStorylines, generateWeeklyNewsAndStorylines } from './game/news';
 import { applyTournamentProgression } from './game/tournament';
 import { getContractStatus } from './game/contracts';
-import { improveFighterTowardPotential } from './game/fighterRatings';
-import { getFighterRankContext } from './game/rankings';
+import { processAnnualCareerLifecycle } from './game/career';
+import { generateAnnualRookieClass } from './game/careerEcosystem';
+import { buildPromotionRankings, getFighterRankContext, updateRankings } from './game/rankings';
 import { generatePostFightSocial, generateScheduledFightSocial, syncLegacyNewsToSocialFeed } from './game/social';
 import { v4 as uuidv4 } from 'uuid';
 import { format, addDays } from 'date-fns';
@@ -274,30 +275,15 @@ export function advanceTime(state: GameState, days: number = 7, language: Langua
       }
     }
 
-    // Aging mechanic
-    if (Math.random() < (days / 365)) {
-      f.age += 1;
-      
-      // Stat decline for older fighters
-      if (f.age > 33) {
-        f.attributes.cardio = Math.max(10, f.attributes.cardio - randomInt(1, 3));
-        f.attributes.speed = Math.max(10, f.attributes.speed - randomInt(1, 3));
-      }
-      if (f.age > 35) {
-        f.attributes.chin = Math.max(10, f.attributes.chin - randomInt(1, 3));
-      }
-      
-      if (f.age < 28 && Math.random() > 0.3) {
-        const improved = improveFighterTowardPotential(f, randomInt, Math.random);
-        f.attributes = improved.attributes;
-      }
-    }
-    
     newFighters[f.id] = f;
   });
 
   newState.fighters = newFighters;
-  
+  for (let year = oldYear + 1; year <= newYear; year++) {
+    Object.assign(newState, processAnnualCareerLifecycle(newState, year, language));
+    Object.assign(newState, generateAnnualRookieClass(newState, year, language));
+  }
+
   // Track Champion Inactivity
   const newTitles = { ...newState.titles };
   for (const wc in newTitles) {
@@ -327,6 +313,7 @@ export function advanceTime(state: GameState, days: number = 7, language: Langua
     }
   }
   newState.titles = newTitles;
+  newState.rankings = buildPromotionRankings(newState).newRankings;
 
   return generateScheduledFightSocial(syncLegacyNewsToSocialFeed(generateWeeklyNewsAndStorylines(coolRivalries(newState, nextDate), days, language)), nextDate, language);
 }
@@ -716,7 +703,7 @@ export function applyFightResult(state: GameState, eventId: string, fightIndex: 
     finalState = applyTournamentProgression(finalState, updatedMatchup.tournamentId, updatedMatchup.tournamentFightSlotId, result.winnerId, loserId, language);
   }
 
-  return finalState;
+  return { ...finalState, rankings: buildPromotionRankings(finalState).newRankings };
 }
 
 export function finalizeEventFinancials(state: GameState, eventId: string, language: Language = readLanguage()): GameState {
@@ -1103,7 +1090,7 @@ export function quickSimulateEvent(state: GameState, eventId: string, language: 
     }
   }
 
-  return finalizeEventFinancials(tempState, eventId, language);
+  return updateRankings(finalizeEventFinancials(tempState, eventId, language), eventId);
 }
 
 export function syncChampionFlags(state: GameState): GameState {

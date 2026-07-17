@@ -30,7 +30,7 @@ const legacy: any = structuredClone(state);
 legacy.saveVersion = 8;
 delete legacy.socialFeed;
 const migrated = validateAndMigrateState(legacy)!;
-assert.equal(CURRENT_SAVE_VERSION, 10);
+assert.equal(migrated.saveVersion, CURRENT_SAVE_VERSION);
 assert.ok(Array.isArray(migrated.socialFeed));
 assert.ok(Object.values(migrated.events).flatMap(event => event.fights).every(fight => fight.socialHype === 0));
 

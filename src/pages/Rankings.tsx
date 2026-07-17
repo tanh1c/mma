@@ -9,11 +9,12 @@ import { DataSurface, PageHeader, Panel, StatusBadge, type StatusTone } from '..
 import { useTranslation } from 'react-i18next';
 import { useSettingsStore } from '../store/settingsStore';
 import { formatDate, formatWeightClass } from '../lib/localization';
+import { getRankingActivityStatus } from '../lib/game/rankings';
 
 export default function Rankings() {
   const { t } = useTranslation('translation');
   const language = useSettingsStore(state => state.language);
-  const { rankings, fighters, setView } = useGameStore();
+  const { currentDate, rankings, fighters, setView } = useGameStore();
   const [selectedWC, setSelectedWC] = useState('Lightweight');
   const currentRankings = rankings[selectedWC as WeightClass] || [];
   const belt = useGameStore(state => state.belts[`belt_${selectedWC.toLowerCase()}`]);
@@ -61,12 +62,20 @@ export default function Rankings() {
             const isChampion = fighter.isChampion;
             const hasChampion = currentRankings.some(entry => fighters[entry.fighterId]?.isChampion);
             const displayRank = isChampion ? 'C' : hasChampion ? index : index + 1;
+            const activityStatus = getRankingActivityStatus(fighter, currentDate);
+            const status = fighter.injuryStatus
+              ? { label: t($ => $.rankings.injured), tone: 'danger' as StatusTone }
+              : activityStatus === 'inactive'
+                ? { label: t($ => $.rankings.inactive), tone: 'warning' as StatusTone }
+                : fighter.careerPhase === 'declining'
+                  ? { label: t($ => $.rankings.declining), tone: 'warning' as StatusTone }
+                  : { label: t($ => $.rankings.active), tone: 'success' as StatusTone };
             return <tr key={fighter.id} onClick={() => setView('fighter-detail', { fighterId: fighter.id })} className="cursor-pointer transition-colors hover:bg-white/[0.02]">
               <td className="p-4 text-center font-mono text-lg text-white">{displayRank}</td>
               <td className="p-4 text-center font-mono text-xs">{ranking.trend === 999 ? <span className="text-amber-300">{t($ => $.rankings.new)}</span> : ranking.trend > 0 ? <span className="text-emerald-300">▲ {ranking.trend}</span> : ranking.trend < 0 ? <span className="text-red-300">▼ {Math.abs(ranking.trend)}</span> : <span className="text-neutral-600">—</span>}</td>
               <td className="p-4"><div className="flex items-center gap-2"><FighterAvatar id={fighter.id} name={`${fighter.firstName} ${fighter.lastName}`} nationality={fighter.nationality} className="h-8 w-8" /><div><p className="font-medium text-white">{fighter.firstName} {fighter.lastName} <CountryFlag nationality={fighter.nationality} className="text-sm" /></p><p className="mt-1 text-xs text-neutral-500">{fighter.nickname ? `"${fighter.nickname}" • ` : ''}{t($ => $.rankings.age, { age: fighter.age })}</p></div></div></td>
               <td className="p-4 font-mono text-white">{fighter.record.wins}-{fighter.record.losses}-{fighter.record.draws}</td>
-              <td className="p-4">{fighter.injuryStatus ? <StatusBadge tone="danger">{t($ => $.rankings.injured)}</StatusBadge> : <StatusBadge tone="success">{t($ => $.rankings.active)}</StatusBadge>}</td>
+              <td className="p-4"><StatusBadge tone={status.tone}>{status.label}</StatusBadge></td>
             </tr>;
           })}</tbody>
         </table></div>}

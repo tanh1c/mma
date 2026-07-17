@@ -3,7 +3,8 @@ import '../../i18n';
 import type { FightCampFocus, Fighter, FightMatchup, GameState } from '../../types/game';
 import { fixedT, readLanguage, type Language } from '../localization';
 import { getContractEndDate } from './contracts';
-import { getFighterOverall, isProspect } from './fighterRatings';
+import { scoreObserverRosterCandidate } from './careerEcosystem';
+import { getFighterOverall } from './fighterRatings';
 import { getPairKey } from './news';
 import { applyPromotionSocialAction } from './social';
 
@@ -29,8 +30,8 @@ function resolveCounterOffers(state: GameState, language: Language): GameState {
   Object.values(fighters).forEach(fighter => {
     const offer = fighter.counterOffer;
     if (!offer || offer.expiresDate < state.currentDate) return;
-    const important = fighter.isChampion || fighter.popularity >= 60 || isProspect(fighter) || (divisionDepth[fighter.weightClass] ?? 0) < 6;
-    const valid = offer.fights > 0 && offer.payPerFight >= 0 && offer.winBonus >= 0;
+    const important = fighter.isChampion || scoreObserverRosterCandidate(state, fighter) >= 45 || (divisionDepth[fighter.weightClass] ?? 0) < 6;
+    const valid = fighter.careerPhase !== 'retired' && offer.fights > 0 && offer.payPerFight >= 0 && offer.winBonus >= 0;
     const accepted = important && valid && state.promotion.money - offer.payPerFight - offer.winBonus >= 50000;
     fighters[fighter.id] = accepted ? {
       ...fighter,

@@ -33,7 +33,7 @@ export default function FreeAgents() {
 
   const agents = useMemo(() => {
     const result = Object.values(fighters)
-      .filter(fighter => fighter.contract === null)
+      .filter(fighter => fighter.contract === null && fighter.careerPhase !== 'retired')
       .filter(fighter => !search.trim() || `${fighter.firstName} ${fighter.lastName} ${fighter.nickname}`.toLowerCase().includes(search.trim().toLowerCase()))
       .filter(fighter => filterWeight === 'All' || fighter.weightClass === filterWeight)
       .filter(fighter => filterStyle === 'All' || fighter.style === filterStyle)

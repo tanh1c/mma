@@ -7,6 +7,7 @@ import { PageHeader, Panel, Stat } from '../components/ui';
 import { useTranslation } from 'react-i18next';
 import { useSettingsStore } from '../store/settingsStore';
 import { formatCalendarSlotStatus, formatCalendarSlotType, formatCurrency, formatDate, formatFightMethod, formatNumber, formatTournamentStatus, formatWeightClass } from '../lib/localization';
+import { calculateHallOfFameScore } from '../lib/game/career';
 
 export default function HistoryStats() {
   const { t: translate } = useTranslation('translation');
@@ -68,114 +69,21 @@ export default function HistoryStats() {
   const yearRevenue = yearEvents.reduce((sum, e) => sum + e.revenue, 0);
   const yearSlots = yearPlan?.slots || [];
 
-  // Legacy Calculation
-  const legacyScores = Object.values(fighters).map(f => {
-    let score = 0;
-    let titleWins = 0;
-    let interimTitleWins = 0;
-    let titleDefenses = 0;
-    let unificationWins = 0;
-    
-    // Core record
-    score += f.record.wins * 1;
-    score += (f.record.kos + f.record.subs) * 1;
-    
-    // Fight archive stats (performance, streaks, specific title fight types)
-    const fFights = fights.filter(a => a.redFighterId === f.id || a.blueFighterId === f.id).reverse(); // oldest to newest
-    let currentStreak = 0;
-    let maxStreak = 0;
-    let totalPerf = 0;
-    let perfCount = 0;
-
-    fFights.forEach(a => {
-       if (a.winnerId === f.id) {
-          currentStreak++;
-          maxStreak = Math.max(maxStreak, currentStreak);
-          
-          if (a.isTitleFight && a.titleChangeInfo) {
-             if (a.titleChangeInfo.type === 'unified') {
-                unificationWins++;
-                score += 8;
-             }
-          }
-       } else {
-          currentStreak = 0;
-       }
-       if (a.performanceRating) {
-          totalPerf += a.performanceRating;
-          perfCount++;
-       }
-    });
-
-    if (maxStreak > 3) {
-       score += (maxStreak - 3) * 2;
-    }
-    if (perfCount > 0) {
-       score += Math.floor((totalPerf / perfCount) / 10);
-    }
-    
-    // Title History
-    const fHistory = titleHistory.filter(th => th.fighterId === f.id);
-    fHistory.forEach(th => {
-      if (th.beltType === 'interim') {
-        interimTitleWins++;
-        score += 5;
-      } else {
-        titleWins++;
-        score += 10;
-        score += (th.defenses * 5);
-        titleDefenses += th.defenses;
-      }
-    });
-
-    // Grand Prix bonuses
-    Object.values(tournaments).forEach(t => {
-      if (t.status === 'completed') {
-        const dateEarned = t.completedDate || t.createdDate;
-        const isWinner = t.winnerId === f.id;
-        const isFinalist = t.fights.find(fight => fight.round === 'final') && 
-                           (t.fights.find(fight => fight.round === 'final')?.redFighterId === f.id || 
-                            t.fights.find(fight => fight.round === 'final')?.blueFighterId === f.id);
-        
-        const isEight = t.format === 'eight_man';
-        if (isWinner) {
-          score += isEight ? 75 : 50; 
-          const heldTitle = titleHistory.some(th => th.fighterId === f.id && th.beltType === 'undisputed');
-          if (heldTitle || f.isChampion) {
-            score += isEight ? 45 : 30; 
-          }
-          if (t.titleShotPromised && t.titleShotUsed) {
-            score += isEight ? 22 : 15;
-            const wonTitleAfterGp = titleHistory.some(th => 
-              th.fighterId === f.id && 
-              th.beltType === 'undisputed' && 
-              th.dateWon >= dateEarned
-            );
-            if (wonTitleAfterGp) {
-              score += isEight ? 38 : 25;
-            }
-          }
-        } else if (isFinalist) {
-          score += isEight ? 30 : 20; 
-        }
-      }
-    });
-
-    // Awards
-    Object.values(yearlyAwards).forEach(award => {
-      if (award.fighterOfTheYearId === f.id) score += 15;
-      if (award.prospectOfTheYearId === f.id) score += 5;
-    });
-
+  const gameState = useGameStore.getState();
+  const legacyScores = Object.values(fighters).map(fighter => {
+    const fighterTitleHistory = titleHistory.filter(item => item.fighterId === fighter.id);
     return {
-      fighter: f,
-      score,
-      titleWins,
-      interimTitleWins,
-      titleDefenses,
-      unificationWins
+      fighter,
+      score: calculateHallOfFameScore(gameState, fighter.id),
+      titleWins: fighterTitleHistory.filter(item => item.beltType === 'undisputed').length,
+      interimTitleWins: fighterTitleHistory.filter(item => item.beltType === 'interim').length,
+      titleDefenses: fighterTitleHistory.reduce((total, item) => total + item.defenses, 0),
+      unificationWins: fights.filter(fight => fight.winnerId === fighter.id && fight.titleChangeInfo?.type === 'unified').length
     };
-  }).filter(l => l.score > 0).sort((a, b) => b.score - a.score).slice(0, 10);
+  }).filter(item => item.score > 0).sort((a, b) => b.score - a.score || a.fighter.id.localeCompare(b.fighter.id)).slice(0, 10);
+  const hallOfFame = Object.values(fighters)
+    .filter(fighter => fighter.hallOfFame)
+    .sort((a, b) => b.hallOfFame!.inductedYear - a.hallOfFame!.inductedYear || b.hallOfFame!.legacyScore - a.hallOfFame!.legacyScore || a.id.localeCompare(b.id));
   
   const [selectedAwardYear, setSelectedAwardYear] = React.useState<number | null>(
     Object.keys(yearlyAwards).length > 0 ? Math.max(...Object.keys(yearlyAwards).map(Number)) : null
@@ -224,6 +132,32 @@ export default function HistoryStats() {
       />
 
       <Panel>
+
+      <div className="bg-neutral-900 p-6 rounded-lg border border-neutral-800">
+        <div className="flex items-center gap-2 mb-6">
+          <Trophy className="w-5 h-5 text-yellow-500" />
+          <h2 className="text-xl font-bold text-white uppercase tracking-tight">{translate($ => $.historyStats.hallOfFameTitle)}</h2>
+        </div>
+        {hallOfFame.length === 0 ? (
+          <p className="text-sm text-neutral-500">{translate($ => $.historyStats.noHallOfFame)}</p>
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {hallOfFame.map(fighter => {
+              const hallOfFame = fighter.hallOfFame!;
+              return (
+                <button key={fighter.id} type="button" onClick={() => setView('fighter-detail', { fighterId: fighter.id })} className="rounded-lg border border-neutral-800 bg-neutral-950 p-4 text-left transition-colors hover:border-neutral-700 hover:bg-neutral-900">
+                  <p className="text-base font-bold text-white">{fighter.firstName} {fighter.lastName}</p>
+                  <p className="mt-1 text-xs text-neutral-500">{formatWeightClass(fighter.weightClass, language)} · {fighter.record.wins}-{fighter.record.losses}-{fighter.record.draws}</p>
+                  <div className="mt-4 flex items-end justify-between gap-4">
+                    <span className="text-xs text-neutral-400">{translate($ => $.historyStats.inductedYear, { year: hallOfFame.inductedYear })}</span>
+                    <span className="font-mono text-lg font-bold text-yellow-400">{hallOfFame.legacyScore}</span>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
 
       {/* Legacy Rankings */}
       <div className="bg-neutral-900 p-6 rounded-lg border border-neutral-800">

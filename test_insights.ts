@@ -8,7 +8,7 @@ assert.ok(fighters.length >= 4, 'Expected Lightweight contract fighters.');
 
 const [red, blue, injured, suspended] = fighters;
 state.fighters[injured.id] = { ...injured, injuryStatus: { id: 'injury', type: 'Broken Hand', daysRemaining: 30 } };
-state.fighters[suspended.id] = { ...suspended, medicalSuspension: { id: 'suspension', reason: 'hard_fight', daysRemaining: 14, severity: 'minor' } };
+state.fighters[suspended.id] = { ...suspended, injuryStatus: null, medicalSuspension: { id: 'suspension', reason: 'hard_fight', daysRemaining: 14, severity: 'minor' } };
 
 assert.equal(getFighterReadiness(red).status, 'ready');
 assert.equal(getFighterReadiness(state.fighters[injured.id]).status, 'injured');

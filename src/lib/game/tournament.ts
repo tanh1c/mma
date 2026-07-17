@@ -65,8 +65,8 @@ export function createGrandPrixTournament(
     if (fighter.weightClass !== weightClass) {
       throw new Error(`${role} fighter ${fighter.lastName} is not in the correct weight class (${weightClass}).`);
     }
-    if (!fighter.contract) {
-      throw new Error(`${role} fighter ${fighter.lastName} is not signed to the promotion.`);
+    if (!fighter.contract || fighter.careerPhase === 'retired') {
+      throw new Error(`${role} fighter ${fighter.lastName} is not active in the promotion.`);
     }
     if (fighter.injuryStatus) {
       throw new Error(`${role} fighter ${fighter.lastName} is currently injured.`);
@@ -301,6 +301,7 @@ export function scheduleTournamentRound(
     const fighter = newState.fighters[fighterId];
     if (!fighter) throw new Error("Fighter not found");
     
+    const isInactive = !fighter.contract || fighter.careerPhase === 'retired';
     const isInjured = fighter.injuryStatus !== null;
     const isSuspendedLong = fighter.medicalSuspension && fighter.medicalSuspension.daysRemaining > 35;
     const isSuspendedShort = fighter.medicalSuspension && fighter.medicalSuspension.daysRemaining <= 35 && fighter.medicalSuspension.daysRemaining > 0;
@@ -320,7 +321,7 @@ export function scheduleTournamentRound(
       return fighterId;
     }
     
-    if (isInjured || isSuspendedLong || isFatigued) {
+    if (isInactive || isInjured || isSuspendedLong || isFatigued) {
       const unusedReserveId = updatedTourney.reserveFighterIds.find(resId => {
         const reserveFighter = newState.fighters[resId];
         const hasNoContract = !reserveFighter || !reserveFighter.contract;
@@ -545,20 +546,25 @@ export function scheduleFinal(state: GameState, tournamentId: string, eventId: s
   return scheduleTournamentRound(state, tournamentId, 'final', eventId, language);
 }
 
-export function cancelTournament(state: GameState, tournamentId: string, language: Language = readLanguage()): GameState {
+export function cancelTournament(state: GameState, tournamentId: string, language: Language = readLanguage(), allowStarted = false): GameState {
   const t = fixedT(language);
   const tourney = state.tournaments[tournamentId];
   if (!tourney) throw new Error("Tournament not found");
-  
+
   const hasCompletedFights = tourney.fights.some(f => f.isCompleted);
-  if (hasCompletedFights) {
+  if (hasCompletedFights && !allowStarted) {
     throw new Error("Cannot cancel a tournament after fights have started.");
   }
   
-  const newState = { ...state, tournaments: { ...state.tournaments }, events: { ...state.events } };
+  const newState = {
+    ...state,
+    tournaments: { ...state.tournaments },
+    events: { ...state.events },
+    seasonPlans: state.seasonPlans ? { ...state.seasonPlans } : state.seasonPlans
+  };
   
   tourney.fights.forEach(slot => {
-    if (slot.eventId && slot.fightId) {
+    if (!slot.isCompleted && slot.eventId && slot.fightId) {
       const event = newState.events[slot.eventId];
       if (event && !event.isCompleted) {
         newState.events[slot.eventId] = {
@@ -568,10 +574,15 @@ export function cancelTournament(state: GameState, tournamentId: string, languag
       }
     }
   });
-  
+
   newState.tournaments[tournamentId] = {
     ...tourney,
     status: 'cancelled',
+    fights: tourney.fights.map(slot => slot.isCompleted ? slot : {
+      ...slot,
+      eventId: undefined,
+      fightId: undefined
+    }),
     notes: [...(tourney.notes || []), t($ => $.generated.tournament.cancelledNote, { date: state.currentDate })]
   };
 
@@ -584,6 +595,7 @@ export function cancelTournament(state: GameState, tournamentId: string, languag
           return {
             ...s,
             status: 'cancelled' as const,
+            eventId: undefined,
             notes: [...(s.notes || []), t($ => $.generated.tournament.cancelledNote, { date: state.currentDate })]
           };
         }
@@ -601,6 +613,7 @@ export function maintainTournamentRosterDepth(state: GameState, weightClass: Wei
   const eligible = Object.values(state.fighters).filter(f => 
     f.weightClass === weightClass &&
     f.contract &&
+    f.careerPhase !== 'retired' &&
     !f.injuryStatus &&
     (!f.medicalSuspension || f.medicalSuspension.daysRemaining <= 0) &&
     !f.isChampion
@@ -623,7 +636,7 @@ export function maintainTournamentRosterDepth(state: GameState, weightClass: Wei
   
   if (currentEligibleCount < targetCount && newState.promotion.money > minMoneyForSigning) {
     const freeAgents = Object.values(newState.fighters)
-      .filter(f => !f.contract && f.weightClass === weightClass)
+      .filter(f => !f.contract && f.careerPhase !== 'retired' && f.weightClass === weightClass)
       .sort((a, b) => b.popularity - a.popularity || b.potential - a.potential);
       
     const needed = Math.min(targetCount - currentEligibleCount, maxSignPerTick);
@@ -890,9 +903,9 @@ export function runAutopilotTournaments(state: GameState, language: Language = r
       // 2. Cancellation recovery if planned and impossible
       if (activeTourney.status === 'planned') {
         const signedCount = Object.values(newState.fighters).filter(
-          f => f.weightClass === activeTourney.weightClass && f.contract && !f.injuryStatus
+          f => f.weightClass === activeTourney.weightClass && f.contract && f.careerPhase !== 'retired' && !f.injuryStatus
         ).length;
-        const totalFA = Object.values(newState.fighters).filter(f => !f.contract && f.weightClass === activeTourney.weightClass).length;
+        const totalFA = Object.values(newState.fighters).filter(f => !f.contract && f.careerPhase !== 'retired' && f.weightClass === activeTourney.weightClass).length;
         const required = activeTourney.format === 'eight_man' ? 11 : 6;
         
         // If we don't have enough fighters and cannot sign (broke or no FA available)
@@ -923,7 +936,7 @@ export function runAutopilotTournaments(state: GameState, language: Language = r
           ...activeTourney.fights.flatMap(fight => [fight.redFighterId, fight.blueFighterId].filter((id): id is string => Boolean(id)))
         ]);
         const freeAgents = Object.values(newState.fighters)
-          .filter(f => !f.contract && f.weightClass === activeTourney.weightClass && !f.injuryStatus && !tournamentFighterIds.has(f.id))
+          .filter(f => !f.contract && f.careerPhase !== 'retired' && f.weightClass === activeTourney.weightClass && !f.injuryStatus && !tournamentFighterIds.has(f.id))
           .sort((a, b) => b.popularity - a.popularity || b.potential - a.potential);
           
         if (freeAgents.length > 0 && newState.promotion.money > 30000) {
@@ -1073,11 +1086,12 @@ export function runAutopilotTournaments(state: GameState, language: Language = r
     if (availableWcs.length > 0) {
       const scoredWcs = availableWcs.map(wc => {
         const title = newState.titles[wc];
-        const freeAgentsCount = Object.values(newState.fighters).filter(f => !f.contract && f.weightClass === wc).length;
+        const freeAgentsCount = Object.values(newState.fighters).filter(f => !f.contract && f.careerPhase !== 'retired' && f.weightClass === wc).length;
         const wcFighters = Object.values(newState.fighters).filter(f => 
-          f.weightClass === wc && 
-          f.contract && 
-          !f.injuryStatus && 
+          f.weightClass === wc &&
+          f.contract &&
+          f.careerPhase !== 'retired' &&
+          !f.injuryStatus &&
           (!f.medicalSuspension || f.medicalSuspension.daysRemaining <= 0) &&
           !f.isChampion
         );
@@ -1175,11 +1189,12 @@ export function evaluateAndCreateTournament(
     if (availableWcs.length > 0) {
       const scoredWcs = availableWcs.map(wc => {
         const title = newState.titles[wc];
-        const freeAgentsCount = Object.values(newState.fighters).filter(f => !f.contract && f.weightClass === wc).length;
+        const freeAgentsCount = Object.values(newState.fighters).filter(f => !f.contract && f.careerPhase !== 'retired' && f.weightClass === wc).length;
         const wcFighters = Object.values(newState.fighters).filter(f => 
-          f.weightClass === wc && 
-          f.contract && 
-          !f.injuryStatus && 
+          f.weightClass === wc &&
+          f.contract &&
+          f.careerPhase !== 'retired' &&
+          !f.injuryStatus &&
           (!f.medicalSuspension || f.medicalSuspension.daysRemaining <= 0) &&
           !f.isChampion
         );
@@ -1233,9 +1248,10 @@ export function evaluateAndCreateTournament(
   }
 
   const wcFighters = Object.values(newState.fighters).filter(f => 
-    f.weightClass === targetWc && 
-    f.contract && 
-    !f.injuryStatus && 
+    f.weightClass === targetWc &&
+    f.contract &&
+    f.careerPhase !== 'retired' &&
+    !f.injuryStatus &&
     (!f.medicalSuspension || f.medicalSuspension.daysRemaining <= 0) &&
     !f.isChampion &&
     !isFighterBookedUpcoming(newState, f.id)
@@ -1537,7 +1553,7 @@ export function validateTournamentState(state: GameState): string[] {
 
     // 10. cancelled tournament must not have future scheduled fights
     if (t.status === 'cancelled') {
-      const scheduledFights = t.fights.filter(f => f.eventId);
+      const scheduledFights = t.fights.filter(f => f.eventId && !f.isCompleted);
       scheduledFights.forEach(f => {
         const event = state.events[f.eventId!];
         if (event && !event.isCompleted) {
@@ -1931,9 +1947,11 @@ export function repairScheduledTournamentRound(
     throw new Error("Invalid or completed event selected.");
   }
 
-  const slots = tourney.fights.filter(f => f.round === round);
+  const slots = tourney.fights.filter(f => f.round === round && !f.isCompleted);
+  if (slots.length === 0) return state;
+  const slotIds = new Set(slots.map(slot => slot.id));
 
-  let newState = { 
+  let newState = {
     ...state, 
     tournaments: { ...state.tournaments }, 
     events: { ...state.events },
@@ -1957,6 +1975,7 @@ export function repairScheduledTournamentRound(
     const fighter = newState.fighters[fighterId];
     if (!fighter) throw new Error("Fighter not found");
     
+    const isInactive = !fighter.contract || fighter.careerPhase === 'retired';
     const isInjured = fighter.injuryStatus !== null;
     const isSuspendedLong = fighter.medicalSuspension && fighter.medicalSuspension.daysRemaining > 35;
     const isSuspendedShort = fighter.medicalSuspension && fighter.medicalSuspension.daysRemaining <= 35 && fighter.medicalSuspension.daysRemaining > 0;
@@ -1976,7 +1995,7 @@ export function repairScheduledTournamentRound(
       return fighterId;
     }
     
-    if (isInjured || isSuspendedLong || isFatigued) {
+    if (isInactive || isInjured || isSuspendedLong || isFatigued) {
       const unusedReserveId = updatedTourney.reserveFighterIds.find(resId => {
         const reserveFighter = newState.fighters[resId];
         const hasNoContract = !reserveFighter || !reserveFighter.contract;
@@ -2069,8 +2088,8 @@ export function repairScheduledTournamentRound(
     };
   }
 
-  // Remove existing tournament fights for this round from the event
-  updatedEvent.fights = updatedEvent.fights.filter(f => !(f.tournamentId === tournamentId && f.tournamentRound === round));
+  // Remove existing unfinished tournament fights for this round from the event
+  updatedEvent.fights = updatedEvent.fights.filter(f => !slotIds.has(f.tournamentFightSlotId ?? ''));
 
   if (delayReason) {
     updatedTourney.roundDelayReason = delayReason;
@@ -2108,7 +2127,7 @@ export function repairScheduledTournamentRound(
     
     // Clear eventId/fightId from the slot since it's delayed (unscheduled)
     updatedTourney.fights = updatedTourney.fights.map(f => {
-      if (f.round === round) {
+      if (slotIds.has(f.id)) {
         return {
           ...f,
           eventId: undefined,
@@ -2137,7 +2156,7 @@ export function repairScheduledTournamentRound(
   }
 
   const updatedFightsInTourney = updatedTourney.fights.map(f => {
-    if (f.round === round) {
+    if (slotIds.has(f.id)) {
       const matchingSlot = updatedSlots.find(s => s.id === f.id)!;
       const fightId = uuidv4();
       const matchup: FightMatchup = {

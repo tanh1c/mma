@@ -7,9 +7,10 @@ import { getBeltBranding } from '../branding';
 import { getFighterOverall, normalizePhysicalProfile } from './fighterRatings';
 import { syncLegacyNewsToSocialFeed } from './social';
 import { getLocalizedFighterName, isLatinFighterName } from '../names';
+import { ensureCareerMetadata } from './career';
 
 const SAVE_KEY = 'cage-dynasty-save';
-export const CURRENT_SAVE_VERSION = 10;
+export const CURRENT_SAVE_VERSION = 11;
 
 export function createNewGame(): GameState {
   const state = generateInitialWorld();
@@ -85,7 +86,8 @@ function extractSaveState(state: GameState): Partial<GameState> {
     mediaDeals: state.mediaDeals,
     financeLedger: state.financeLedger,
     tournaments: state.tournaments || {},
-    seasonPlans: state.seasonPlans || {}
+    seasonPlans: state.seasonPlans || {},
+    careerEcosystem: state.careerEcosystem
   };
 }
 
@@ -137,8 +139,9 @@ export function validateAndMigrateState(parsed: any): GameState | null {
     }
   }
   
+  const currentYear = new Date(state.currentDate).getFullYear();
   for (const id in state.fighters) {
-    const f = state.fighters[id];
+    let f = state.fighters[id];
     if (!isLatinFighterName(f.firstName) || !isLatinFighterName(f.lastName)) {
       const name = getLocalizedFighterName(f.nationality, [...id].reduce((seed, char) => (seed * 31 + char.charCodeAt(0)) | 0, 0));
       f.firstName = name.firstName;
@@ -164,6 +167,8 @@ export function validateAndMigrateState(parsed: any): GameState | null {
 
     f.contract = normalizeContract(f.contract, state.currentDate);
     f.counterOffer = f.counterOffer && typeof f.counterOffer === 'object' && typeof f.counterOffer.expiresDate === 'string' ? f.counterOffer : undefined;
+    f = ensureCareerMetadata(f, currentYear);
+    state.fighters[id] = f;
   }
 
   for (const eventId in state.events || {}) {
@@ -261,7 +266,10 @@ export function validateAndMigrateState(parsed: any): GameState | null {
   if (!state.seasonPlans) {
     state.seasonPlans = {};
   }
-  
+  if (!state.careerEcosystem) {
+    state.careerEcosystem = { rookieClassYears: [], emergencyProspectDates: {} };
+  }
+
   state.saveVersion = CURRENT_SAVE_VERSION;
   return syncLegacyNewsToSocialFeed(syncChampionFlags(state as GameState));
 }

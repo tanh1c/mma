@@ -77,14 +77,14 @@ export function getPromotionInbox(state: GameState, language: Language = readLan
   });
 
   WEIGHT_CLASSES.forEach(weightClass => {
-    const contracted = Object.values(state.fighters).filter(fighter => fighter.weightClass === weightClass && fighter.contract).length;
-    const prospect = Object.values(state.fighters).find(fighter => !fighter.contract && fighter.weightClass === weightClass && (fighter.popularity > 60 || isProspect(fighter)));
+    const contracted = Object.values(state.fighters).filter(fighter => fighter.weightClass === weightClass && fighter.contract && fighter.careerPhase !== 'retired').length;
+    const prospect = Object.values(state.fighters).find(fighter => !fighter.contract && fighter.careerPhase !== 'retired' && fighter.weightClass === weightClass && (fighter.popularity > 60 || isProspect(fighter)));
     if (contracted > 0 && contracted < 6 && prospect) {
       items.push({ id: `depth-${weightClass}`, severity: 'opportunity', title: t($ => $.generated.inbox.depthTitle, { weightClass: formatWeightClass(weightClass, language) }), description: t($ => $.generated.inbox.depth, { fighter: `${prospect.firstName} ${prospect.lastName}` }), targetView: 'free-agents', fighterId: prospect.id, priority: 45 });
     }
   });
 
-  Object.values(state.fighters).filter(fighter => !fighter.contract && (fighter.popularity > 60 || isProspect(fighter))).slice(0, 1).forEach(fighter => {
+  Object.values(state.fighters).filter(fighter => !fighter.contract && fighter.careerPhase !== 'retired' && (fighter.popularity > 60 || isProspect(fighter))).slice(0, 1).forEach(fighter => {
     items.push({ id: `free-agent-${fighter.id}`, severity: 'opportunity', title: t($ => $.generated.inbox.freeAgentTitle), description: t($ => $.generated.inbox.freeAgent, { fighter: `${fighter.firstName} ${fighter.lastName}` }), targetView: 'free-agents', fighterId: fighter.id, priority: 40 });
   });
 

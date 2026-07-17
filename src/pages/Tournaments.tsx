@@ -74,8 +74,9 @@ export default function Tournaments() {
 
   // Filter signed, healthy, same-class, unbooked fighters for the GP creation form
   const eligibleFighters = Object.values(fighters).filter(f => 
-    f.contract !== null && 
-    f.weightClass === weightClass && 
+    f.contract !== null &&
+    f.careerPhase !== 'retired' &&
+    f.weightClass === weightClass &&
     !f.injuryStatus && 
     (!f.medicalSuspension || f.medicalSuspension.daysRemaining <= 0) &&
     !Object.values(events).some(e => !e.isCompleted && e.fights.some(fight => fight.redCornerId === f.id || fight.blueCornerId === f.id))

@@ -10,7 +10,7 @@ import {
   isProspect
 } from './src/lib/game/fighterRatings';
 import { PRNG } from './src/lib/game/rng';
-import { validateAndMigrateState } from './src/lib/game/save';
+import { CURRENT_SAVE_VERSION, validateAndMigrateState } from './src/lib/game/save';
 import { Fighter, FighterAttributes, WeightClass } from './src/types/game';
 
 const classes: WeightClass[] = ['Bantamweight', 'Featherweight', 'Lightweight', 'Welterweight', 'Middleweight', 'Heavyweight'];
@@ -74,6 +74,6 @@ assert.ok(firstMigration.potential >= getFighterOverall(firstMigration));
 assert.ok(firstMigration.walkAroundWeightLb > firstMigration.fightWeightLb);
 const migratedTwice = validateAndMigrateState(structuredClone(migrated))!;
 assert.deepEqual(migratedTwice.fighters[legacyFighter.id], firstMigration);
-assert.equal(migrated.saveVersion, 8);
+assert.equal(migrated.saveVersion, CURRENT_SAVE_VERSION);
 
 console.log('Fighter ratings tests passed.');

@@ -106,7 +106,7 @@ export function isProspect(fighter: Fighter): boolean {
   return fighter.age <= 25 && fighter.potential >= 72 && fighter.potential - overall >= 8;
 }
 
-const growthPriorities: Record<FighterStyle, Array<keyof FighterAttributes>> = {
+export const growthPriorities: Record<FighterStyle, Array<keyof FighterAttributes>> = {
   Boxer: ['striking', 'defense', 'power', 'speed', 'fightIq', 'cardio'],
   Wrestler: ['wrestling', 'grappling', 'cardio', 'toughness', 'fightIq', 'defense'],
   BJJ: ['submissions', 'grappling', 'wrestling', 'fightIq', 'cardio', 'defense'],

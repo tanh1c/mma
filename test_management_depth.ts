@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { generateInitialWorld } from './src/lib/game/generator';
 import { createCounterOffer, getContractEndDate, getContractStatus } from './src/lib/game/contracts';
-import { validateAndMigrateState } from './src/lib/game/save';
+import { CURRENT_SAVE_VERSION, validateAndMigrateState } from './src/lib/game/save';
 import { advanceTime } from './src/lib/engine';
 import { simulateFight } from './src/lib/game/fightSimulator';
 import { coolRivalries, getPairKey, updateRivalryAfterFight } from './src/lib/game/news';
@@ -29,7 +29,7 @@ delete legacyFighter.contract.endDate;
 const migrated = validateAndMigrateState(legacy)!;
 const migratedFighter = Object.values(migrated.fighters).find(candidate => candidate.contract)!;
 assert.ok(migratedFighter.contract!.endDate >= migrated.currentDate);
-assert.equal(migrated.saveVersion, 10);
+assert.equal(migrated.saveVersion, CURRENT_SAVE_VERSION);
 
 const expiryState = generateInitialWorld(3);
 const expiring = Object.values(expiryState.fighters).find(candidate => candidate.contract)!;

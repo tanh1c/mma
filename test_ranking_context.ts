@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { generateInitialWorld } from './src/lib/game/generator';
-import { finalizeEventFinancials } from './src/lib/engine';
-import { getFighterRankContext, updateRankings } from './src/lib/game/rankings';
+import { finalizeEventFinancials, quickSimulateEvent } from './src/lib/engine';
+import { buildPromotionRankings, getEffectiveRankingScore, getFighterInactivityDays, getFighterRankContext, getRankingActivityStatus, updateRankings } from './src/lib/game/rankings';
 import { CURRENT_SAVE_VERSION, validateAndMigrateState } from './src/lib/game/save';
 
 const state = generateInitialWorld(1701);
@@ -40,6 +40,24 @@ const archived = Object.values(archiveState.fightArchive)[0];
 assert.equal(archived.redRankAtFight, redSnapshot);
 assert.equal(archived.blueRankAtFight, blueSnapshot);
 
+let quickState = generateInitialWorld(1704);
+const [quickRedItem, quickBlueItem] = quickState.rankings.Lightweight.slice(0, 2);
+const quickRedScore = quickState.fighters[quickRedItem.fighterId].rankingScore;
+const quickBlueScore = quickState.fighters[quickBlueItem.fighterId].rankingScore;
+quickState.events.quickRankEvent = {
+  id: 'quickRankEvent',
+  name: 'Quick Rank Event',
+  date: quickState.currentDate,
+  venueId: Object.keys(quickState.venues)[0],
+  ticketPrice: 20,
+  marketingSpend: 0,
+  isCompleted: false,
+  fights: [{ id: 'quick-rank-fight', redCornerId: quickRedItem.fighterId, blueCornerId: quickBlueItem.fighterId, weightClass: 'Lightweight', isTitleFight: false, rounds: 3 }]
+};
+quickState = quickSimulateEvent(quickState, 'quickRankEvent', 'en');
+assert.ok(quickState.events.quickRankEvent.results?.rankingChanges);
+assert.ok(quickState.fighters[quickRedItem.fighterId].rankingScore !== quickRedScore || quickState.fighters[quickBlueItem.fighterId].rankingScore !== quickBlueScore);
+
 const legacy: any = structuredClone(archiveState);
 legacy.saveVersion = CURRENT_SAVE_VERSION - 1;
 delete legacy.fighters[red.id].lastPromotionRank;
@@ -49,4 +67,43 @@ const migrated = validateAndMigrateState(legacy)!;
 assert.ok(migrated);
 assert.equal(migrated.fighters[red.id].lastPromotionRank, undefined);
 assert.equal(migrated.fightArchive[archived.id].redRankAtFight, undefined);
+
+const activityState = generateInitialWorld(1703);
+activityState.currentDate = '2026-07-01';
+const activityRanked = activityState.rankings.Lightweight.map(item => activityState.fighters[item.fighterId]).filter(Boolean);
+const activeFighter = { ...activityRanked[0], rankingScore: 1200, lastFightDate: '2026-03-01' };
+const nineMonthFighter = { ...activityRanked[1], rankingScore: 1200, lastFightDate: '2025-10-01' };
+const inactiveFighter = { ...activityRanked[2], rankingScore: 1200, lastFightDate: '2025-07-01' };
+const excludedFighter = { ...activityRanked[3], rankingScore: 1400, lastFightDate: '2024-12-29', isChampion: true };
+activityState.fighters[activeFighter.id] = activeFighter;
+activityState.fighters[nineMonthFighter.id] = nineMonthFighter;
+activityState.fighters[inactiveFighter.id] = inactiveFighter;
+activityState.fighters[excludedFighter.id] = excludedFighter;
+activityState.titles.Lightweight = { ...activityState.titles.Lightweight, undisputedChampionId: excludedFighter.id };
+assert.equal(getFighterInactivityDays(activeFighter, activityState.currentDate), 122);
+assert.equal(getRankingActivityStatus(activeFighter, activityState.currentDate), 'active');
+assert.equal(getRankingActivityStatus(nineMonthFighter, activityState.currentDate), 'active');
+assert.equal(getRankingActivityStatus(inactiveFighter, activityState.currentDate), 'inactive');
+assert.equal(getRankingActivityStatus(excludedFighter, activityState.currentDate), 'unranked-inactive');
+assert.equal(getEffectiveRankingScore(activityState, activeFighter), 1200);
+assert.ok(getEffectiveRankingScore(activityState, inactiveFighter) < inactiveFighter.rankingScore!);
+assert.ok(getEffectiveRankingScore(activityState, { ...inactiveFighter, lastFightDate: '2025-04-01' }) < getEffectiveRankingScore(activityState, inactiveFighter));
+const storedScores = Object.fromEntries(Object.values(activityState.fighters).map(fighter => [fighter.id, fighter.rankingScore]));
+let activityRankings = buildPromotionRankings(activityState).newRankings.Lightweight;
+assert.equal(activityRankings[0].fighterId, excludedFighter.id);
+const nonChampionExcluded = { ...activityState, titles: { ...activityState.titles, Lightweight: { ...activityState.titles.Lightweight, undisputedChampionId: null } } };
+activityRankings = buildPromotionRankings(nonChampionExcluded).newRankings.Lightweight;
+assert.equal(activityRankings.some(item => item.fighterId === excludedFighter.id), false);
+const retired = activityRanked[4];
+activityState.fighters[retired.id] = { ...retired, careerPhase: 'retired' };
+const unsigned = activityRanked[5];
+activityState.fighters[unsigned.id] = { ...unsigned, contract: null };
+activityRankings = buildPromotionRankings(activityState).newRankings.Lightweight;
+assert.equal(activityRankings.some(item => item.fighterId === retired.id || item.fighterId === unsigned.id), false);
+const refreshed = updateRankings(activityState);
+assert.deepEqual(Object.fromEntries(Object.values(refreshed.fighters).map(fighter => [fighter.id, fighter.rankingScore])), storedScores);
+const returnedState = { ...nonChampionExcluded, fighters: { ...nonChampionExcluded.fighters, [excludedFighter.id]: { ...excludedFighter, lastFightDate: activityState.currentDate, rankingScore: 1001 } } };
+const returnedRankings = buildPromotionRankings(returnedState).newRankings.Lightweight;
+assert.equal(returnedRankings.some(item => item.fighterId === excludedFighter.id), true);
+assert.notEqual(returnedRankings[0].fighterId, excludedFighter.id);
 console.log('Ranking context contracts passed.');

@@ -1,8 +1,13 @@
-import { GameState, WeightClass, RankingItem, FightResult, Fighter } from '../../types/game';
+import { differenceInCalendarDays } from 'date-fns';
+import type { Fighter, GameState, RankingItem, WeightClass } from '../../types/game';
 
 const ELO_K_FACTOR = 32;
+const INACTIVITY_PENALTY_START = 274;
+const INACTIVITY_RANKING_LIMIT = 548;
+const MAX_INACTIVITY_PENALTY = 200;
 
 export type RankLabel = 'C' | 'IC' | 'UR' | `#${number}`;
+export type RankingActivityStatus = 'active' | 'inactive' | 'unranked-inactive';
 
 type RankingState = Pick<GameState, 'fighters' | 'rankings' | 'titles'>;
 
@@ -23,6 +28,30 @@ export function getFighterRankContext(state: RankingState, fighterId: string): {
 
 export function getFighterRankSortValue(state: RankingState, fighterId: string): number {
   return getFighterRankContext(state, fighterId)?.sortValue ?? 1000;
+}
+
+export function getFighterInactivityDays(fighter: Fighter, currentDate: string): number {
+  return fighter.lastFightDate ? Math.max(0, differenceInCalendarDays(new Date(currentDate), new Date(fighter.lastFightDate))) : 0;
+}
+
+export function getRankingActivityStatus(fighter: Fighter, currentDate: string): RankingActivityStatus {
+  const days = getFighterInactivityDays(fighter, currentDate);
+  return days > INACTIVITY_RANKING_LIMIT ? 'unranked-inactive' : days > INACTIVITY_PENALTY_START ? 'inactive' : 'active';
+}
+
+export function getEffectiveRankingScore(state: GameState, fighter: Fighter): number {
+  const elo = fighter.rankingScore ?? 1000;
+  const days = getFighterInactivityDays(fighter, state.currentDate);
+  const inactivityPenalty = days <= INACTIVITY_PENALTY_START
+    ? 0
+    : Math.min(MAX_INACTIVITY_PENALTY, (days - INACTIVITY_PENALTY_START) / (INACTIVITY_RANKING_LIMIT - INACTIVITY_PENALTY_START) * MAX_INACTIVITY_PENALTY);
+  const recentFights = Object.values(state.fightArchive).filter(fight =>
+    differenceInCalendarDays(new Date(state.currentDate), new Date(fight.date)) <= 365 &&
+    (fight.redFighterId === fighter.id || fight.blueFighterId === fighter.id)
+  );
+  const wins = recentFights.filter(fight => fight.winnerId === fighter.id).length;
+  const losses = recentFights.filter(fight => fight.winnerId && fight.winnerId !== fighter.id).length;
+  return elo + wins * 12 - losses * 8 - inactivityPenalty;
 }
 
 function getMethodMultiplier(method: string): number {
@@ -92,16 +121,17 @@ export function buildPromotionRankings(
     const titleState = state.titles[wc];
 
     const fightersInWc = Object.values(state.fighters)
-      .filter(f => f.weightClass === wc && f.contract !== null)
+      .filter(f => {
+        if (f.weightClass !== wc || !f.contract || f.careerPhase === 'retired') return false;
+        const isChampion = titleState.undisputedChampionId === f.id || titleState.interimChampionId === f.id;
+        return isChampion || getRankingActivityStatus(f, state.currentDate) !== 'unranked-inactive';
+      })
       .sort((a, b) => {
         const aIsChamp = titleState.undisputedChampionId === a.id || titleState.interimChampionId === a.id;
         const bIsChamp = titleState.undisputedChampionId === b.id || titleState.interimChampionId === b.id;
         if (aIsChamp && !bIsChamp) return -1;
         if (!aIsChamp && bIsChamp) return 1;
-        
-        const scoreA = a.rankingScore || 1000;
-        const scoreB = b.rankingScore || 1000;
-        return scoreB - scoreA;
+        return getEffectiveRankingScore(state, b) - getEffectiveRankingScore(state, a) || a.id.localeCompare(b.id);
       });
 
     const newRank: RankingItem[] = [];

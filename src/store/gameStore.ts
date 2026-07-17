@@ -16,6 +16,7 @@ import { createGrandPrixTournament, scheduleQuarterfinals, scheduleSemifinals, s
 import { WeightClass, TournamentFormat } from '../types/game';
 import { applyPromotionSocialAction as applySocialAction, generateScheduledFightSocial } from '../lib/game/social';
 import { runObserverDecisions } from '../lib/game/observer';
+import { applyFighterEdit, type FighterEditInput, type FighterEditResult } from '../lib/game/career';
 
 export interface ActiveSimulation {
   eventId: string | null;
@@ -65,6 +66,7 @@ interface GameStore extends GameState {
   renewFighter: (fighterId: string, pay: number, winBonus: number, fights: number) => void;
   setCounterOffer: (fighterId: string, counterOffer: GameState['fighters'][string]['counterOffer']) => void;
   releaseFighter: (fighterId: string) => void;
+  editFighter: (fighterId: string, input: FighterEditInput) => FighterEditResult;
   signSponsorDeal: (templateId: string) => void;
   signMediaDeal: (templateId: string) => void;
   renewDeal: (dealId: string, type: 'sponsor'|'media') => void;
@@ -224,9 +226,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
   advanceDays: (days) => {
     set((state) => {
-      let newState = advanceTime(state, days);
-      newState = updateRankings(newState); // simple rank update on advance
-      return newState;
+      const language = readLanguage();
+      let newState = advanceTime(state, days, language);
+      newState = repairFutureEventAvailability(newState, language);
+      return updateRankings(newState);
     });
   },
 
@@ -290,7 +293,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
           mediaDeals: newState.mediaDeals,
           financeLedger: newState.financeLedger,
           tournaments: newState.tournaments || {},
-          seasonPlans: newState.seasonPlans || {}
+          seasonPlans: newState.seasonPlans || {},
+          careerEcosystem: newState.careerEcosystem
         };
         
         gameState = syncCalendarSlots(gameState);
@@ -537,6 +541,12 @@ export const useGameStore = create<GameStore>((set, get) => ({
     if (!fighter) return state;
     return { ...state, fighters: { ...state.fighters, [fighterId]: { ...fighter, counterOffer } } };
   }),
+
+  editFighter: (fighterId, input) => {
+    const result = applyFighterEdit(get(), fighterId, input);
+    if (result.ok) set(result.state);
+    return result;
+  },
 
   releaseFighter: (fighterId) => {
     set((state) => {

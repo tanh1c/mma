@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { ArrowLeft, UserCheck, UserMinus } from 'lucide-react';
 import { useGameStore } from '../store/gameStore';
-import { ContractCounterOffer } from '../types/game';
+import type { ContractCounterOffer, Fighter, FighterAttributes, FighterStyle, WeightClass } from '../types/game';
+import type { FighterEditError, FighterEditInput } from '../lib/game/career';
+import { FIGHTER_STYLES, WEIGHT_CLASSES } from '../lib/game/constants';
 import { getContractExpectation, getContractStatus, evaluateOffer } from '../lib/game/contracts';
 import { deriveFighterAchievements } from '../lib/game/fighterAchievements';
 import { deriveFighterTimeline } from '../lib/game/timeline';
@@ -14,6 +16,7 @@ import { useSettingsStore } from '../store/settingsStore';
 import { getFighterSocialFeed, getFighterStorylines } from '../lib/game/social';
 import { ChampionshipBelt, type BeltType } from '../components/ChampionshipBelt';
 import { FighterRankBadge } from '../components/FighterRankBadge';
+import { Select } from '../components/Select';
 import { useTranslation } from 'react-i18next';
 import { formatContractInterest, formatCurrency, formatDate, formatFightMethod, formatFighterStyle, formatReadiness, formatWeightClass } from '../lib/localization';
 
@@ -27,14 +30,41 @@ const tabs = [
 ] as const;
 
 type FighterTab = typeof tabs[number]['id'];
+type AttributeKey = keyof FighterAttributes;
+
+const attributeKeys: AttributeKey[] = ['striking', 'grappling', 'wrestling', 'submissions', 'cardio', 'chin', 'power', 'speed', 'defense', 'fightIq', 'toughness'];
+
+function createFighterDraft(fighter: Fighter): FighterEditInput {
+  return {
+    firstName: fighter.firstName,
+    lastName: fighter.lastName,
+    nickname: fighter.nickname,
+    age: fighter.age,
+    nationality: fighter.nationality,
+    weightClass: fighter.weightClass,
+    heightCm: fighter.heightCm,
+    fightWeightLb: fighter.fightWeightLb,
+    walkAroundWeightLb: fighter.walkAroundWeightLb,
+    style: fighter.style,
+    attributes: { ...fighter.attributes },
+    potential: fighter.potential,
+    popularity: fighter.popularity,
+    morale: fighter.morale,
+    momentum: fighter.momentum,
+    fatigue: fighter.fatigue
+  };
+}
 
 export default function FighterDetail() {
   const { t } = useTranslation('translation');
   const state = useGameStore();
   const { unitSystem, language } = useSettingsStore();
-  const { selectedFighterId, fighters, setView, goBack, signFighter, renewFighter, setCounterOffer: saveCounterOffer, releaseFighter, promotion, fightArchive } = state;
+  const { selectedFighterId, fighters, setView, goBack, signFighter, renewFighter, setCounterOffer: saveCounterOffer, releaseFighter, editFighter, promotion, fightArchive } = state;
   const f = selectedFighterId ? fighters[selectedFighterId] : null;
   const [activeTab, setActiveTab] = useState<FighterTab>('overview');
+  const [isEditing, setIsEditing] = useState(false);
+  const [draft, setDraft] = useState<FighterEditInput | null>(null);
+  const [editError, setEditError] = useState<FighterEditError | null>(null);
   const [offerPay, setOfferPay] = useState(10000);
   const [offerBonus, setOfferBonus] = useState(10000);
   const [offerFights, setOfferFights] = useState(3);
@@ -50,6 +80,9 @@ export default function FighterDetail() {
     setNegotiationResult(null);
     setCounterOffer(f.counterOffer && f.counterOffer.expiresDate >= state.currentDate ? f.counterOffer : null);
     setActiveTab(f.contract ? 'overview' : 'contract');
+    setIsEditing(false);
+    setDraft(createFighterDraft(f));
+    setEditError(null);
   }, [f?.id]);
 
   if (!f) return <div>{t($ => $.fighterDetail.notFound)}</div>;
@@ -97,7 +130,7 @@ export default function FighterDetail() {
     fights: t($ => $.fighterDetail.tabs.fights),
     timeline: t($ => $.fighterDetail.tabs.timeline)
   };
-  const statusLabel = f.injuryStatus ? formatReadiness('injured', language) : f.medicalSuspension ? formatReadiness('suspended', language) : f.fatigue > 50 ? formatReadiness('fatigued', language) : formatReadiness('ready', language);
+  const statusLabel = f.careerPhase === 'retired' ? t($ => $.fighterDetail.career.retired) : f.injuryStatus ? formatReadiness('injured', language) : f.medicalSuspension ? formatReadiness('suspended', language) : f.fatigue > 50 ? formatReadiness('fatigued', language) : formatReadiness('ready', language);
   const achievementCategoryLabels = {
     Titles: t($ => $.fighterDetail.achievementCategory.titles),
     'Grand Prix': t($ => $.fighterDetail.achievementCategory.grandPrix),
@@ -112,6 +145,60 @@ export default function FighterDetail() {
     thread: t($ => $.socialHub.kind.thread)
   };
   const contractExpectation = getContractExpectation(f, promotion);
+  const retirementAge = f.retiredDate ? f.age : null;
+  const retirementReasonLabels = {
+    age: t($ => $.fighterDetail.career.reasons.age),
+    injuries: t($ => $.fighterDetail.career.reasons.injuries),
+    decline: t($ => $.fighterDetail.career.reasons.decline),
+    inactivity: t($ => $.fighterDetail.career.reasons.inactivity)
+  };
+  const editErrorMessages: Record<FighterEditError, string> = {
+    'fighter-not-found': t($ => $.fighterDetail.editor.errors.fighterNotFound),
+    'invalid-name': t($ => $.fighterDetail.editor.errors.invalidName),
+    'invalid-nationality': t($ => $.fighterDetail.editor.errors.invalidNationality),
+    'invalid-age': t($ => $.fighterDetail.editor.errors.invalidAge),
+    'invalid-weight-class': t($ => $.fighterDetail.editor.errors.invalidWeightClass),
+    'invalid-style': t($ => $.fighterDetail.editor.errors.invalidStyle),
+    'invalid-attributes': t($ => $.fighterDetail.editor.errors.invalidAttributes),
+    'invalid-potential': t($ => $.fighterDetail.editor.errors.invalidPotential),
+    'invalid-popularity': t($ => $.fighterDetail.editor.errors.invalidPopularity),
+    'invalid-morale': t($ => $.fighterDetail.editor.errors.invalidMorale),
+    'invalid-momentum': t($ => $.fighterDetail.editor.errors.invalidMomentum),
+    'invalid-fatigue': t($ => $.fighterDetail.editor.errors.invalidFatigue),
+    'invalid-physical-profile': t($ => $.fighterDetail.editor.errors.invalidPhysicalProfile),
+    'weight-class-title': t($ => $.fighterDetail.editor.errors.weightClassTitle),
+    'weight-class-booked': t($ => $.fighterDetail.editor.errors.weightClassBooked),
+    'weight-class-tournament': t($ => $.fighterDetail.editor.errors.weightClassTournament),
+    'weight-class-title-shot': t($ => $.fighterDetail.editor.errors.weightClassTitleShot)
+  };
+
+  const updateDraft = <K extends keyof FighterEditInput>(key: K, value: FighterEditInput[K]) => {
+    setDraft(current => current ? { ...current, [key]: value } : current);
+  };
+  const updateAttribute = (key: AttributeKey, value: number) => {
+    setDraft(current => current ? { ...current, attributes: { ...current.attributes, [key]: value } } : current);
+  };
+  const beginEditing = () => {
+    setDraft(createFighterDraft(f));
+    setEditError(null);
+    setIsEditing(true);
+  };
+  const cancelEditing = () => {
+    setDraft(createFighterDraft(f));
+    setEditError(null);
+    setIsEditing(false);
+  };
+  const saveEdit = () => {
+    if (!draft) return;
+    const result = editFighter(f.id, draft);
+    if ('error' in result) {
+      setEditError(result.error);
+      return;
+    }
+    setDraft(createFighterDraft(result.fighter));
+    setEditError(null);
+    setIsEditing(false);
+  };
 
   const completeSigning = (pay: number, bonus: number, fights: number) => {
     if (f.contract) renewFighter(f.id, pay, bonus, fights);
@@ -183,6 +270,47 @@ export default function FighterDetail() {
 
     <section id={`fighter-panel-${activeTab}`} role="tabpanel" aria-labelledby={`fighter-tab-${activeTab}`} tabIndex={0}>
       {activeTab === 'overview' && <div className="space-y-6">
+        {f.careerPhase === 'retired' && f.retiredDate && <Panel className="border-amber-900/70">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div><p className="font-mono text-[10px] uppercase tracking-[0.14em] text-amber-300">{t($ => $.fighterDetail.career.retired)}</p><p className="mt-2 text-sm text-neutral-300">{t($ => $.fighterDetail.career.retiredOn, { date: formatDate(f.retiredDate, language) })}</p>{retirementAge !== null && <p className="mt-1 text-sm text-neutral-400">{t($ => $.fighterDetail.career.retirementAge, { age: retirementAge })}</p>}{f.retirementReason && <p className="mt-1 text-sm text-neutral-400">{t($ => $.fighterDetail.career.reason, { reason: retirementReasonLabels[f.retirementReason] })}</p>}</div>
+            {f.hallOfFame && <p className="rounded-full border border-amber-800 px-3 py-1.5 text-sm text-amber-200">{t($ => $.fighterDetail.career.hallOfFame, { year: f.hallOfFame.inductedYear, score: f.hallOfFame.legacyScore })}</p>}
+          </div>
+        </Panel>}
+        <Panel>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-lg font-medium tracking-tight text-white">{t($ => $.fighterDetail.editor.title)}</h2>
+            {isEditing
+              ? <div className="flex flex-wrap gap-2"><Button variant="quiet" onClick={cancelEditing}>{t($ => $.fighterDetail.editor.cancel)}</Button><Button variant="primary" onClick={saveEdit}>{t($ => $.fighterDetail.editor.save)}</Button></div>
+              : <Button variant="secondary" onClick={beginEditing}>{t($ => $.fighterDetail.editor.edit)}</Button>}
+          </div>
+          {isEditing && draft && <div className="mt-5 space-y-6">
+            {editError && <p role="alert" className="rounded-lg border border-red-900 bg-red-950/20 p-3 text-sm text-red-300">{t($ => $.fighterDetail.editor.error, { reason: editErrorMessages[editError] })}</p>}
+            <EditorSection title={t($ => $.fighterDetail.editor.profile)}>
+              <EditorInput label={t($ => $.fighterDetail.editor.firstName)} value={draft.firstName} onChange={value => updateDraft('firstName', value)} />
+              <EditorInput label={t($ => $.fighterDetail.editor.lastName)} value={draft.lastName} onChange={value => updateDraft('lastName', value)} />
+              <EditorInput label={t($ => $.fighterDetail.editor.nickname)} value={draft.nickname} onChange={value => updateDraft('nickname', value)} />
+              <EditorNumberInput label={t($ => $.fighterDetail.editor.age)} value={draft.age} onChange={value => updateDraft('age', value)} min={18} max={45} />
+              <EditorInput label={t($ => $.fighterDetail.editor.nationality)} value={draft.nationality} onChange={value => updateDraft('nationality', value)} />
+              <EditorSelect label={t($ => $.fighterDetail.editor.weightClass)} value={draft.weightClass} onChange={value => updateDraft('weightClass', value as WeightClass)} options={WEIGHT_CLASSES.map(value => ({ value, label: formatWeightClass(value, language) }))} />
+              <EditorSelect label={t($ => $.fighterDetail.editor.style)} value={draft.style} onChange={value => updateDraft('style', value as FighterStyle)} options={FIGHTER_STYLES.map(value => ({ value, label: formatFighterStyle(value, language) }))} />
+            </EditorSection>
+            <EditorSection title={t($ => $.fighterDetail.editor.physical)}>
+              <EditorNumberInput label={t($ => $.fighterDetail.height)} value={draft.heightCm} onChange={value => updateDraft('heightCm', value)} min={1} max={300} />
+              <EditorNumberInput label={t($ => $.fighterDetail.fightWeight)} value={draft.fightWeightLb} onChange={value => updateDraft('fightWeightLb', value)} min={1} max={500} />
+              <EditorNumberInput label={t($ => $.fighterDetail.walkAroundWeight)} value={draft.walkAroundWeightLb} onChange={value => updateDraft('walkAroundWeightLb', value)} min={1} max={500} />
+            </EditorSection>
+            <EditorSection title={t($ => $.fighterDetail.attributes)}>
+              {attributeKeys.map(key => <EditorNumberInput key={key} label={{ striking: t($ => $.fighterDetail.attribute.striking), grappling: t($ => $.fighterDetail.attribute.grappling), wrestling: t($ => $.fighterDetail.attribute.wrestling), submissions: t($ => $.fighterDetail.attribute.submissions), cardio: t($ => $.fighterDetail.attribute.cardio), chin: t($ => $.fighterDetail.attribute.chin), power: t($ => $.fighterDetail.attribute.power), speed: t($ => $.fighterDetail.attribute.speed), defense: t($ => $.fighterDetail.attribute.defense), fightIq: t($ => $.fighterDetail.attribute.fightIq), toughness: t($ => $.fighterDetail.attribute.toughness) }[key]} value={draft.attributes[key]} onChange={value => updateAttribute(key, value)} min={10} max={100} step={0.5} />)}
+            </EditorSection>
+            <EditorSection title={t($ => $.fighterDetail.editor.management)}>
+              <EditorNumberInput label={t($ => $.fighterDetail.editor.potential)} value={draft.potential} onChange={value => updateDraft('potential', value)} min={0} max={100} />
+              <EditorNumberInput label={t($ => $.fighterDetail.editor.popularity)} value={draft.popularity} onChange={value => updateDraft('popularity', value)} min={0} max={100} />
+              <EditorNumberInput label={t($ => $.fighterDetail.editor.morale)} value={draft.morale} onChange={value => updateDraft('morale', value)} min={0} max={100} />
+              <EditorNumberInput label={t($ => $.fighterDetail.editor.momentum)} value={draft.momentum} onChange={value => updateDraft('momentum', value)} min={0} max={100} />
+              <EditorNumberInput label={t($ => $.fighterDetail.editor.fatigue)} value={draft.fatigue} onChange={value => updateDraft('fatigue', value)} min={0} max={100} />
+            </EditorSection>
+          </div>}
+        </Panel>
         <Panel>
           <h2 className="mb-4 text-lg font-medium tracking-tight text-white">{t($ => $.fighterDetail.physicalProfile)}</h2>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4"><CareerStat label={t($ => $.fighterDetail.height)} value={formatHeight(f.heightCm, unitSystem)} /><CareerStat label={t($ => $.fighterDetail.fightWeight)} value={formatWeight(f.fightWeightLb, unitSystem)} /><CareerStat label={t($ => $.fighterDetail.walkAroundWeight)} value={formatWeight(f.walkAroundWeightLb, unitSystem)} /><CareerStat label={t($ => $.fighterDetail.weightCut)} value={`${weightCut.toFixed(1)}%`} tone={weightCut > 12 ? 'warning' : 'neutral'} /></div>
@@ -264,6 +392,22 @@ function ProfileStat({ label, value, detail, tone = 'neutral' }: { label: string
 function CareerStat({ label, value, tone = 'neutral' }: { label: string; value: string | number; tone?: 'neutral' | 'success' | 'warning' | 'danger' }) {
   const toneClass = tone === 'success' ? 'text-emerald-300' : tone === 'warning' ? 'text-amber-300' : tone === 'danger' ? 'text-red-300' : 'text-white';
   return <div className="rounded-lg border border-[#2a2c31] bg-neutral-950 p-3"><p className="font-mono text-[9px] uppercase tracking-[0.12em] text-neutral-500">{label}</p><p className={`mt-2 text-xl font-normal tracking-[-0.03em] ${toneClass}`}>{value}</p></div>;
+}
+
+function EditorSection({ title, children }: { title: string; children: React.ReactNode }) {
+  return <section><h3 className="mb-3 font-mono text-[10px] uppercase tracking-[0.14em] text-neutral-500">{title}</h3><div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{children}</div></section>;
+}
+
+function EditorInput({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
+  return <label className="block"><span className="mb-1 block text-xs text-neutral-400">{label}</span><input value={value} onChange={event => onChange(event.target.value)} className="min-h-11 w-full rounded-lg border border-[#2a2c31] bg-neutral-950 px-3 text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white" /></label>;
+}
+
+function EditorNumberInput({ label, value, onChange, min, max, step = 1 }: { key?: React.Key; label: string; value: number; onChange: (value: number) => void; min: number; max: number; step?: number }) {
+  return <label className="block"><span className="mb-1 block text-xs text-neutral-400">{label}</span><input type="number" value={value} min={min} max={max} step={step} onChange={event => onChange(Number(event.target.value))} className="min-h-11 w-full rounded-lg border border-[#2a2c31] bg-neutral-950 px-3 text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white" /></label>;
+}
+
+function EditorSelect({ label, value, onChange, options }: { label: string; value: string; onChange: (value: string) => void; options: Array<{ value: string; label: string }> }) {
+  return <div><span className="mb-1 block text-xs text-neutral-400">{label}</span><Select value={value} onChange={onChange} options={options} /></div>;
 }
 
 function ContractInput({ label, value, onChange, min, max, step }: { label: string; value: number; onChange: (value: number) => void; min?: number; max?: number; step?: number }) {

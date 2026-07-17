@@ -8,7 +8,9 @@ import { scheduleTournamentRound, getPendingTitleShotDebts, isFighterBookedUpcom
 import { quickSimulateEvent } from '../engine';
 import { getEventName } from '../branding';
 import { getContractEndDate } from './contracts';
+import { ensureEmergencyProspectPool, scoreObserverRosterCandidate, shouldObserverRenewFighter } from './careerEcosystem';
 import { getFighterOverall } from './fighterRatings';
+import { buildPromotionRankings } from './rankings';
 
 const EVENT_INTERVAL_DAYS = 28;
 
@@ -366,7 +368,7 @@ export function autoBookEventsAndContracts(state: GameState, language: Language 
       const healthySigned = Object.values(newState.fighters).filter(f => f.contract && !f.injuryStatus && (!f.medicalSuspension || f.medicalSuspension.daysRemaining <= 0) && f.fatigue < 50);
       if (healthySigned.length < 6) {
         const freeAgents = Object.values(newState.fighters)
-          .filter(f => !f.contract)
+          .filter(f => !f.contract && f.careerPhase !== 'retired')
           .sort((a, b) => a.popularity - b.popularity);
         const neededCount = 6 - healthySigned.length;
         const toSign = freeAgents.slice(0, neededCount);
@@ -1019,8 +1021,9 @@ function generateAutoEvent(
 
 function maintainRoster(state: GameState, language: Language): GameState {
   const t = fixedT(language);
-  const newState = { ...state, fighters: { ...state.fighters }, news: [...state.news] };
-  const signedFighters = Object.values(newState.fighters).filter(f => f.contract);
+  const suppliedState = ensureEmergencyProspectPool(state, state.currentDate, language);
+  const newState = { ...suppliedState, fighters: { ...suppliedState.fighters }, news: [...suppliedState.news] };
+  const signedFighters = Object.values(newState.fighters).filter(f => f.contract && f.careerPhase !== 'retired');
   
   // Group by wc
   const wcGroups: Record<string, Fighter[]> = {};
@@ -1055,8 +1058,8 @@ function maintainRoster(state: GameState, language: Language): GameState {
     // Sign logic if too few
     if (inWc.length < 6 && newState.promotion.money > 50000) {
       const freeAgents = Object.values(newState.fighters)
-        .filter(f => !f.contract && f.weightClass === wc)
-        .sort((a, b) => b.popularity - a.popularity);
+        .filter(f => !f.contract && f.weightClass === wc && f.careerPhase !== 'retired')
+        .sort((a, b) => scoreObserverRosterCandidate(newState, b) - scoreObserverRosterCandidate(newState, a) || a.id.localeCompare(b.id));
       
       if (freeAgents.length > 0) {
         const toSign = freeAgents[0];
@@ -1077,7 +1080,7 @@ function maintainRoster(state: GameState, language: Language): GameState {
   // Auto-renew or sign back champions with expired/expiring contracts
   Object.values(newState.fighters).forEach(f => {
     const isChamp = f.isChampion || Object.values(newState.titles || {}).some(t => t.undisputedChampionId === f.id || t.interimChampionId === f.id);
-    if (isChamp) {
+    if (isChamp && f.careerPhase !== 'retired') {
       if (!f.contract || f.contract.fightsRemaining <= 1) {
         const pay = 10000 + (f.popularity * 200);
         newState.fighters[f.id] = {
@@ -1090,7 +1093,7 @@ function maintainRoster(state: GameState, language: Language): GameState {
           content: t($ => $.generated.autobooker.championExtension, { fighter: `${f.firstName} ${f.lastName}` })
         });
       }
-    } else if (f.contract && f.contract.fightsRemaining <= 1 && f.popularity > 60) {
+    } else if (f.contract && f.contract.fightsRemaining <= 1 && shouldObserverRenewFighter(newState, f)) {
       // Renew other popular fighters
       const pay = 10000 + (f.popularity * 200);
       newState.fighters[f.id] = {
@@ -1105,7 +1108,7 @@ function maintainRoster(state: GameState, language: Language): GameState {
     }
   });
 
-  return newState;
+  return { ...newState, rankings: buildPromotionRankings(newState).newRankings };
 }
 
 export function repairEventAvailability(state: GameState, eventId: string, language: Language = readLanguage()): GameState {

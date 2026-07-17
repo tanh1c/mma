@@ -44,7 +44,9 @@ const eventSimulation = readFileSync('src/pages/EventSimulation.tsx', 'utf8');
 const roster = readFileSync('src/pages/Roster.tsx', 'utf8');
 const freeAgents = readFileSync('src/pages/FreeAgents.tsx', 'utf8');
 const socialHub = readFileSync('src/pages/News.tsx', 'utf8');
+const historyStats = readFileSync('src/pages/HistoryStats.tsx', 'utf8');
 for (const token of ['$.socialHub.title', '$.socialHub.filters.all', '$.socialHub.filters.news', '$.socialHub.filters.articles', '$.socialHub.filters.fighterPosts', '$.socialHub.filters.threads', 'socialFeed', 'applyPromotionSocialAction', '$.socialHub.trending', 'engagement', 'replies', "setView('fighter-detail'", "setView('event-builder'"]) assert.ok(socialHub.includes(token), `Social Hub missing ${token}`);
+for (const token of ['fighter.hallOfFame', 'hallOfFame.legacyScore', '$.historyStats.hallOfFameTitle', "setView('fighter-detail'"]) assert.ok(historyStats.includes(token), `Hall of Fame missing ${token}`);
 assert.ok(shell.includes("view: 'inbox'"));
 assert.ok(shell.includes("view: 'settings'"));
 for (const token of ['useEffect', "event.key === 'Escape'", '{isOpen && <aside', "closest('[data-navigation-action]')", 'useTranslation', '$.navigation.dashboard', '$.shell.openNavigation', 'formatCurrency', 'formatDate']) assert.ok(shell.includes(token), `Mobile shell missing ${token}`);
@@ -61,6 +63,8 @@ for (const path of ['Inbox.tsx', 'Calendar.tsx', 'Rankings.tsx', 'MmaGuide.tsx',
 assert.ok(dashboard.includes('getPromotionInbox'));
 assert.ok(eventBuilder.includes('campFocus'));
 for (const token of ['OVR', 'POT', 'formatHeight', '$.fighterDetail.fightWeight', '$.fighterDetail.walkAroundWeight', '$.fighterDetail.weightCut', '$.fighterDetail.attribute.toughness', '$.fighterDetail.tabs.storylines', 'getFighterStorylines', 'getFighterSocialFeed', '$.fighterDetail.intensity', 'expiresDate', "setView('fighter-detail'", '$.fighterDetail.socialActivity']) assert.ok(fighterDetail.includes(token), `Fighter detail missing ${token}`);
+for (const token of ['editFighter', 'FighterEditInput', '$.fighterDetail.editor.edit', '$.fighterDetail.editor.save', '$.fighterDetail.editor.cancel', '$.fighterDetail.editor.error', 'type="number"', 'draft.attributes', 'setEditError']) assert.ok(fighterDetail.includes(token), `Fighter editor missing ${token}`);
+for (const token of ['f.careerPhase', 'f.retiredDate', 'f.retirementReason', 'f.hallOfFame', '$.fighterDetail.career.retired', '$.fighterDetail.career.retiredOn', '$.fighterDetail.career.retirementAge', '$.fighterDetail.career.hallOfFame']) assert.ok(fighterDetail.includes(token), `Retired fighter profile missing ${token}`);
 assert.ok(roster.includes('getFighterOverall'));
 for (const source of [fighterDetail, roster]) {
   assert.ok(source.includes('useSettingsStore'));

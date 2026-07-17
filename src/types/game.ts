@@ -1,6 +1,13 @@
 export type WeightClass = 'Bantamweight' | 'Featherweight' | 'Lightweight' | 'Welterweight' | 'Middleweight' | 'Heavyweight';
 
 export type FighterStyle = 'Boxer' | 'Wrestler' | 'BJJ' | 'Kickboxer' | 'Muay Thai' | 'Sambo' | 'Balanced';
+export type CareerPhase = 'developing' | 'prime' | 'declining' | 'retired';
+export type RetirementReason = 'age' | 'injuries' | 'decline' | 'inactivity';
+
+export interface HallOfFameInduction {
+  inductedYear: number;
+  legacyScore: number;
+}
 
 export interface FighterAttributes {
   striking: number;
@@ -103,6 +110,12 @@ export interface Fighter {
   lastFightDate: string | null;
   titleShotPromised?: boolean;
   lastPromotionRank?: 'C' | 'IC' | 'UR' | `#${number}`;
+  careerPhase: CareerPhase;
+  primeEndAge: number;
+  lastLifecycleYear: number;
+  retiredDate?: string;
+  retirementReason?: RetirementReason;
+  hallOfFame?: HallOfFameInduction;
 }
 
 export interface Promotion {
@@ -477,6 +490,11 @@ export interface MediaDeal {
   isActive: boolean;
 }
 
+export interface CareerEcosystemState {
+  rookieClassYears: number[];
+  emergencyProspectDates: Partial<Record<WeightClass, string>>;
+}
+
 export interface GameState {
   currentDate: string; // YYYY-MM-DD
   promotion: Promotion;
@@ -508,6 +526,7 @@ export interface GameState {
   financeLedger?: FinanceLedgerEntry[];
   tournaments: Record<string, GrandPrixTournament>;
   seasonPlans?: Record<number, SeasonPlan>;
+  careerEcosystem: CareerEcosystemState;
 }
 
 export type CalendarSlotType =
