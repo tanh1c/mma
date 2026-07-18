@@ -1,6 +1,6 @@
-import { addDays, format } from "date-fns";
+import { addDays, differenceInCalendarDays, format } from "date-fns";
 import { create } from 'zustand';
-import { GameState, Fighter, Event } from '../types/game';
+import { GameState, Fighter, Event, PromoterIdentity } from '../types/game';
 import { readLanguage } from '../lib/localization';
 import { generateInitialWorld } from '../lib/game/generator';
 import { advanceTime, applyFightResult, finalizeEventFinancials } from '../lib/engine';
@@ -17,6 +17,7 @@ import { WeightClass, TournamentFormat } from '../types/game';
 import { applyPromotionSocialAction as applySocialAction, generateScheduledFightSocial } from '../lib/game/social';
 import { runObserverDecisions } from '../lib/game/observer';
 import { applyFighterEdit, type FighterEditInput, type FighterEditResult } from '../lib/game/career';
+import { expireStaleDramaIncidents, generateScheduledDrama, hasPendingIncidentForEvent, resolveDramaIncident as applyDramaResponse } from '../lib/game/drama';
 
 export interface ActiveSimulation {
   eventId: string | null;
@@ -90,6 +91,8 @@ interface GameStore extends GameState {
   generateCurrentYearPlan: () => void;
   cancelCalendarSlot: (slotId: string) => void;
   applyPromotionSocialAction: (fightId: string, action: 'announce' | 'hype') => void;
+  resolveDramaIncident: (incidentId: string, responseKey: string) => void;
+  setPromoterIdentity: (identity: PromoterIdentity) => void;
 }
 
 export const useGameStore = create<GameStore>((set, get) => ({
@@ -294,7 +297,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
           financeLedger: newState.financeLedger,
           tournaments: newState.tournaments || {},
           seasonPlans: newState.seasonPlans || {},
-          careerEcosystem: newState.careerEcosystem
+          careerEcosystem: newState.careerEcosystem,
+          drama: newState.drama
         };
         
         gameState = syncCalendarSlots(gameState);
@@ -776,11 +780,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
     set((state) => {
       const existing = state.events[eventId];
       if (!existing || existing.isCompleted) return state;
-      
+
       const updatedEvt: Event = { ...existing, ...eventData };
-      
-      const nextState = generateScheduledFightSocial({ ...state, events: { ...state.events, [eventId]: updatedEvt } }, state.currentDate);
-      return { events: nextState.events, socialFeed: nextState.socialFeed, currentView: 'dashboard' };
+      const nextState = expireStaleDramaIncidents(generateScheduledFightSocial({ ...state, events: { ...state.events, [eventId]: updatedEvt } }, state.currentDate));
+      return { events: nextState.events, socialFeed: nextState.socialFeed, drama: nextState.drama, currentView: 'dashboard' };
     });
   },
 
@@ -788,28 +791,37 @@ export const useGameStore = create<GameStore>((set, get) => ({
     set((state) => {
       const event = state.events[eventId];
       if (!event) return state;
-      
-      let tempState: GameState = { ...state };
-      tempState = repairEventAvailability(tempState, eventId, readLanguage());
-      
-      const updatedEvent = tempState.events[eventId];
+
+      const language = readLanguage();
+      let tempState = expireStaleDramaIncidents(repairEventAvailability(state, eventId, language));
+      let updatedEvent = tempState.events[eventId];
       if (!updatedEvent) return tempState;
-      
-      if (new Date(updatedEvent.date) > new Date(tempState.currentDate)) {
-         tempState.currentDate = updatedEvent.date;
+
+      if (updatedEvent.date !== event.date) return { ...tempState, currentView: 'dashboard' as const };
+      if (tempState.mode === 'manager' && hasPendingIncidentForEvent(tempState, eventId)) {
+        return { ...tempState, currentView: 'inbox' as const, selectedEventId: eventId, activeEventSimulation: null };
       }
 
-      if (updatedEvent.date !== event.date) {
-        return {
-          ...tempState,
-          currentView: 'dashboard' as const
-        };
+      for (const daysBefore of [14, 7, 0]) {
+        updatedEvent = tempState.events[eventId];
+        if (!updatedEvent) return tempState;
+        const daysUntil = differenceInCalendarDays(new Date(updatedEvent.date), new Date(tempState.currentDate));
+        const daysToAdvance = daysUntil - daysBefore;
+        if (daysToAdvance < 0) continue;
+        tempState = daysToAdvance === 0
+          ? generateScheduledDrama(tempState, tempState.currentDate, language)
+          : advanceTime(tempState, daysToAdvance, language);
+        tempState = expireStaleDramaIncidents(tempState);
+        if (tempState.mode === 'observer') tempState = runObserverDecisions(tempState, language);
+        if (tempState.mode === 'manager' && hasPendingIncidentForEvent(tempState, eventId)) {
+          return { ...tempState, currentView: 'inbox' as const, selectedEventId: eventId, activeEventSimulation: null };
+        }
       }
 
+      updatedEvent = tempState.events[eventId];
+      if (!updatedEvent) return tempState;
       let startIndex = updatedEvent.fights.length - 1;
-      while (startIndex >= 0 && updatedEvent.fights[startIndex].result) {
-        startIndex--;
-      }
+      while (startIndex >= 0 && updatedEvent.fights[startIndex].result) startIndex--;
 
       const simState: ActiveSimulation = {
         eventId,
@@ -1014,5 +1026,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
   },
 
   applyPromotionSocialAction: (fightId, action) => set(state => applySocialAction(state, fightId, action)),
+
+  resolveDramaIncident: (incidentId, responseKey) => set(state => applyDramaResponse(state, incidentId, responseKey, 'manager', undefined, readLanguage())),
+
+  setPromoterIdentity: (identity) => set(state => ({ drama: { ...state.drama, promoterIdentity: identity } })),
 
 }));

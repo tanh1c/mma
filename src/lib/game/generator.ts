@@ -11,6 +11,8 @@ import { getBeltBranding } from '../branding';
 import { getContractEndDate } from './contracts';
 import { deriveCareerPhase, derivePrimeEndAge } from './career';
 import { getFighterOverall, getPhysicalProfile } from './fighterRatings';
+import { ensurePersonalityTraits } from './personality';
+import { ensureSeasonObjectives } from './seasonObjectives';
 
 type FighterArchetype = 'Champion' | 'Contender' | 'Prospect' | 'Veteran' | 'Journeyman' | 'Can';
 
@@ -165,7 +167,7 @@ export function generateFighter(
   const primeEndAge = derivePrimeEndAge({ id, style, attributes, injuryStatus });
   const careerPhase = deriveCareerPhase(age, primeEndAge);
 
-  return {
+  return ensurePersonalityTraits({
     id,
     firstName: name.firstName,
     lastName: name.lastName,
@@ -195,9 +197,10 @@ export function generateFighter(
     history: [],
     lastFightDate: null,
     careerPhase,
+    personalityTraits: [],
     primeEndAge,
     lastLifecycleYear: 2025
-  };
+  });
 }
 
 const initialVenues: Venue[] = [
@@ -400,7 +403,16 @@ export function generateInitialWorld(seed?: number): GameState {
     financeLedger: [],
     tournaments: {},
     seasonPlans: {},
-    careerEcosystem: { rookieClassYears: [], emergencyProspectDates: {} }
+    careerEcosystem: { rookieClassYears: [], emergencyProspectDates: {} },
+    drama: {
+      promoterIdentity: 'meritocracy',
+      incidents: {},
+      triggerKeys: [],
+      cooldowns: {},
+      objectives: {},
+      seasonSnapshots: {},
+      seasonReviews: {}
+    }
   };
 
   initialState = initializeRankingScores(initialState);
@@ -413,5 +425,5 @@ export function generateInitialWorld(seed?: number): GameState {
   
   initialState.rankings = newRankings;
 
-  return syncLegacyNewsToSocialFeed(initialState);
+  return syncLegacyNewsToSocialFeed(ensureSeasonObjectives(initialState, 2025));
 }

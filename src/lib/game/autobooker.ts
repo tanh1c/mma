@@ -11,6 +11,7 @@ import { getContractEndDate } from './contracts';
 import { ensureEmergencyProspectPool, scoreObserverRosterCandidate, shouldObserverRenewFighter } from './careerEcosystem';
 import { getFighterOverall } from './fighterRatings';
 import { buildPromotionRankings } from './rankings';
+import { hasPendingIncidentForEvent } from './drama';
 
 const EVENT_INTERVAL_DAYS = 28;
 const OBSERVER_DIVISION_ROSTER_SIZE = 12;
@@ -1423,7 +1424,7 @@ export function simulateDueEvents(
 
   while (true) {
     const dueEvent = Object.values(newState.events)
-      .filter(e => !e.isCompleted && e.date <= newState.currentDate)
+      .filter(e => !e.isCompleted && e.date <= newState.currentDate && (newState.mode === 'observer' || !hasPendingIncidentForEvent(newState, e.id)))
       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())[0];
 
     if (!dueEvent) return { state: newState, stoppedForManualEvent: false };

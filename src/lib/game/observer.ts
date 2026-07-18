@@ -7,6 +7,7 @@ import { scoreObserverRosterCandidate } from './careerEcosystem';
 import { getFighterOverall } from './fighterRatings';
 import { getPairKey } from './news';
 import { applyPromotionSocialAction } from './social';
+import { resolveObserverDrama } from './drama';
 
 export function chooseObserverCampFocus(fight: FightMatchup, red: Fighter, blue: Fighter, eventDate: string, currentDate: string): FightCampFocus {
   if (red.fatigue >= 35 || blue.fatigue >= 35 || differenceInCalendarDays(new Date(eventDate), new Date(currentDate)) < 14) return 'recovery';
@@ -48,7 +49,7 @@ function resolveCounterOffers(state: GameState, language: Language): GameState {
 
 export function runObserverDecisions(state: GameState, language: Language = readLanguage()): GameState {
   if (state.mode !== 'observer' || !state.autopilot.enabled) return state;
-  let nextState = resolveCounterOffers(state, language);
+  let nextState = resolveObserverDrama(resolveCounterOffers(state, language), language);
   const events = Object.fromEntries(Object.entries(nextState.events).map(([id, event]) => [id, event.isCompleted || event.date < nextState.currentDate ? event : {
     ...event,
     fights: event.fights.map(fight => {

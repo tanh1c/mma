@@ -3,6 +3,83 @@ export type WeightClass = 'Bantamweight' | 'Featherweight' | 'Lightweight' | 'We
 export type FighterStyle = 'Boxer' | 'Wrestler' | 'BJJ' | 'Kickboxer' | 'Muay Thai' | 'Sambo' | 'Balanced';
 export type CareerPhase = 'developing' | 'prime' | 'declining' | 'retired';
 export type RetirementReason = 'age' | 'injuries' | 'decline' | 'inactivity';
+export type FighterPersonalityTrait = 'professional' | 'trash_talker' | 'diva' | 'loyal' | 'mercenary' | 'risk_taker' | 'hot_head' | 'company_fighter';
+export type PromoterIdentity = 'meritocracy' | 'spectacle' | 'prospect_builder' | 'conservative';
+export type DramaIncidentType = 'weight_cut' | 'camp_injury' | 'trash_talk' | 'press_altercation' | 'pay_demand' | 'short_notice_refusal' | 'title_picture_complaint';
+export type DramaIncidentStatus = 'pending' | 'resolved' | 'expired';
+export type DramaSeverity = 'minor' | 'major' | 'critical';
+export type DramaRisk = 'low' | 'medium' | 'high';
+export type DramaConsequenceKind = 'money' | 'reputation' | 'fanbase' | 'morale' | 'popularity' | 'fatigue' | 'social_hype' | 'rivalry' | 'injury' | 'booking';
+
+export interface DramaConsequence {
+  kind: DramaConsequenceKind;
+  value: number;
+  fighterId?: string;
+  fightId?: string;
+  descriptionKey: string;
+}
+
+export interface DramaIncident {
+  id: string;
+  type: DramaIncidentType;
+  severity: DramaSeverity;
+  status: DramaIncidentStatus;
+  createdDate: string;
+  fighterIds: string[];
+  responseKeys: string[];
+  fightId?: string;
+  eventId?: string;
+  storylineId?: string;
+  selectedResponseKey?: string;
+  resolverMode?: 'manager' | 'observer';
+  rationaleKey?: string;
+  resolvedDate?: string;
+  expiredReason?: string;
+  consequences?: DramaConsequence[];
+}
+
+export type SeasonObjectiveCategory = 'sporting' | 'entertainment' | 'business';
+export type SeasonObjectiveKind = 'active_champion' | 'title_fights' | 'prospect_top_five' | 'profitable_grand_prix' | 'strong_rivalry' | 'award_candidate' | 'profit' | 'fanbase_growth';
+
+export interface SeasonObjective {
+  id: string;
+  year: number;
+  category: SeasonObjectiveCategory;
+  kind: SeasonObjectiveKind;
+  target: number;
+  progress: number;
+  completed: boolean;
+  rewardGranted: boolean;
+  fighterId?: string;
+  weightClass?: WeightClass;
+}
+
+export interface SeasonSnapshot {
+  year: number;
+  money: number;
+  reputation: number;
+  fanbase: number;
+  signedFighters: number;
+}
+
+export interface SeasonReview {
+  year: number;
+  objectiveIds: string[];
+  completedObjectives: number;
+  grade: 'S' | 'A' | 'B' | 'C' | 'D';
+  topIncidentId?: string;
+  snapshot: SeasonSnapshot;
+}
+
+export interface DramaState {
+  promoterIdentity: PromoterIdentity;
+  incidents: Record<string, DramaIncident>;
+  triggerKeys: string[];
+  cooldowns: Record<string, string>;
+  objectives: Record<number, SeasonObjective[]>;
+  seasonSnapshots: Record<number, SeasonSnapshot>;
+  seasonReviews: Record<number, SeasonReview>;
+}
 
 export interface HallOfFameInduction {
   inductedYear: number;
@@ -111,6 +188,7 @@ export interface Fighter {
   titleShotPromised?: boolean;
   lastPromotionRank?: 'C' | 'IC' | 'UR' | `#${number}`;
   careerPhase: CareerPhase;
+  personalityTraits: FighterPersonalityTrait[];
   primeEndAge: number;
   lastLifecycleYear: number;
   retiredDate?: string;
@@ -386,6 +464,12 @@ export interface AutopilotSummary {
   bookingDelays: number;
   ownerCashInjections: number;
   emergencyModeTriggered: number;
+  drama?: {
+    incidentsResolved: number;
+    bookingChanges: number;
+    moneyChange: number;
+    socialHypeChange: number;
+  };
   highlights?: {
     bestFightId?: string;
     biggestUpsetId?: string;
@@ -527,6 +611,7 @@ export interface GameState {
   tournaments: Record<string, GrandPrixTournament>;
   seasonPlans?: Record<number, SeasonPlan>;
   careerEcosystem: CareerEcosystemState;
+  drama: DramaState;
 }
 
 export type CalendarSlotType =

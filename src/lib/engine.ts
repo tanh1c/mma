@@ -8,6 +8,8 @@ import { processAnnualCareerLifecycle } from './game/career';
 import { generateAnnualRookieClass } from './game/careerEcosystem';
 import { buildPromotionRankings, getFighterRankContext, updateRankings } from './game/rankings';
 import { generatePostFightSocial, generateScheduledFightSocial, syncLegacyNewsToSocialFeed } from './game/social';
+import { generateScheduledDrama } from './game/drama';
+import { ensureSeasonObjectives, finalizeSeasonReview, refreshSeasonObjectives } from './game/seasonObjectives';
 import { v4 as uuidv4 } from 'uuid';
 import { format, addDays } from 'date-fns';
 import '../i18n';
@@ -315,7 +317,11 @@ export function advanceTime(state: GameState, days: number = 7, language: Langua
   newState.titles = newTitles;
   newState.rankings = buildPromotionRankings(newState).newRankings;
 
-  return generateScheduledFightSocial(syncLegacyNewsToSocialFeed(generateWeeklyNewsAndStorylines(coolRivalries(newState, nextDate), days, language)), nextDate, language);
+  let objectiveState = ensureSeasonObjectives(newState, oldYear);
+  objectiveState = refreshSeasonObjectives(objectiveState, oldYear, language);
+  if (newYear > oldYear) objectiveState = ensureSeasonObjectives(finalizeSeasonReview(objectiveState, oldYear, language), newYear);
+
+  return generateScheduledFightSocial(syncLegacyNewsToSocialFeed(generateWeeklyNewsAndStorylines(generateScheduledDrama(coolRivalries(objectiveState, nextDate), nextDate, language), days, language)), nextDate, language);
 }
 
 export function validateTitleFight(

@@ -68,6 +68,18 @@ export default function Dashboard() {
   }, [nextEvent, fighters, venues, promotion, storylines, titles, tournaments]);
 
   const inboxPreview = useMemo(() => getPromotionInbox(gameState, language).slice(0, 5), [gameState, language]);
+  const currentYear = Number(currentDate.slice(0, 4));
+  const objectives = gameState.drama.objectives[currentYear] ?? [];
+  const objectiveLabels = {
+    active_champion: t($ => $.objectives.kinds.activeChampion),
+    title_fights: t($ => $.objectives.kinds.titleFights),
+    prospect_top_five: t($ => $.objectives.kinds.prospectTopFive),
+    profitable_grand_prix: t($ => $.objectives.kinds.profitableGrandPrix),
+    strong_rivalry: t($ => $.objectives.kinds.strongRivalry),
+    award_candidate: t($ => $.objectives.kinds.awardCandidate),
+    profit: t($ => $.objectives.kinds.profit),
+    fanbase_growth: t($ => $.objectives.kinds.fanbaseGrowth)
+  };
   const inboxTones = { critical: 'danger', urgent: 'warning', opportunity: 'success' } as const;
   const inboxSeverityLabels = {
     critical: t($ => $.inbox.severity.critical),
@@ -103,6 +115,14 @@ export default function Dashboard() {
         <Stat label={t($ => $.dashboard.stats.fanbase)} value={formatNumber(promotion.fanbase, language)} />
         <Stat label={t($ => $.dashboard.stats.rosterSize)} value={rosterCount} />
       </Panel>
+
+      {objectives.length > 0 && <Panel>
+        <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-lg font-semibold text-white">{t($ => $.objectives.title, { year: currentYear })}</h2><p className="mt-1 text-sm text-neutral-500">{t($ => $.objectives.description)}</p></div></div>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{objectives.map(objective => {
+          const progress = Math.min(objective.target, objective.progress);
+          return <article key={objective.id} className="min-w-0 rounded border border-[#2a2c31] bg-neutral-950 p-4"><div className="flex flex-wrap items-start justify-between gap-2"><h3 className="text-sm font-medium text-white">{objectiveLabels[objective.kind]}</h3>{objective.completed && <StatusBadge tone="success">{t($ => $.objectives.completed)}</StatusBadge>}</div><p className="mt-3 font-mono text-xs text-neutral-400">{t($ => $.objectives.progress, { progress, target: objective.target })}</p><div className="mt-2 h-2 overflow-hidden rounded-full bg-neutral-800" role="progressbar" aria-label={objectiveLabels[objective.kind]} aria-valuemin={0} aria-valuemax={objective.target} aria-valuenow={progress}><div className="h-full bg-purple-400" style={{ width: `${objective.target ? Math.min(100, progress / objective.target * 100) : 0}%` }} /></div></article>;
+        })}</div>
+      </Panel>}
 
       {mode === 'observer' && (
         <Panel className="border-[#2a2c31]">
@@ -200,6 +220,7 @@ export default function Dashboard() {
                     </div>
                   )}
                 </div>
+                {lastAutopilotSummary.drama && <div className="mt-4 border-t border-purple-900/50 pt-4"><h4 className="font-bold uppercase tracking-wide text-purple-300">{t($ => $.dashboard.observer.dramaTitle)}</h4><div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4"><Stat label={t($ => $.dashboard.observer.incidentsResolved)} value={lastAutopilotSummary.drama.incidentsResolved} /><Stat label={t($ => $.dashboard.observer.bookingChanges)} value={lastAutopilotSummary.drama.bookingChanges} /><Stat label={t($ => $.dashboard.observer.dramaMoney)} value={formatCurrency(lastAutopilotSummary.drama.moneyChange, language)} /><Stat label={t($ => $.dashboard.observer.socialHype)} value={lastAutopilotSummary.drama.socialHypeChange} /></div><Button type="button" variant="quiet" className="mt-3" onClick={() => setView('history')}>{t($ => $.dashboard.observer.viewDramaHistory)}</Button></div>}
                 {lastAutopilotSummary.highlights && (
                   <div className="mt-4 pt-4 border-t border-purple-900/50">
                     <h4 className="text-purple-300 font-bold mb-2 uppercase tracking-wide text-sm">{t($ => $.dashboard.observer.highlights)}</h4>
@@ -233,7 +254,7 @@ export default function Dashboard() {
                   <h3 className="mt-2 text-sm font-semibold text-white">{item.title}</h3>
                   <p className="mt-1 text-sm text-neutral-400">{item.description}</p>
                 </div>
-                <Button variant="secondary" onClick={() => setView(item.targetView, { fighterId: item.fighterId, eventId: item.eventId, calendarSlotId: item.calendarSlotId })} className="min-h-9 shrink-0 px-3 text-xs">{t($ => $.inbox.review)}</Button>
+                <Button variant="secondary" onClick={() => item.incidentId ? setView('inbox') : setView(item.targetView, { fighterId: item.fighterId, eventId: item.eventId, calendarSlotId: item.calendarSlotId })} className="min-h-9 shrink-0 px-3 text-xs">{t($ => $.inbox.review)}</Button>
               </article>)}
             </Panel>
           )}

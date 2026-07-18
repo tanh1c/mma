@@ -12,9 +12,13 @@ import { calculateHallOfFameScore } from '../lib/game/career';
 export default function HistoryStats() {
   const { t: translate } = useTranslation('translation');
   const language = useSettingsStore(state => state.language);
-  const { eventArchive, fightArchive, titleHistory, fighters, setView, belts, yearlyAwards = {}, financeLedger, tournaments = {}, seasonPlans = {} } = useGameStore();
+  const { eventArchive, fightArchive, titleHistory, fighters, events: scheduledEvents, setView, belts, yearlyAwards = {}, financeLedger, tournaments = {}, seasonPlans = {}, drama } = useGameStore();
 
   const [expandedEventId, setExpandedEventId] = React.useState<string | null>(null);
+  const [incidentSeverityFilter, setIncidentSeverityFilter] = React.useState('all');
+  const [incidentTypeFilter, setIncidentTypeFilter] = React.useState('all');
+  const [incidentEventFilter, setIncidentEventFilter] = React.useState('all');
+  const [incidentFighterFilter, setIncidentFighterFilter] = React.useState('all');
   const [gpFilter, setGpFilter] = React.useState<'all' | 'active' | 'completed' | 'cancelled' | 'fourMan' | 'eightMan'>('all');
   const gpFilterLabels = {
     all: translate($ => $.historyStats.filters.all),
@@ -121,6 +125,28 @@ export default function HistoryStats() {
     if (a.round !== b.round) return a.round - b.round;
     return parseTime(a.time) - parseTime(b.time);
   })[0] : null;
+  const seasonReviews = Object.values(drama.seasonReviews).sort((a, b) => b.year - a.year);
+  const resolvedIncidents = Object.values(drama.incidents).filter(incident => incident.status === 'resolved');
+  const incidentEvents = Array.from(new Set(resolvedIncidents.flatMap(incident => incident.eventId ? [incident.eventId] : [])));
+  const incidentFighters = Array.from(new Set(resolvedIncidents.flatMap(incident => incident.fighterIds)));
+  const filteredIncidents = resolvedIncidents.filter(incident =>
+    (incidentSeverityFilter === 'all' || incident.severity === incidentSeverityFilter) &&
+    (incidentTypeFilter === 'all' || incident.type === incidentTypeFilter) &&
+    (incidentEventFilter === 'all' || incident.eventId === incidentEventFilter) &&
+    (incidentFighterFilter === 'all' || incident.fighterIds.includes(incidentFighterFilter))
+  ).sort((a, b) => (b.resolvedDate ?? b.createdDate).localeCompare(a.resolvedDate ?? a.createdDate) || a.id.localeCompare(b.id));
+  const incidentLabels = {
+    weight_cut: translate($ => $.inbox.drama.incident.weightCut), camp_injury: translate($ => $.inbox.drama.incident.campInjury), trash_talk: translate($ => $.inbox.drama.incident.trashTalk), press_altercation: translate($ => $.inbox.drama.incident.pressAltercation), pay_demand: translate($ => $.inbox.drama.incident.payDemand), short_notice_refusal: translate($ => $.inbox.drama.incident.shortNoticeRefusal), title_picture_complaint: translate($ => $.inbox.drama.incident.titlePictureComplaint)
+  };
+  const responseLabels: Record<string, string> = {
+    accept_catchweight: translate($ => $.inbox.drama.response.acceptCatchweight), fine_fighter: translate($ => $.inbox.drama.response.fineFighter), replace_or_cancel: translate($ => $.inbox.drama.response.replaceOrCancel), rest_and_continue: translate($ => $.inbox.drama.response.restAndContinue), amplify: translate($ => $.inbox.drama.response.amplify), deescalate: translate($ => $.inbox.drama.response.deescalate), fine_both: translate($ => $.inbox.drama.response.fineBoth), use_for_hype: translate($ => $.inbox.drama.response.useForHype), improve_terms: translate($ => $.inbox.drama.response.improveTerms), hold_line: translate($ => $.inbox.drama.response.holdLine), respect_refusal: translate($ => $.inbox.drama.response.respectRefusal), apply_pressure: translate($ => $.inbox.drama.response.applyPressure), promise_eliminator: translate($ => $.inbox.drama.response.promiseEliminator), reject_demand: translate($ => $.inbox.drama.response.rejectDemand)
+  };
+  const rationaleLabels: Record<string, string> = {
+    identity: translate($ => $.dramaTimeline.rationaleFactors.identity), booking: translate($ => $.dramaTimeline.rationaleFactors.booking), cash_safety: translate($ => $.dramaTimeline.rationaleFactors.cashSafety), event_importance: translate($ => $.dramaTimeline.rationaleFactors.eventImportance), fighter_development: translate($ => $.dramaTimeline.rationaleFactors.fighterDevelopment)
+  };
+  const consequenceLabels = {
+    money: translate($ => $.dramaTimeline.consequences.money), reputation: translate($ => $.dramaTimeline.consequences.reputation), fanbase: translate($ => $.dramaTimeline.consequences.fanbase), morale: translate($ => $.dramaTimeline.consequences.morale), popularity: translate($ => $.dramaTimeline.consequences.popularity), fatigue: translate($ => $.dramaTimeline.consequences.fatigue), social_hype: translate($ => $.dramaTimeline.consequences.socialHype), rivalry: translate($ => $.dramaTimeline.consequences.rivalry), injury: translate($ => $.dramaTimeline.consequences.injury), booking: translate($ => $.dramaTimeline.consequences.booking)
+  };
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500 max-w-6xl mx-auto pb-12">
@@ -132,6 +158,19 @@ export default function HistoryStats() {
       />
 
       <Panel>
+
+      {(seasonReviews.length > 0 || resolvedIncidents.length > 0) && <div className="space-y-6 rounded-lg border border-neutral-800 bg-neutral-900 p-4 sm:p-6">
+        {seasonReviews.length > 0 && <section><h2 className="text-xl font-bold uppercase tracking-tight text-white">{translate($ => $.seasonReview.title)}</h2><p className="mt-1 text-sm text-neutral-500">{translate($ => $.seasonReview.description)}</p><div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{seasonReviews.map(review => {
+          const topIncident = review.topIncidentId ? drama.incidents[review.topIncidentId] : undefined;
+          return <article key={review.year} className="min-w-0 rounded border border-neutral-800 bg-neutral-950 p-4"><div className="flex items-start justify-between gap-3"><h3 className="font-semibold text-white">{translate($ => $.seasonReview.year, { year: review.year })}</h3><span className="font-mono text-2xl text-purple-300">{review.grade}</span></div><p className="mt-3 text-sm text-neutral-400">{translate($ => $.seasonReview.completed, { completed: review.completedObjectives, total: review.objectiveIds.length })}</p><p className="mt-2 text-sm text-neutral-400">{translate($ => $.seasonReview.finalFunds, { amount: formatCurrency(review.snapshot.money, language) })}</p>{topIncident && <p className="mt-2 text-sm text-neutral-500">{translate($ => $.seasonReview.topIncident, { type: incidentLabels[topIncident.type] })}</p>}</article>;
+        })}</div></section>}
+        {resolvedIncidents.length > 0 && <section><h2 className="text-xl font-bold uppercase tracking-tight text-white">{translate($ => $.dramaTimeline.title)}</h2><p className="mt-1 text-sm text-neutral-500">{translate($ => $.dramaTimeline.description)}</p><div className="mt-4 flex flex-wrap gap-2">
+          <select aria-label={translate($ => $.dramaTimeline.severity)} value={incidentSeverityFilter} onChange={event => setIncidentSeverityFilter(event.target.value)} className="min-h-11 rounded border border-neutral-700 bg-neutral-950 px-3 text-sm text-white"><option value="all">{translate($ => $.dramaTimeline.allSeverities)}</option>{['minor', 'major', 'critical'].map(value => <option key={value} value={value}>{value}</option>)}</select>
+          <select aria-label={translate($ => $.dramaTimeline.type)} value={incidentTypeFilter} onChange={event => setIncidentTypeFilter(event.target.value)} className="min-h-11 rounded border border-neutral-700 bg-neutral-950 px-3 text-sm text-white"><option value="all">{translate($ => $.dramaTimeline.allTypes)}</option>{Array.from(new Set(resolvedIncidents.map(incident => incident.type))).map(value => <option key={value} value={value}>{incidentLabels[value]}</option>)}</select>
+          <select aria-label={translate($ => $.dramaTimeline.event)} value={incidentEventFilter} onChange={event => setIncidentEventFilter(event.target.value)} className="min-h-11 max-w-full rounded border border-neutral-700 bg-neutral-950 px-3 text-sm text-white"><option value="all">{translate($ => $.dramaTimeline.allEvents)}</option>{incidentEvents.map(id => <option key={id} value={id}>{scheduledEvents[id]?.name ?? eventArchive[id]?.name ?? translate($ => $.historyStats.unknown)}</option>)}</select>
+          <select aria-label={translate($ => $.dramaTimeline.fighter)} value={incidentFighterFilter} onChange={event => setIncidentFighterFilter(event.target.value)} className="min-h-11 max-w-full rounded border border-neutral-700 bg-neutral-950 px-3 text-sm text-white"><option value="all">{translate($ => $.dramaTimeline.allFighters)}</option>{incidentFighters.map(id => <option key={id} value={id}>{fighters[id] ? `${fighters[id].firstName} ${fighters[id].lastName}` : translate($ => $.historyStats.unknown)}</option>)}</select>
+        </div><div className="mt-4 grid gap-3 sm:grid-cols-2">{filteredIncidents.map(incident => <article key={incident.id} className="min-w-0 rounded border border-neutral-800 bg-neutral-950 p-4"><div className="flex flex-wrap items-center justify-between gap-2"><h3 className="font-semibold text-white">{incidentLabels[incident.type]}</h3><span className="font-mono text-[10px] uppercase text-neutral-500">{incident.severity}</span></div><p className="mt-2 text-sm text-neutral-400">{translate($ => $.dramaTimeline.response, { response: incident.selectedResponseKey ? responseLabels[incident.selectedResponseKey] ?? translate($ => $.historyStats.unknown) : translate($ => $.historyStats.unknown) })}</p>{incident.rationaleKey && <p className="mt-1 text-sm text-neutral-500">{translate($ => $.dramaTimeline.rationale, { rationale: rationaleLabels[incident.rationaleKey.split('.').at(-1) ?? ''] ?? translate($ => $.historyStats.unknown) })}</p>}<ul className="mt-3 flex min-w-0 flex-wrap gap-2">{(incident.consequences ?? []).map((consequence, index) => <li key={`${consequence.kind}-${index}`} className="max-w-full rounded bg-white/5 px-2 py-1 text-xs text-neutral-300 [overflow-wrap:anywhere]">{consequenceLabels[consequence.kind]}: {consequence.value > 0 ? '+' : ''}{consequence.value}</li>)}</ul><p className="mt-3 font-mono text-[10px] text-neutral-600">{formatDate(incident.resolvedDate ?? incident.createdDate, language)}</p></article>)}</div></section>}
+      </div>}
 
       <div className="bg-neutral-900 p-6 rounded-lg border border-neutral-800">
         <div className="flex items-center gap-2 mb-6">

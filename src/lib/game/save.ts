@@ -8,9 +8,10 @@ import { getFighterOverall, normalizePhysicalProfile } from './fighterRatings';
 import { syncLegacyNewsToSocialFeed } from './social';
 import { getLocalizedFighterName, isLatinFighterName } from '../names';
 import { ensureCareerMetadata } from './career';
+import { ensurePersonalityTraits } from './personality';
 
 const SAVE_KEY = 'cage-dynasty-save';
-export const CURRENT_SAVE_VERSION = 11;
+export const CURRENT_SAVE_VERSION = 12;
 
 export function createNewGame(): GameState {
   const state = generateInitialWorld();
@@ -87,7 +88,8 @@ function extractSaveState(state: GameState): Partial<GameState> {
     financeLedger: state.financeLedger,
     tournaments: state.tournaments || {},
     seasonPlans: state.seasonPlans || {},
-    careerEcosystem: state.careerEcosystem
+    careerEcosystem: state.careerEcosystem,
+    drama: state.drama
   };
 }
 
@@ -167,7 +169,7 @@ export function validateAndMigrateState(parsed: any): GameState | null {
 
     f.contract = normalizeContract(f.contract, state.currentDate);
     f.counterOffer = f.counterOffer && typeof f.counterOffer === 'object' && typeof f.counterOffer.expiresDate === 'string' ? f.counterOffer : undefined;
-    f = ensureCareerMetadata(f, currentYear);
+    f = ensurePersonalityTraits(ensureCareerMetadata(f, currentYear));
     state.fighters[id] = f;
   }
 
@@ -269,6 +271,16 @@ export function validateAndMigrateState(parsed: any): GameState | null {
   if (!state.careerEcosystem) {
     state.careerEcosystem = { rookieClassYears: [], emergencyProspectDates: {} };
   }
+  const drama = state.drama && typeof state.drama === 'object' ? state.drama : {};
+  state.drama = {
+    promoterIdentity: ['meritocracy', 'spectacle', 'prospect_builder', 'conservative'].includes(drama.promoterIdentity) ? drama.promoterIdentity : 'meritocracy',
+    incidents: drama.incidents && typeof drama.incidents === 'object' ? { ...drama.incidents } : {},
+    triggerKeys: Array.isArray(drama.triggerKeys) ? [...new Set(drama.triggerKeys.filter((key: unknown) => typeof key === 'string'))] : [],
+    cooldowns: drama.cooldowns && typeof drama.cooldowns === 'object' ? { ...drama.cooldowns } : {},
+    objectives: drama.objectives && typeof drama.objectives === 'object' ? { ...drama.objectives } : {},
+    seasonSnapshots: drama.seasonSnapshots && typeof drama.seasonSnapshots === 'object' ? { ...drama.seasonSnapshots } : {},
+    seasonReviews: drama.seasonReviews && typeof drama.seasonReviews === 'object' ? { ...drama.seasonReviews } : {}
+  };
 
   state.saveVersion = CURRENT_SAVE_VERSION;
   return syncLegacyNewsToSocialFeed(syncChampionFlags(state as GameState));

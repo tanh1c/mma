@@ -20,6 +20,7 @@ export interface InboxItem {
   fighterId?: string;
   eventId?: string;
   calendarSlotId?: string;
+  incidentId?: string;
   date?: string;
 }
 
@@ -29,6 +30,24 @@ export function getPromotionInbox(state: GameState, language: Language = readLan
   const t = fixedT(language);
   const items: InboxItem[] = [];
   const upcomingEvents = Object.values(state.events).filter(event => !event.isCompleted).sort((a, b) => a.date.localeCompare(b.date));
+
+  if (state.mode === 'manager') {
+    Object.values(state.drama.incidents).filter(incident => incident.status === 'pending').forEach(incident => {
+      const fighters = incident.fighterIds.map(id => state.fighters[id]).filter(Boolean).map(fighter => `${fighter.firstName} ${fighter.lastName}`).join(' vs ');
+      const event = incident.eventId ? state.events[incident.eventId] : undefined;
+      items.push({
+        id: `drama-${incident.id}`,
+        severity: incident.severity === 'critical' ? 'critical' : 'urgent',
+        title: t($ => $.generated.inbox.dramaTitle),
+        description: t($ => $.generated.inbox.drama, { fighters, event: event?.name ?? t($ => $.historyStats.unknown) }),
+        targetView: 'event-builder',
+        incidentId: incident.id,
+        eventId: incident.eventId,
+        priority: incident.severity === 'critical' ? 120 : 105,
+        date: event?.date ?? incident.createdDate
+      });
+    });
+  }
 
   upcomingEvents.forEach(event => {
     const hasViableCard = event.fights.length >= 3;

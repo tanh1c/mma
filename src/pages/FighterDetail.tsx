@@ -144,6 +144,16 @@ export default function FighterDetail() {
     promotion_post: t($ => $.socialHub.kind.promotionPost),
     thread: t($ => $.socialHub.kind.thread)
   };
+  const personalityLabels = {
+    professional: t($ => $.personality.traits.professional),
+    trash_talker: t($ => $.personality.traits.trashTalker),
+    diva: t($ => $.personality.traits.diva),
+    loyal: t($ => $.personality.traits.loyal),
+    mercenary: t($ => $.personality.traits.mercenary),
+    risk_taker: t($ => $.personality.traits.riskTaker),
+    hot_head: t($ => $.personality.traits.hotHead),
+    company_fighter: t($ => $.personality.traits.companyFighter)
+  };
   const contractExpectation = getContractExpectation(f, promotion);
   const retirementAge = f.retiredDate ? f.age : null;
   const retirementReasonLabels = {
@@ -310,6 +320,14 @@ export default function FighterDetail() {
               <EditorNumberInput label={t($ => $.fighterDetail.editor.fatigue)} value={draft.fatigue} onChange={value => updateDraft('fatigue', value)} min={0} max={100} />
             </EditorSection>
           </div>}
+        </Panel>
+        <Panel>
+          <h2 className="text-lg font-medium tracking-tight text-white">{t($ => $.personality.title)}</h2>
+          <div className="mt-3 flex flex-wrap gap-2">{f.personalityTraits.slice(0, 2).map(trait => <span key={trait} className="rounded-full border border-purple-900 px-3 py-1 text-sm text-purple-200">{personalityLabels[trait]}</span>)}</div>
+          <details className="mt-4 rounded border border-[#2a2c31] bg-neutral-950 p-3">
+            <summary className="min-h-11 cursor-pointer py-3 text-sm font-medium text-neutral-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">{t($ => $.personality.explain)}</summary>
+            <p className="mt-2 text-sm leading-6 text-neutral-400">{t($ => $.personality.description)}</p>
+          </details>
         </Panel>
         <Panel>
           <h2 className="mb-4 text-lg font-medium tracking-tight text-white">{t($ => $.fighterDetail.physicalProfile)}</h2>
