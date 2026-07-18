@@ -168,7 +168,7 @@ export default function Tournaments() {
           </div>
 
           <form onSubmit={handleCreate} className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 md:grid-cols-4">
               <div className="space-y-1">
                 <label className="text-xs text-neutral-400 uppercase font-bold">{translate($ => $.tournaments.name)}</label>
                 <input 
@@ -241,7 +241,7 @@ export default function Tournaments() {
                   <p className="text-sm text-neutral-400 italic">{translate($ => $.tournaments.noEligible, { weightClass: formatWeightClass(weightClass, language) })}</p>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-60 overflow-y-auto pr-2">
+                <div className="grid max-h-60 grid-cols-1 gap-2 overflow-y-auto pr-2 sm:grid-cols-2">
                   {eligibleFighters.map(f => {
                     const isPart = selectedParticipants.includes(f.id);
                     const isRes = selectedReserves.includes(f.id);
@@ -250,35 +250,35 @@ export default function Tournaments() {
                     return (
                       <div 
                         key={f.id} 
-                        className={`p-3 rounded border flex justify-between items-center transition-colors ${
-                          isPart ? 'bg-purple-900/10 border-purple-600 text-white' : 
+                        className={`flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between rounded border p-3 transition-colors ${
+                          isPart ? 'bg-purple-900/10 border-purple-600 text-white' :
                           isRes ? 'bg-yellow-900/10 border-yellow-600 text-white' :
                           'bg-neutral-950 border-neutral-800 text-neutral-300 hover:border-neutral-700'
                         }`}
                       >
-                        <div className="flex items-center gap-2">
-                          <FighterAvatar id={f.id} name={`${f.firstName} ${f.lastName}`} nationality={f.nationality} className="h-8 w-8" />
-                          <div>
-                            <p className="flex flex-wrap items-center gap-1 font-bold text-sm"><FighterRankBadge fighterId={f.id} />{f.firstName} {f.lastName} <CountryFlag nationality={f.nationality} className="text-xs" /></p>
-                            <p className="text-xs text-neutral-500 font-mono">Elo: {Math.floor(f.rankingScore || 1000)} • OVR: {getFighterOverall(f)} • POT: {f.potential}</p>
+                        <div className="flex min-w-0 items-center gap-2">
+                          <FighterAvatar id={f.id} name={`${f.firstName} ${f.lastName}`} nationality={f.nationality} className="h-8 w-8 shrink-0" />
+                          <div className="min-w-0">
+                            <p className="flex min-w-0 flex-wrap items-center gap-1 text-sm font-bold"><FighterRankBadge fighterId={f.id} /><span className="min-w-0 truncate">{f.firstName} {f.lastName}</span> <CountryFlag nationality={f.nationality} className="shrink-0 text-xs" /></p>
+                            <p className="break-words font-mono text-xs text-neutral-500">Elo: {Math.floor(f.rankingScore || 1000)} • OVR: {getFighterOverall(f)} • POT: {f.potential}</p>
                           </div>
                         </div>
-                        <div className="flex gap-2">
-                          <button 
+                        <div className="grid grid-cols-2 gap-2 sm:flex sm:gap-2">
+                          <button
                             type="button"
                             onClick={() => handleToggleParticipant(f.id)}
                             disabled={!isPart && selectedParticipants.length >= partLimit}
-                            className={`px-2 py-1 rounded text-xs font-bold ${
+                            className={`min-h-11 w-full rounded px-2 py-1 text-xs font-bold sm:w-auto ${
                               isPart ? 'bg-purple-600 text-white' : 'bg-neutral-800 text-neutral-300 hover:bg-neutral-700 hover:text-white disabled:opacity-50'
                             }`}
                           >
                             {translate($ => $.tournaments.participant)}
                           </button>
-                          <button 
+                          <button
                             type="button"
                             onClick={() => handleToggleReserve(f.id)}
                             disabled={!isRes && selectedReserves.length >= resLimit}
-                            className={`px-2 py-1 rounded text-xs font-bold ${
+                            className={`min-h-11 w-full rounded px-2 py-1 text-xs font-bold sm:w-auto ${
                               isRes ? 'bg-yellow-600 text-white' : 'bg-neutral-800 text-neutral-300 hover:bg-neutral-700 hover:text-white disabled:opacity-50'
                             }`}
                           >
@@ -292,9 +292,9 @@ export default function Tournaments() {
               )}
             </div>
 
-            <div className="flex justify-end gap-2 border-t border-neutral-800 pt-4">
-              <Button variant="secondary" type="button" onClick={() => setIsCreating(false)}>{translate($ => $.tournaments.cancel)}</Button>
-              <Button variant="primary" type="submit" disabled={selectedParticipants.length !== (format === 'eight_man' ? 8 : 4)}>{translate($ => $.tournaments.createTournament)}</Button>
+            <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end border-t border-neutral-800 pt-4">
+              <Button variant="secondary" type="button" onClick={() => setIsCreating(false)} className="min-h-11 w-full sm:w-auto">{translate($ => $.tournaments.cancel)}</Button>
+              <Button variant="primary" type="submit" disabled={selectedParticipants.length !== (format === 'eight_man' ? 8 : 4)} className="min-h-11 w-full sm:w-auto">{translate($ => $.tournaments.createTournament)}</Button>
             </div>
           </form>
         </Panel>
@@ -304,12 +304,13 @@ export default function Tournaments() {
           <div className="lg:col-span-1 space-y-4">
             <h2 className="text-sm font-bold text-neutral-400 uppercase tracking-wider">{translate($ => $.tournaments.list)}</h2>
 
-            <div className="flex gap-1 rounded-lg border border-[#2a2c31] bg-black/10 p-1">
+            <div className="grid grid-cols-2 gap-1 sm:grid-cols-4 rounded-lg border border-[#2a2c31] bg-black/10 p-1">
               {statusFilters.map(filter => (
                 <button
+                  type="button"
                   key={filter.value}
                   onClick={() => setStatusFilter(filter.value)}
-                  className={`flex-1 rounded px-1 py-1 text-[10px] font-bold uppercase transition-colors ${
+                  className={`min-h-11 flex-1 rounded px-1 py-1 text-[10px] font-bold uppercase transition-colors ${
                     statusFilter === filter.value ? 'bg-white text-black' : 'text-neutral-300 hover:bg-[#1b1c20] hover:text-white'
                   }`}
                 >
@@ -328,17 +329,18 @@ export default function Tournaments() {
                   const isSel = selectedTourneyId === t.id;
                   const winner = t.winnerId ? fighters[t.winnerId] : null;
                   return (
-                    <div 
-                      key={t.id} 
+                    <button
+                      type="button"
+                      key={t.id}
                       onClick={() => setSelectedTourneyId(t.id)}
-                      className={`p-4 rounded-lg border cursor-pointer transition-colors text-left ${
+                      className={`w-full p-4 rounded-lg border cursor-pointer transition-colors text-left ${
                         isSel ? 'bg-neutral-800 border-purple-500' :
                         t.status === 'cancelled' ? 'bg-neutral-900/40 border-neutral-900/60 opacity-60 hover:opacity-85' :
                         'bg-neutral-900 border-neutral-800 hover:border-neutral-700'
                       }`}
                     >
-                      <div className="flex justify-between items-start">
-                        <span className={`text-[10px] uppercase font-bold tracking-widest px-2 py-0.5 rounded ${
+                      <div className="flex min-w-0 flex-wrap items-start justify-between gap-2">
+                        <span className={`shrink-0 text-[10px] uppercase font-bold tracking-widest px-2 py-0.5 rounded ${
                           t.status === 'completed' ? 'bg-green-900/30 text-green-400' :
                           t.status === 'active' ? 'bg-purple-900/30 text-purple-400' :
                           t.status === 'cancelled' ? 'bg-red-900/30 text-red-400' : 'bg-blue-900/30 text-blue-400'
@@ -347,14 +349,14 @@ export default function Tournaments() {
                         </span>
                         <span className="text-xs text-neutral-500 font-semibold">{formatWeightClass(t.weightClass, language)}</span>
                       </div>
-                      <h3 className="font-bold text-white mt-2">{t.name}</h3>
+                      <h3 className="mt-2 min-w-0 break-words font-bold text-white">{t.name}</h3>
                       
                       {winner ? (
                         <p className="text-xs text-green-400 font-bold mt-2">{translate($ => $.tournaments.winner, { name: `${winner.firstName} ${winner.lastName}` })}</p>
                       ) : (
                         <p className="text-xs text-neutral-400 mt-2">{translate($ => $.tournaments.created, { date: formatDate(t.createdDate, language) })}</p>
                       )}
-                    </div>
+                    </button>
                   );
                 })}
               </div>
@@ -366,10 +368,10 @@ export default function Tournaments() {
             <h2 className="text-sm font-bold text-neutral-400 uppercase tracking-wider">{translate($ => $.tournaments.bracket)}</h2>
             {selectedTourney ? (
               <Panel className="space-y-6">
-                <div className="flex justify-between items-start border-b border-neutral-800 pb-4">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h2 className="text-xl font-bold text-white">{selectedTourney.name}</h2>
+                <div className="flex min-w-0 flex-col gap-3 border-b border-neutral-800 pb-4 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="min-w-0">
+                    <div className="flex min-w-0 flex-wrap items-center gap-2">
+                      <h2 className="min-w-0 break-words text-xl font-bold text-white">{selectedTourney.name}</h2>
                       <span className="text-[10px] bg-purple-900/40 text-purple-400 font-bold px-2 py-0.5 rounded">
                         {selectedTourney.format === 'eight_man' ? translate($ => $.tournaments.eightMan) : translate($ => $.tournaments.fourMan)}
                       </span>
@@ -378,12 +380,12 @@ export default function Tournaments() {
                       {translate($ => $.tournaments.statusDivision, { status: formatTournamentStatus(selectedTourney.status, language), division: formatWeightClass(selectedTourney.weightClass, language) })}
                     </p>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
                     {selectedTourney.status === 'planned' && (
                       selectedTourney.format === 'eight_man' ? (
                         <Button
                           variant="primary"
-                          className="min-h-9 px-3 text-xs"
+                          className="min-h-11 w-full px-3 text-xs sm:w-auto"
                           onClick={() => setSchedulingSlot({ tourneyId: selectedTourney.id, round: 'quarterfinal' })}
                         >
                           {translate($ => $.tournaments.scheduleQuarterfinals)}
@@ -391,7 +393,7 @@ export default function Tournaments() {
                       ) : (
                         <Button
                           variant="primary"
-                          className="min-h-9 px-3 text-xs"
+                          className="min-h-11 w-full px-3 text-xs sm:w-auto"
                           onClick={() => setSchedulingSlot({ tourneyId: selectedTourney.id, round: 'semifinal' })}
                         >
                           {translate($ => $.tournaments.scheduleSemifinals)}
@@ -404,7 +406,7 @@ export default function Tournaments() {
                       !selectedTourney.fights.find(f => f.round === 'semifinal')?.eventId && (
                         <Button
                           variant="primary"
-                          className="min-h-9 px-3 text-xs"
+                          className="min-h-11 w-full px-3 text-xs sm:w-auto"
                           onClick={() => setSchedulingSlot({ tourneyId: selectedTourney.id, round: 'semifinal' })}
                         >
                           {translate($ => $.tournaments.scheduleSemifinals)}
@@ -415,7 +417,7 @@ export default function Tournaments() {
                       !selectedTourney.fights.find(f => f.round === 'final')?.eventId && (
                         <Button
                           variant="primary"
-                          className="min-h-9 px-3 text-xs"
+                          className="min-h-11 w-full px-3 text-xs sm:w-auto"
                           onClick={() => setSchedulingSlot({ tourneyId: selectedTourney.id, round: 'final' })}
                         >
                           {translate($ => $.tournaments.scheduleFinal)}
@@ -424,7 +426,7 @@ export default function Tournaments() {
                     {!selectedTourney.fights.some(f => f.isCompleted) && selectedTourney.status !== 'cancelled' && (
                       <Button
                         variant="danger"
-                        className="min-h-9 px-3 text-xs"
+                        className="min-h-11 w-full px-3 text-xs sm:w-auto"
                         onClick={() => {
                           if (window.confirm(translate($ => $.tournaments.cancelConfirm))) {
                             cancelTournament(selectedTourney.id);
@@ -448,9 +450,10 @@ export default function Tournaments() {
                     if (isAvailable) {
                       const finalId = fightArchive[archiveId] ? archiveId : manualId;
                       return (
-                        <button 
+                        <button
+                          type="button"
                           onClick={() => setView('fight-detail', { fightArchiveId: finalId })}
-                          className="text-[10px] text-purple-400 underline hover:text-purple-300 block mt-1 font-bold text-left"
+                          className="mt-1 block min-h-11 text-left text-[10px] font-bold text-purple-400 underline hover:text-purple-300"
                         >
                           {translate($ => $.tournaments.viewStats)}
                         </button>
@@ -466,7 +469,7 @@ export default function Tournaments() {
                   const isEight = selectedTourney.format === 'eight_man';
 
                   return (
-                    <div className={`grid grid-cols-1 ${isEight ? 'md:grid-cols-3' : 'md:grid-cols-2'} gap-8 items-center bg-neutral-950/50 p-6 rounded-lg border border-neutral-800`}>
+                    <div className={`grid grid-cols-1 ${isEight ? 'sm:grid-cols-3' : 'sm:grid-cols-2'} items-center gap-4 rounded-lg border border-neutral-800 bg-neutral-950/50 p-4 sm:gap-6 sm:p-6`}>
                       {/* Quarterfinals (8-Man only) */}
                       {isEight && (
                         <div className="space-y-6">
@@ -479,25 +482,26 @@ export default function Tournaments() {
                             
                             return (
                               <div key={slot.id} className="bg-[#101114] border border-[#2a2c31] rounded p-3 space-y-2 text-left">
-                                <p className="text-[10px] text-neutral-500 uppercase font-mono flex justify-between">
+                                <div className="flex min-w-0 items-center justify-between gap-2 font-mono text-[10px] uppercase text-neutral-500">
                                   <span>{translate($ => $.tournaments.quarterfinal, { number: idx + 1 })}</span>
                                   {slot.eventId && (
-                                    <span 
-                                      className="text-purple-400 cursor-pointer hover:underline" 
+                                    <button
+                                      type="button"
+                                      className="min-h-11 shrink-0 text-right text-[10px] text-purple-400 hover:underline"
                                       onClick={() => setView('event-builder', { eventId: slot.eventId })}
                                     >
                                       {translate($ => $.tournaments.linkedEvent)}
-                                    </span>
+                                    </button>
                                   )}
-                                </p>
+                                </div>
                                 <div className="space-y-1">
-                                  <div className={`flex justify-between items-center text-sm p-1 rounded ${slot.winnerId === slot.redFighterId ? 'bg-green-500/10 font-bold text-green-400' : ''}`}>
-                                    <span className="flex items-center gap-1">({redSeed}) {redF && <><FighterRankBadge fighterId={redF.id} /><FighterAvatar id={redF.id} name={`${redF.firstName} ${redF.lastName}`} nationality={redF.nationality} className="h-5 w-5" /><CountryFlag nationality={redF.nationality} className="text-xs" /></>}{redF ? `${redF.firstName} ${redF.lastName}` : translate($ => $.tournaments.pending)}</span>
-                                    {slot.winnerId === slot.redFighterId && <Check size={14} />}
+                                  <div className={`flex min-w-0 items-center justify-between gap-1 rounded p-1 text-sm ${slot.winnerId === slot.redFighterId ? 'bg-green-500/10 font-bold text-green-400' : ''}`}>
+                                    <span className="flex min-w-0 items-center gap-1"><span className="shrink-0">({redSeed})</span>{redF && <><FighterRankBadge fighterId={redF.id} /><FighterAvatar id={redF.id} name={`${redF.firstName} ${redF.lastName}`} nationality={redF.nationality} className="h-5 w-5 shrink-0" /><CountryFlag nationality={redF.nationality} className="shrink-0 text-xs" /></>}<span className="min-w-0 truncate">{redF ? `${redF.firstName} ${redF.lastName}` : translate($ => $.tournaments.pending)}</span></span>
+                                    {slot.winnerId === slot.redFighterId && <Check className="shrink-0" size={14} />}
                                   </div>
-                                  <div className={`flex justify-between items-center text-sm p-1 rounded ${slot.winnerId === slot.blueFighterId ? 'bg-green-500/10 font-bold text-green-400' : ''}`}>
-                                    <span className="flex items-center gap-1">({blueSeed}) {blueF && <><FighterRankBadge fighterId={blueF.id} /><FighterAvatar id={blueF.id} name={`${blueF.firstName} ${blueF.lastName}`} nationality={blueF.nationality} className="h-5 w-5" /><CountryFlag nationality={blueF.nationality} className="text-xs" /></>}{blueF ? `${blueF.firstName} ${blueF.lastName}` : translate($ => $.tournaments.pending)}</span>
-                                    {slot.winnerId === slot.blueFighterId && <Check size={14} />}
+                                  <div className={`flex min-w-0 items-center justify-between gap-1 rounded p-1 text-sm ${slot.winnerId === slot.blueFighterId ? 'bg-green-500/10 font-bold text-green-400' : ''}`}>
+                                    <span className="flex min-w-0 items-center gap-1"><span className="shrink-0">({blueSeed})</span>{blueF && <><FighterRankBadge fighterId={blueF.id} /><FighterAvatar id={blueF.id} name={`${blueF.firstName} ${blueF.lastName}`} nationality={blueF.nationality} className="h-5 w-5 shrink-0" /><CountryFlag nationality={blueF.nationality} className="shrink-0 text-xs" /></>}<span className="min-w-0 truncate">{blueF ? `${blueF.firstName} ${blueF.lastName}` : translate($ => $.tournaments.pending)}</span></span>
+                                    {slot.winnerId === slot.blueFighterId && <Check className="shrink-0" size={14} />}
                                   </div>
                                 </div>
                                 {renderFightStatsLink(slot)}
@@ -519,25 +523,26 @@ export default function Tournaments() {
                           
                           return (
                             <div key={slot.id} className="bg-[#101114] border border-[#2a2c31] rounded p-3 space-y-2 text-left">
-                              <p className="text-[10px] text-neutral-500 uppercase font-mono flex justify-between">
+                              <div className="flex min-w-0 items-center justify-between gap-2 font-mono text-[10px] uppercase text-neutral-500">
                                 <span>{translate($ => $.tournaments.semifinal, { number: idx + 1 })}</span>
                                 {slot.eventId && (
-                                  <span 
-                                    className="text-purple-400 cursor-pointer hover:underline" 
+                                  <button
+                                    type="button"
+                                    className="min-h-11 shrink-0 text-right text-[10px] text-purple-400 hover:underline"
                                     onClick={() => setView('event-builder', { eventId: slot.eventId })}
                                   >
                                     {translate($ => $.tournaments.linkedEvent)}
-                                  </span>
+                                  </button>
                                 )}
-                              </p>
+                              </div>
                               <div className="space-y-1">
-                                <div className={`flex justify-between items-center text-sm p-1 rounded ${slot.winnerId === slot.redFighterId ? 'bg-green-500/10 font-bold text-green-400' : ''}`}>
-                                  <span className="flex items-center gap-1">{redSeed ? `(${redSeed}) ` : ''}{redF && <FighterRankBadge fighterId={redF.id} />}{redF ? `${redF.firstName} ${redF.lastName}` : translate($ => $.tournaments.pending)}</span>
-                                  {slot.winnerId === slot.redFighterId && <Check size={14} />}
+                                <div className={`flex min-w-0 items-center justify-between gap-1 rounded p-1 text-sm ${slot.winnerId === slot.redFighterId ? 'bg-green-500/10 font-bold text-green-400' : ''}`}>
+                                  <span className="flex min-w-0 items-center gap-1"><span className="shrink-0">{redSeed ? `(${redSeed})` : ''}</span>{redF && <FighterRankBadge fighterId={redF.id} />}<span className="min-w-0 truncate">{redF ? `${redF.firstName} ${redF.lastName}` : translate($ => $.tournaments.pending)}</span></span>
+                                  {slot.winnerId === slot.redFighterId && <Check className="shrink-0" size={14} />}
                                 </div>
-                                <div className={`flex justify-between items-center text-sm p-1 rounded ${slot.winnerId === slot.blueFighterId ? 'bg-green-500/10 font-bold text-green-400' : ''}`}>
-                                  <span className="flex items-center gap-1">{blueSeed ? `(${blueSeed}) ` : ''}{blueF && <FighterRankBadge fighterId={blueF.id} />}{blueF ? `${blueF.firstName} ${blueF.lastName}` : translate($ => $.tournaments.pending)}</span>
-                                  {slot.winnerId === slot.blueFighterId && <Check size={14} />}
+                                <div className={`flex min-w-0 items-center justify-between gap-1 rounded p-1 text-sm ${slot.winnerId === slot.blueFighterId ? 'bg-green-500/10 font-bold text-green-400' : ''}`}>
+                                  <span className="flex min-w-0 items-center gap-1"><span className="shrink-0">{blueSeed ? `(${blueSeed})` : ''}</span>{blueF && <FighterRankBadge fighterId={blueF.id} />}<span className="min-w-0 truncate">{blueF ? `${blueF.firstName} ${blueF.lastName}` : translate($ => $.tournaments.pending)}</span></span>
+                                  {slot.winnerId === slot.blueFighterId && <Check className="shrink-0" size={14} />}
                                 </div>
                               </div>
                               {renderFightStatsLink(slot)}
@@ -560,34 +565,35 @@ export default function Tournaments() {
                           const part2 = selectedTourney.participants.find(p => p.fighterId === slot.blueFighterId);
                           
                           return (
-                            <div className="bg-neutral-900 border border-purple-900/30 rounded p-4 space-y-3 relative overflow-hidden text-left">
-                              <div className="absolute top-0 right-0 bg-purple-900/20 text-purple-400 text-[8px] font-black uppercase tracking-widest px-2 py-0.5">{translate($ => $.tournaments.grandPrixFinal)}</div>
+                            <div className="space-y-3 overflow-hidden rounded border border-purple-900/30 bg-neutral-900 p-4 text-left">
+                              <div className="w-fit rounded bg-purple-900/20 px-2 py-0.5 text-[8px] font-black uppercase tracking-widest text-purple-400">{translate($ => $.tournaments.grandPrixFinal)}</div>
                               
-                              <p className="text-[10px] text-neutral-500 uppercase font-mono flex justify-between">
+                              <div className="flex min-w-0 items-center justify-between gap-2 font-mono text-[10px] uppercase text-neutral-500">
                                 <span>{translate($ => $.tournaments.championshipFinal)}</span>
                                 {slot.eventId && (
-                                  <span 
-                                    className="text-purple-400 cursor-pointer hover:underline" 
+                                  <button
+                                    type="button"
+                                    className="min-h-11 shrink-0 text-right text-[10px] text-purple-400 hover:underline"
                                     onClick={() => setView('event-builder', { eventId: slot.eventId })}
                                   >
                                     {translate($ => $.tournaments.linkedEvent)}
-                                  </span>
+                                  </button>
                                 )}
-                              </p>
+                              </div>
                               <div className="space-y-1">
-                                <div className={`flex justify-between items-center text-sm p-1 rounded ${slot.winnerId === slot.redFighterId ? 'bg-green-500/10 font-bold text-green-400' : ''}`}>
-                                  <span>
+                                <div className={`flex min-w-0 items-center justify-between gap-1 rounded p-1 text-sm ${slot.winnerId === slot.redFighterId ? 'bg-green-500/10 font-bold text-green-400' : ''}`}>
+                                  <span className="min-w-0 truncate">
                                     {redF ? `${redF.firstName} ${redF.lastName}` : translate($ => $.tournaments.pending)}
-                                    {part1?.replacementForFighterId && <span className="text-[9px] text-yellow-500 ml-1 font-mono">({translate($ => $.tournaments.replacementReserve)})</span>}
+                                    {part1?.replacementForFighterId && <span className="ml-1 font-mono text-[9px] text-yellow-500">({translate($ => $.tournaments.replacementReserve)})</span>}
                                   </span>
-                                  {slot.winnerId === slot.redFighterId && <Check size={14} />}
+                                  {slot.winnerId === slot.redFighterId && <Check className="shrink-0" size={14} />}
                                 </div>
-                                <div className={`flex justify-between items-center text-sm p-1 rounded ${slot.winnerId === slot.blueFighterId ? 'bg-green-500/10 font-bold text-green-400' : ''}`}>
-                                  <span>
+                                <div className={`flex min-w-0 items-center justify-between gap-1 rounded p-1 text-sm ${slot.winnerId === slot.blueFighterId ? 'bg-green-500/10 font-bold text-green-400' : ''}`}>
+                                  <span className="min-w-0 truncate">
                                     {blueF ? `${blueF.firstName} ${blueF.lastName}` : translate($ => $.tournaments.pending)}
-                                    {part2?.replacementForFighterId && <span className="text-[9px] text-yellow-500 ml-1 font-mono">({translate($ => $.tournaments.replacementReserve)})</span>}
+                                    {part2?.replacementForFighterId && <span className="ml-1 font-mono text-[9px] text-yellow-500">({translate($ => $.tournaments.replacementReserve)})</span>}
                                   </span>
-                                  {slot.winnerId === slot.blueFighterId && <Check size={14} />}
+                                  {slot.winnerId === slot.blueFighterId && <Check className="shrink-0" size={14} />}
                                 </div>
                               </div>
                               
@@ -596,7 +602,7 @@ export default function Tournaments() {
                                   <p className="flex items-center gap-1 font-bold text-purple-300"><AlertTriangle size={14} /> {translate($ => $.tournaments.gpStatus, { status: selectedExplanation.status })}</p>
                                   {selectedExplanation.details.map(detail => <p key={detail}>{detail}</p>)}
                                   {selectedExplanation.retryDate && <p className="font-mono text-[10px] text-neutral-400">{translate($ => $.tournaments.earliestRetry, { date: formatDate(selectedExplanation.retryDate, language) })}</p>}
-                                  {selectedDiagnosis?.canScheduleNow && selectedDiagnosis.currentRoundNeeded !== 'none' && <button onClick={() => setSchedulingSlot({ tourneyId: selectedTourney.id, round: selectedDiagnosis.currentRoundNeeded })} className="mt-2 rounded bg-purple-600 px-2.5 py-1 text-[10px] font-bold uppercase text-white transition-colors hover:bg-purple-500">{translate($ => $.tournaments.scheduleRound, { round: selectedDiagnosis.currentRoundNeeded })}</button>}
+                                  {selectedDiagnosis?.canScheduleNow && selectedDiagnosis.currentRoundNeeded !== 'none' && <button onClick={() => setSchedulingSlot({ tourneyId: selectedTourney.id, round: selectedDiagnosis.currentRoundNeeded })} className="mt-2 min-h-11 rounded bg-purple-600 px-2.5 py-1 text-[10px] font-bold uppercase text-white transition-colors hover:bg-purple-500">{translate($ => $.tournaments.scheduleRound, { round: selectedDiagnosis.currentRoundNeeded })}</button>}
                                 </div>
                               )}
                               
@@ -610,7 +616,7 @@ export default function Tournaments() {
                 })()}
 
                 {/* Additional Info */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-sm text-left">
+                <div className="grid grid-cols-1 gap-6 text-left text-sm sm:grid-cols-2">
                   <div className="space-y-2">
                     <h3 className="font-bold text-white uppercase tracking-wider text-xs">{translate($ => $.tournaments.reserves)}</h3>
                     {selectedTourney.reserveFighterIds.length === 0 ? (
@@ -692,9 +698,9 @@ export default function Tournaments() {
               </div>
             )}
 
-            <div className="flex justify-end gap-2 border-t border-neutral-800 pt-4">
-              <Button variant="secondary" onClick={() => setSchedulingSlot(null)}>{translate($ => $.tournaments.cancel)}</Button>
-              <Button variant="primary" onClick={handleScheduleSubmit} disabled={!selectedEventId}>{translate($ => $.tournaments.confirmScheduling)}</Button>
+            <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end border-t border-neutral-800 pt-4">
+              <Button variant="secondary" onClick={() => setSchedulingSlot(null)} className="min-h-11 w-full sm:w-auto">{translate($ => $.tournaments.cancel)}</Button>
+              <Button variant="primary" onClick={handleScheduleSubmit} disabled={!selectedEventId} className="min-h-11 w-full sm:w-auto">{translate($ => $.tournaments.confirmScheduling)}</Button>
             </div>
           </div>
         </div>

@@ -1,8 +1,11 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { firstNames, getLocalizedFighterName, lastNames, nationalities } from './src/lib/names';
 import { generateFighter, generateInitialWorld } from './src/lib/game/generator';
 import { PRNG } from './src/lib/game/rng';
 import { validateAndMigrateState } from './src/lib/game/save';
+
+assert.ok(!readFileSync('src/lib/names.ts', 'utf8').includes('@faker-js/faker'));
 
 nationalities.forEach(nationality => {
   const name = getLocalizedFighterName(nationality, 12345);

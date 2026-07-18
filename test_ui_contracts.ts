@@ -19,6 +19,9 @@ for (const tone of ['neutral', 'success', 'warning', 'danger'] as const) {
 }
 
 const css = readFileSync('src/index.css', 'utf8');
+const viteConfig = readFileSync('vite.config.ts', 'utf8');
+for (const chunk of ['manualChunks', "'game-core'", "'react-vendor'", "'i18n'"]) assert.ok(viteConfig.includes(chunk), `Missing production chunk split: ${chunk}`);
+assert.ok(!viteConfig.includes('@faker-js/faker'));
 assert.match(css, /#0a0a0a/);
 assert.match(css, /:focus-visible/);
 import { APP_NAV_GROUPS } from './src/components/AppShell';
@@ -45,6 +48,8 @@ const roster = readFileSync('src/pages/Roster.tsx', 'utf8');
 const freeAgents = readFileSync('src/pages/FreeAgents.tsx', 'utf8');
 const socialHub = readFileSync('src/pages/News.tsx', 'utf8');
 const historyStats = readFileSync('src/pages/HistoryStats.tsx', 'utf8');
+const calendarPage = readFileSync('src/pages/Calendar.tsx', 'utf8');
+const tournamentsPage = readFileSync('src/pages/Tournaments.tsx', 'utf8');
 const inboxData = readFileSync('src/lib/game/inbox.ts', 'utf8');
 const inboxPage = readFileSync('src/pages/Inbox.tsx', 'utf8');
 for (const token of ['incidentId?: string', "state.mode === 'manager'", "incident.status === 'pending'", '$.generated.inbox.dramaTitle']) assert.ok(inboxData.includes(token), `Drama Inbox data missing ${token}`);
@@ -60,6 +65,13 @@ for (const token of ['useEffect', "event.key === 'Escape'", '{isOpen && <aside',
 assert.match(shell, /<main className="[^"]*\[overflow-wrap:anywhere\]/, 'Main content must wrap long values on mobile');
 assert.ok(socialHub.includes('flex flex-wrap gap-2'), 'Social Hub filters must wrap on mobile');
 assert.ok(fighterDetail.includes('flex flex-wrap border-b'), 'Fighter detail tabs must wrap on mobile');
+for (const token of ['md:hidden', 'hidden md:block', 'grid grid-cols-1 gap-2 sm:grid-cols-2', 'min-w-0 break-words', 'min-h-11 w-full sm:w-auto']) assert.ok(calendarPage.includes(token), `Calendar mobile cards missing ${token}`);
+for (const token of ['grid grid-cols-2 gap-1 sm:grid-cols-4', 'flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between', 'min-h-11 w-full sm:w-auto', "isEight ? 'sm:grid-cols-3' : 'sm:grid-cols-2'", 'min-w-0 truncate', 'flex flex-col-reverse gap-2 sm:flex-row sm:justify-end']) assert.ok(tournamentsPage.includes(token), `Tournament mobile cards missing ${token}`);
+assert.ok(!tournamentsPage.includes('<span \n                                      className="text-purple-400 cursor-pointer'));
+assert.ok(!tournamentsPage.includes('className="mt-2 rounded bg-purple-600 px-2.5 py-1 text-[10px]'), 'Tournament schedule suggestion must remain a 44px mobile action.');
+assert.match(tournamentsPage, /statusFilters\.map\(filter => \([\s\S]{0,400}className=\{`[^`]*min-h-11/, 'Tournament status filters must remain 44px mobile actions.');
+assert.match(tournamentsPage, /renderFightStatsLink[\s\S]{0,700}<button\s+type="button"[\s\S]{0,250}className="[^"]*min-h-11/, 'Tournament fight stats links must be semantic 44px actions.');
+assert.match(tournamentsPage, /activeTourneyList\.map[\s\S]{0,500}<button\s+type="button"\s+key=\{t\.id\}/, 'Tournament cards must be keyboard-accessible buttons.');
 for (const token of ['grid grid-cols-1 gap-4 sm:grid-cols-2', 'grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto]', 'min-w-0', '$.eventBuilder.card.moveUp', '$.eventBuilder.card.moveDown', '$.eventBuilder.card.remove']) assert.ok(eventBuilder.includes(token), `Event Builder mobile layout missing ${token}`);
 assert.ok(app.includes("case 'settings'"));
 const settings = readFileSync('src/pages/Settings.tsx', 'utf8');

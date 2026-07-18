@@ -63,6 +63,23 @@ export default function CalendarPage() {
     Recovery: t($ => $.calendar.filters.recovery),
     'Missed/Cancelled': t($ => $.calendar.filters.missedCancelled)
   };
+  const getSlotDisplay = (slot: (typeof slots)[number]) => {
+    const event = events[slot.eventId || ''] || eventArchive[slot.eventId || ''];
+    const isPast = slot.date < currentDate;
+    const isApproaching = slot.date >= currentDate && slot.date <= addDaysStr(currentDate, 28);
+    const warnings: string[] = [];
+    if (event && slot.date !== event.date) warnings.push(t($ => $.calendar.warnings.dateMismatch));
+    if (slot.type === 'grand_prix_round' && !slot.tournamentId) warnings.push(t($ => $.calendar.warnings.noTournament));
+    if (isPast && slot.status === 'planned' && !(slot.notes || []).some(note => note.toLowerCase().includes('delayed') || note.toLowerCase().includes('rescheduled'))) warnings.push(t($ => $.calendar.warnings.overdueSlot));
+    if ((slot.notes || []).some(note => note.toLowerCase().includes('delayed') || note.toLowerCase().includes('delay'))) warnings.push(t($ => $.calendar.warnings.delayedRound));
+    return {
+      event,
+      isPast,
+      isApproaching,
+      warnings,
+      gpExplanation: getGrandPrixExplanation(slot, slot.tournamentId ? diagnoses[slot.tournamentId] : undefined, language)
+    };
+  };
 
   return (
     <div className="mx-auto max-w-6xl space-y-6 pb-12">
@@ -103,8 +120,64 @@ export default function CalendarPage() {
         </Panel>
       ) : (
         <DataSurface>
-          <div className="overflow-x-auto custom-scrollbar">
-            <table className="w-full min-w-[900px] text-left text-sm">
+          <div className="space-y-3 md:hidden">
+            {filteredSlots.length === 0 ? (
+              <p className="px-4 py-10 text-center text-sm text-neutral-500">{t($ => $.calendar.noMatches)}</p>
+            ) : filteredSlots.map(slot => {
+              const { event, isPast, isApproaching, warnings, gpExplanation } = getSlotDisplay(slot);
+              return (
+                <article key={slot.id} className="min-w-0 space-y-4 border-b border-[#2a2c31] p-4 last:border-b-0">
+                  <div className="flex min-w-0 flex-wrap items-start justify-between gap-2">
+                    <div className="min-w-0 font-mono text-xs text-neutral-300">
+                      <p>{formatDate(slot.date, language)}</p>
+                      {isPast && slot.status === 'planned' && <p className="mt-1 text-[10px] uppercase tracking-[0.12em] text-amber-300">{t($ => $.calendar.overdue)}</p>}
+                      {isApproaching && slot.status === 'planned' && <p className="mt-1 text-[10px] uppercase tracking-[0.12em] text-neutral-400">{t($ => $.calendar.approaching)}</p>}
+                    </div>
+                    <div className="flex min-w-0 flex-wrap justify-end gap-2">
+                      <StatusBadge tone={slotTone(slot.type)}>{formatCalendarSlotType(slot.type, language)}</StatusBadge>
+                      <StatusBadge tone={statusTone(slot.status)}>{formatCalendarSlotStatus(slot.status, language)}</StatusBadge>
+                    </div>
+                  </div>
+
+                  <dl className="grid min-w-0 grid-cols-1 gap-3 text-sm sm:grid-cols-2">
+                    <div className="min-w-0">
+                      <dt className="font-mono text-[10px] uppercase tracking-[0.12em] text-neutral-500">{t($ => $.calendar.columns.targetDetails)}</dt>
+                      <dd className="mt-1 min-w-0 break-words text-neutral-300">
+                        {slot.targetWeightClass && <span className="inline-block rounded border border-[#2a2c31] px-2 py-1 text-xs">{formatWeightClass(slot.targetWeightClass, language)}</span>}
+                        {slot.tournamentRound && <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.12em] text-neutral-500">{t($ => $.calendar.gpRound, { round: slot.tournamentRound })}</p>}
+                        {slot.tournamentId && tournaments[slot.tournamentId] && <button type="button" onClick={() => setView('tournaments')} className="mt-2 block min-h-11 max-w-full text-left text-xs hover:text-white hover:underline">{tournaments[slot.tournamentId].name} ({formatTournamentStatus(tournaments[slot.tournamentId].status, language)})</button>}
+                        {!slot.targetWeightClass && !slot.tournamentRound && !slot.tournamentId && <span className="text-neutral-600">—</span>}
+                      </dd>
+                    </div>
+                    <div className="min-w-0">
+                      <dt className="font-mono text-[10px] uppercase tracking-[0.12em] text-neutral-500">{t($ => $.calendar.columns.linkedEvent)}</dt>
+                      <dd className="mt-1 min-w-0 break-words">
+                        {event ? <button type="button" onClick={() => setView('isCompleted' in event ? (event.isCompleted ? 'history' : 'event-builder') : 'history', !('isCompleted' in event) || event.isCompleted ? undefined : { eventId: event.id })} className="inline-flex min-h-11 max-w-full items-center gap-1 text-left text-neutral-300 hover:text-white hover:underline"><span className="min-w-0 break-words">{event.name}</span><ArrowRight className="shrink-0" size={12} /></button> : <span className="text-neutral-600">—</span>}
+                      </dd>
+                    </div>
+                    <div className="min-w-0 break-words sm:col-span-2">
+                      <dt className="font-mono text-[10px] uppercase tracking-[0.12em] text-neutral-500">{t($ => $.calendar.columns.notes)}</dt>
+                      <dd className="mt-2 space-y-2 text-xs text-neutral-400">
+                        {warnings.length > 0 && <div className="flex flex-wrap gap-1">{warnings.map(warning => <StatusBadge key={warning} tone="danger"><AlertTriangle size={10} /> {warning}</StatusBadge>)}</div>}
+                        {gpExplanation && <div className="border-l border-purple-700 pl-2 text-purple-200"><p className="font-mono text-[10px] uppercase tracking-[0.12em] text-purple-400">{t($ => $.calendar.gpStatus, { status: gpExplanation.status })}</p>{gpExplanation.details.map(detail => <p key={detail} className="break-words">{detail}</p>)}{gpExplanation.retryDate && <p className="mt-1 text-neutral-400">{t($ => $.calendar.retry, { date: formatDate(gpExplanation.retryDate, language) })}</p>}</div>}
+                        {slot.notes?.length ? <div className="space-y-1">{slot.notes.map((note, index) => <p key={index} className="break-words">{note}</p>)}</div> : !gpExplanation && warnings.length === 0 && <span className="text-neutral-600">{t($ => $.calendar.noNotes)}</span>}
+                      </dd>
+                    </div>
+                  </dl>
+
+                  {slot.status === 'planned' ? (
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                      {slot.type !== 'recovery_gap' && <Button variant="primary" onClick={() => setView('event-builder', { calendarSlotId: slot.id })} className="min-h-11 w-full sm:w-auto"><Play size={12} /> {t($ => $.calendar.bookCard)}</Button>}
+                      <Button variant="danger" onClick={() => cancelCalendarSlot(slot.id)} className="min-h-11 w-full sm:w-auto"><Trash2 size={12} /> {t($ => $.calendar.cancel)}</Button>
+                    </div>
+                  ) : <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-neutral-600">{t($ => $.calendar.locked)}</p>}
+                </article>
+              );
+            })}
+          </div>
+          <div className="hidden md:block">
+            <div className="overflow-x-auto custom-scrollbar">
+              <table className="w-full min-w-[900px] text-left text-sm">
               <thead className="border-b border-[#2a2c31] bg-black/10 font-mono text-[10px] uppercase tracking-[0.14em] text-neutral-500">
                 <tr>
                   <th className="px-4 py-3 font-normal">{t($ => $.calendar.columns.date)}</th>
@@ -120,16 +193,7 @@ export default function CalendarPage() {
                 {filteredSlots.length === 0 ? (
                   <tr><td colSpan={7} className="px-4 py-10 text-center text-neutral-500">{t($ => $.calendar.noMatches)}</td></tr>
                 ) : filteredSlots.map(slot => {
-                  const event = events[slot.eventId || ''] || eventArchive[slot.eventId || ''];
-                  const isPast = slot.date < currentDate;
-                  const isApproaching = slot.date >= currentDate && slot.date <= addDaysStr(currentDate, 28);
-                  const warnings: string[] = [];
-                  if (event && slot.date !== event.date) warnings.push(t($ => $.calendar.warnings.dateMismatch));
-                  if (slot.type === 'grand_prix_round' && !slot.tournamentId) warnings.push(t($ => $.calendar.warnings.noTournament));
-                  if (isPast && slot.status === 'planned' && !(slot.notes || []).some(note => note.toLowerCase().includes('delayed') || note.toLowerCase().includes('rescheduled'))) warnings.push(t($ => $.calendar.warnings.overdueSlot));
-                  if ((slot.notes || []).some(note => note.toLowerCase().includes('delayed') || note.toLowerCase().includes('delay'))) warnings.push(t($ => $.calendar.warnings.delayedRound));
-                  const gpExplanation = getGrandPrixExplanation(slot, slot.tournamentId ? diagnoses[slot.tournamentId] : undefined, language);
-
+                  const { event, isPast, isApproaching, warnings, gpExplanation } = getSlotDisplay(slot);
                   return (
                     <tr key={slot.id} className={isApproaching && slot.status === 'planned' ? 'bg-white/[0.03]' : 'hover:bg-white/[0.02]'}>
                       <td className="px-4 py-4 font-mono text-xs text-neutral-300">
@@ -164,7 +228,8 @@ export default function CalendarPage() {
                   );
                 })}
               </tbody>
-            </table>
+              </table>
+            </div>
           </div>
         </DataSurface>
       )}

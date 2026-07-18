@@ -1,5 +1,3 @@
-import { Faker, base, de, en, en_AU, en_GB, en_IE, en_NG, en_US, es, es_MX, fr, it, ja, ko, nl, pl, pt_BR, ru, sv, zh_CN, type LocaleDefinition } from '@faker-js/faker';
-
 export const firstNames = [
   'Jack', 'Thomas', 'Michael', 'Alex', 'David', 'James', 'John', 'Robert', 'William', 'Richard',
   'Charles', 'Joseph', 'Chris', 'Daniel', 'Paul', 'Mark', 'Donald', 'George', 'Kenneth', 'Steven',
@@ -70,29 +68,6 @@ const romanizedNamePools = {
   }
 } as const;
 
-const nameLocales: Record<Nationality, LocaleDefinition[]> = {
-  USA: [en_US, en, base],
-  Brazil: [pt_BR, en, base],
-  Russia: [ru, en, base],
-  Japan: [ja, en, base],
-  Mexico: [es_MX, es, en, base],
-  UK: [en_GB, en, base],
-  Australia: [en_AU, en, base],
-  Canada: [en_US, en, base],
-  France: [fr, en, base],
-  Poland: [pl, en, base],
-  Sweden: [sv, en, base],
-  Netherlands: [nl, en, base],
-  'South Korea': [ko, en, base],
-  China: [zh_CN, en, base],
-  Nigeria: [en_NG, en, base],
-  'New Zealand': [en_AU, en, base],
-  Ireland: [en_IE, en, base],
-  Spain: [es, en, base],
-  Germany: [de, en, base],
-  Italy: [it, en, base]
-};
-
 export function getLocalizedFighterName(nationality: string, seed: number) {
   const romanized = romanizedNamePools[nationality as keyof typeof romanizedNamePools];
   if (romanized) {
@@ -103,22 +78,9 @@ export function getLocalizedFighterName(nationality: string, seed: number) {
     };
   }
 
-  const locale = nameLocales[nationality as Nationality];
-  if (!locale) {
-    return {
-      firstName: firstNames[Math.abs(seed) % firstNames.length],
-      lastName: lastNames[Math.abs(seed) % lastNames.length]
-    };
-  }
-
-  const faker = new Faker({ locale });
-  faker.seed(seed);
-  for (let attempt = 0; attempt < 10; attempt++) {
-    const name = { firstName: faker.person.firstName(), lastName: faker.person.lastName() };
-    if (latinName.test(name.firstName) && latinName.test(name.lastName)) return name;
-  }
+  const index = Math.abs(seed);
   return {
-    firstName: firstNames[Math.abs(seed) % firstNames.length],
-    lastName: lastNames[Math.abs(seed) % lastNames.length]
+    firstName: firstNames[index % firstNames.length],
+    lastName: lastNames[index % lastNames.length]
   };
 }

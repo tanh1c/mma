@@ -11,6 +11,17 @@ export default defineConfig(() => {
         '@': path.resolve(__dirname, '.'),
       },
     },
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            if (id.includes('react') || id.includes('zustand')) return 'react-vendor';
+            if (id.includes('i18next')) return 'i18n';
+            if (id.includes('/src/lib/game/') || id.includes('/src/lib/engine.ts') || id.includes('/src/lib/names.ts') || id.includes('/src/store/gameStore.ts')) return 'game-core';
+          },
+        },
+      },
+    },
     server: {
       // HMR is disabled in AI Studio via DISABLE_HMR env var.
       // Do not modifyâfile watching is disabled to prevent flickering during agent edits.
