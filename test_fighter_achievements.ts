@@ -50,10 +50,10 @@ const state = {
 } as unknown as GameState;
 
 const achievements = deriveFighterAchievements(state, fighter.id);
-assert.ok(achievements.some(item => item.title === 'Undisputed Champion'));
-assert.ok(achievements.some(item => item.title === 'Successful Title Defense' && item.description.includes('2')));
-assert.ok(achievements.some(item => item.title === 'Grand Prix Champion' && item.description.includes('4-Man')));
-assert.ok(achievements.some(item => item.title === 'Fighter of the Year'));
+assert.ok(achievements.some(item => item.title === 'Undisputed Champion' && item.visual === 'belt' && item.beltType === 'undisputed' && item.weightClass === 'Lightweight'));
+assert.ok(achievements.some(item => item.title === 'Successful Title Defense' && item.description.includes('2') && item.visual === 'belt'));
+assert.ok(achievements.some(item => item.title === 'Grand Prix Champion' && item.description.includes('4-Man') && item.visual === 'trophy'));
+assert.ok(achievements.some(item => item.title === 'Fighter of the Year' && item.visual === 'award'));
 assert.ok(achievements.some(item => item.title === 'Fight of the Year' && item.fightArchiveId === 'fight-1'));
 const vietnameseAchievements = deriveFighterAchievements(state, fighter.id, 'vi');
 assert.deepEqual(achievements.map(({ title: _title, description: _description, ...item }) => item), vietnameseAchievements.map(({ title: _title, description: _description, ...item }) => item));

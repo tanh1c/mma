@@ -1,11 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { ArrowLeft, UserCheck, UserMinus } from 'lucide-react';
+import { ArrowLeft, Flame, Medal, Trophy, UserCheck, UserMinus } from 'lucide-react';
 import { useGameStore } from '../store/gameStore';
 import type { ContractCounterOffer, Fighter, FighterAttributes, FighterStyle, WeightClass } from '../types/game';
 import type { FighterEditError, FighterEditInput } from '../lib/game/career';
 import { FIGHTER_STYLES, WEIGHT_CLASSES } from '../lib/game/constants';
 import { getContractExpectation, getContractStatus, evaluateOffer } from '../lib/game/contracts';
-import { deriveFighterAchievements } from '../lib/game/fighterAchievements';
+import { deriveFighterAchievements, type FighterAchievement } from '../lib/game/fighterAchievements';
 import { deriveFighterTimeline } from '../lib/game/timeline';
 import { CountryFlag } from '../components/CountryFlag';
 import { FighterAvatar } from '../components/FighterAvatar';
@@ -287,6 +287,22 @@ export default function FighterDetail() {
           </div>
         </Panel>}
         <Panel>
+          <h2 className="mb-4 text-lg font-medium tracking-tight text-white">{t($ => $.fighterDetail.physicalProfile)}</h2>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4"><CareerStat label={t($ => $.fighterDetail.height)} value={formatHeight(f.heightCm, unitSystem)} /><CareerStat label={t($ => $.fighterDetail.fightWeight)} value={formatWeight(f.fightWeightLb, unitSystem)} /><CareerStat label={t($ => $.fighterDetail.walkAroundWeight)} value={formatWeight(f.walkAroundWeightLb, unitSystem)} /><CareerStat label={t($ => $.fighterDetail.weightCut)} value={`${weightCut.toFixed(1)}%`} tone={weightCut > 12 ? 'warning' : 'neutral'} /></div>
+        </Panel>
+        <Panel>
+          <h2 className="mb-4 text-lg font-medium tracking-tight text-white">{t($ => $.fighterDetail.attributes)}</h2>
+          <div className="grid gap-x-6 gap-y-2 sm:grid-cols-2"><AttrBar label={t($ => $.fighterDetail.attribute.striking)} value={f.attributes.striking} /><AttrBar label={t($ => $.fighterDetail.attribute.grappling)} value={f.attributes.grappling} /><AttrBar label={t($ => $.fighterDetail.attribute.wrestling)} value={f.attributes.wrestling} /><AttrBar label={t($ => $.fighterDetail.attribute.submissions)} value={f.attributes.submissions} /><AttrBar label={t($ => $.fighterDetail.attribute.cardio)} value={f.attributes.cardio} /><AttrBar label={t($ => $.fighterDetail.attribute.chin)} value={f.attributes.chin} /><AttrBar label={t($ => $.fighterDetail.attribute.power)} value={f.attributes.power} /><AttrBar label={t($ => $.fighterDetail.attribute.speed)} value={f.attributes.speed} /><AttrBar label={t($ => $.fighterDetail.attribute.defense)} value={f.attributes.defense} /><AttrBar label={t($ => $.fighterDetail.attribute.fightIq)} value={f.attributes.fightIq} /><AttrBar label={t($ => $.fighterDetail.attribute.toughness)} value={f.attributes.toughness} /></div>
+          <div className="mt-5 border-t border-[#2a2c31] pt-5">
+            <h3 className="font-mono text-[10px] uppercase tracking-[0.14em] text-neutral-500">{t($ => $.personality.title)}</h3>
+            <div className="mt-3 flex flex-wrap gap-2">{f.personalityTraits.slice(0, 2).map(trait => <span key={trait} className="rounded-full border border-purple-900 px-3 py-1 text-sm text-purple-200">{personalityLabels[trait]}</span>)}</div>
+            <details className="mt-3 rounded border border-[#2a2c31] bg-neutral-950 px-3">
+              <summary className="min-h-11 cursor-pointer py-3 text-sm font-medium text-neutral-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">{t($ => $.personality.explain)}</summary>
+              <p className="pb-3 text-sm leading-6 text-neutral-400">{t($ => $.personality.description)}</p>
+            </details>
+          </div>
+        </Panel>
+        <Panel>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-lg font-medium tracking-tight text-white">{t($ => $.fighterDetail.editor.title)}</h2>
             {isEditing
@@ -322,22 +338,6 @@ export default function FighterDetail() {
           </div>}
         </Panel>
         <Panel>
-          <h2 className="text-lg font-medium tracking-tight text-white">{t($ => $.personality.title)}</h2>
-          <div className="mt-3 flex flex-wrap gap-2">{f.personalityTraits.slice(0, 2).map(trait => <span key={trait} className="rounded-full border border-purple-900 px-3 py-1 text-sm text-purple-200">{personalityLabels[trait]}</span>)}</div>
-          <details className="mt-4 rounded border border-[#2a2c31] bg-neutral-950 p-3">
-            <summary className="min-h-11 cursor-pointer py-3 text-sm font-medium text-neutral-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">{t($ => $.personality.explain)}</summary>
-            <p className="mt-2 text-sm leading-6 text-neutral-400">{t($ => $.personality.description)}</p>
-          </details>
-        </Panel>
-        <Panel>
-          <h2 className="mb-4 text-lg font-medium tracking-tight text-white">{t($ => $.fighterDetail.physicalProfile)}</h2>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4"><CareerStat label={t($ => $.fighterDetail.height)} value={formatHeight(f.heightCm, unitSystem)} /><CareerStat label={t($ => $.fighterDetail.fightWeight)} value={formatWeight(f.fightWeightLb, unitSystem)} /><CareerStat label={t($ => $.fighterDetail.walkAroundWeight)} value={formatWeight(f.walkAroundWeightLb, unitSystem)} /><CareerStat label={t($ => $.fighterDetail.weightCut)} value={`${weightCut.toFixed(1)}%`} tone={weightCut > 12 ? 'warning' : 'neutral'} /></div>
-        </Panel>
-        <Panel>
-          <h2 className="mb-4 text-lg font-medium tracking-tight text-white">{t($ => $.fighterDetail.attributes)}</h2>
-          <div className="grid gap-x-6 gap-y-2 sm:grid-cols-2"><AttrBar label={t($ => $.fighterDetail.attribute.striking)} value={f.attributes.striking} /><AttrBar label={t($ => $.fighterDetail.attribute.grappling)} value={f.attributes.grappling} /><AttrBar label={t($ => $.fighterDetail.attribute.wrestling)} value={f.attributes.wrestling} /><AttrBar label={t($ => $.fighterDetail.attribute.submissions)} value={f.attributes.submissions} /><AttrBar label={t($ => $.fighterDetail.attribute.cardio)} value={f.attributes.cardio} /><AttrBar label={t($ => $.fighterDetail.attribute.chin)} value={f.attributes.chin} /><AttrBar label={t($ => $.fighterDetail.attribute.power)} value={f.attributes.power} /><AttrBar label={t($ => $.fighterDetail.attribute.speed)} value={f.attributes.speed} /><AttrBar label={t($ => $.fighterDetail.attribute.defense)} value={f.attributes.defense} /><AttrBar label={t($ => $.fighterDetail.attribute.fightIq)} value={f.attributes.fightIq} /><AttrBar label={t($ => $.fighterDetail.attribute.toughness)} value={f.attributes.toughness} /></div>
-        </Panel>
-        <Panel>
           <h2 className="mb-4 text-lg font-medium tracking-tight text-white">{t($ => $.fighterDetail.careerSummary)}</h2>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4"><CareerStat label={t($ => $.fighterDetail.titleFights)} value={titleFights} tone="warning" /><CareerStat label={t($ => $.fighterDetail.currentStreak)} value={currentStreak > 0 ? `${currentStreak} W` : '—'} /><CareerStat label={t($ => $.fighterDetail.bestStreak)} value={longestStreak} /><CareerStat label={t($ => $.fighterDetail.averagePerformance)} value={averagePerformance} /></div>
           <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4"><CareerStat label={t($ => $.fighterDetail.koWins)} value={kos} tone="danger" /><CareerStat label={t($ => $.fighterDetail.submissionWins)} value={subs} tone="warning" /><CareerStat label={t($ => $.fighterDetail.decisionWins)} value={decWins} /><CareerStat label={t($ => $.fighterDetail.decisionLosses)} value={decLosses} /></div>
@@ -353,7 +353,7 @@ export default function FighterDetail() {
           if (!items.length) return null;
           return <section key={category}><h3 className="font-mono text-[10px] uppercase tracking-[0.14em] text-neutral-500">{achievementCategoryLabels[category]}</h3><div className="mt-3 grid gap-3 sm:grid-cols-2">{items.map((item, index) => {
             const className = `rounded-lg border bg-neutral-950 p-4 text-left ${item.tone === 'success' ? 'border-emerald-900' : item.tone === 'warning' ? 'border-amber-900' : item.tone === 'danger' ? 'border-red-900' : 'border-[#2a2c31]'}`;
-            const content = <><div className="flex items-start justify-between gap-3"><h4 className="font-medium text-white">{item.title}</h4><span className="shrink-0 font-mono text-[10px] text-neutral-500">{formatDate(item.date, language)}</span></div><p className="mt-2 text-sm text-neutral-400">{item.description}</p></>;
+            const content = <div className="flex min-w-0 items-start gap-4"><AchievementVisual achievement={item} /><div className="min-w-0 flex-1"><div className="flex flex-wrap items-start justify-between gap-2"><h4 className="font-medium text-white">{item.title}</h4><span className="shrink-0 font-mono text-[10px] text-neutral-500">{formatDate(item.date, language)}</span></div><p className="mt-2 text-sm leading-6 text-neutral-400">{item.description}</p></div></div>;
             return item.fightArchiveId ? <button key={`${item.title}-${index}`} type="button" onClick={() => openFight(item.fightArchiveId!)} className={`${className} transition-colors hover:bg-[#1b1c20] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white`}>{content}</button> : <div key={`${item.title}-${index}`} className={className}>{content}</div>;
           })}</div></section>;
         })}</div>}
@@ -400,6 +400,15 @@ export default function FighterDetail() {
       </Panel>}
     </section>
   </div>;
+}
+
+function AchievementVisual({ achievement }: { achievement: FighterAchievement }) {
+  if (achievement.visual === 'belt' && achievement.weightClass && achievement.beltType) {
+    return <div className="flex h-16 w-20 shrink-0 items-center justify-center rounded-lg bg-amber-950/20"><ChampionshipBelt weightClass={achievement.weightClass} type={achievement.beltType} size="marker" /></div>;
+  }
+  const Icon = achievement.visual === 'trophy' ? Trophy : achievement.visual === 'award' ? Medal : Flame;
+  const color = achievement.visual === 'trophy' ? 'text-amber-300' : achievement.visual === 'award' ? 'text-sky-300' : 'text-orange-300';
+  return <div className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-full border border-current/20 bg-white/[0.03] ${color}`}><Icon size={26} aria-hidden="true" /></div>;
 }
 
 function ProfileStat({ label, value, detail, tone = 'neutral' }: { label: string; value: string; detail?: string; tone?: 'neutral' | 'success' | 'warning' | 'danger' }) {
