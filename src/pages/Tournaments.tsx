@@ -30,11 +30,14 @@ export default function Tournaments() {
     scheduleFinal, 
     cancelTournament, 
     setView,
-    fightArchive = {}
+    fightArchive = {},
+    playerPromotionId,
+    promotions
   } = useGameStore();
 
   const [isCreating, setIsCreating] = useState(false);
   const [selectedTourneyId, setSelectedTourneyId] = useState<string | null>(null);
+  const [scopeFilter, setScopeFilter] = useState<'promotion' | 'international'>('promotion');
   const [statusFilter, setStatusFilter] = useState<'All' | 'Active' | 'Completed' | 'Cancelled'>('All');
 
   // Form State
@@ -62,6 +65,8 @@ export default function Tournaments() {
   };
 
   const activeTourneyList = Object.values(tournaments).filter(t => {
+    if (scopeFilter === 'promotion' && !(t.scope === 'promotion' && t.promotionId === playerPromotionId)) return false;
+    if (scopeFilter === 'international' && !(t.scope === 'international')) return false;
     if (statusFilter === 'All') return true;
     if (statusFilter === 'Active') return t.status === 'planned' || t.status === 'active';
     if (statusFilter === 'Completed') return t.status === 'completed';
@@ -69,8 +74,8 @@ export default function Tournaments() {
     return true;
   });
   const selectedTourney = selectedTourneyId ? tournaments[selectedTourneyId] : null;
-  const selectedDiagnosis = selectedTourney ? diagnoseActiveTournaments(gameState).find(diagnosis => diagnosis.tournamentId === selectedTourney.id) : undefined;
-  const selectedExplanation = selectedTourney ? getGrandPrixExplanation({ id: selectedTourney.id, year: new Date(currentDate).getFullYear(), date: currentDate, type: 'grand_prix_round', status: 'planned', priority: 1, tournamentId: selectedTourney.id }, selectedDiagnosis, language) : null;
+  const selectedDiagnosis = selectedTourney?.scope === 'promotion' ? diagnoseActiveTournaments(gameState).find(diagnosis => diagnosis.tournamentId === selectedTourney.id) : undefined;
+  const selectedExplanation = selectedTourney?.scope === 'promotion' ? getGrandPrixExplanation({ id: selectedTourney.id, year: new Date(currentDate).getFullYear(), date: currentDate, type: 'grand_prix_round', status: 'planned', priority: 1, tournamentId: selectedTourney.id }, selectedDiagnosis, language) : null;
 
   // Filter signed, healthy, same-class, unbooked fighters for the GP creation form
   const eligibleFighters = Object.values(fighters).filter(f => 
@@ -155,7 +160,7 @@ export default function Tournaments() {
         eyebrow={translate($ => $.tournaments.eyebrow)}
         title={translate($ => $.tournaments.title)}
         description={translate($ => $.tournaments.description)}
-        actions={!isCreating ? <Button variant="primary" onClick={() => { setIsCreating(true); setSelectedTourneyId(null); }} className="inline-flex items-center gap-1"><Plus size={16} /> {translate($ => $.tournaments.create)}</Button> : undefined}
+        actions={!isCreating && scopeFilter === 'promotion' ? <Button variant="primary" onClick={() => { setIsCreating(true); setSelectedTourneyId(null); }} className="inline-flex items-center gap-1"><Plus size={16} /> {translate($ => $.tournaments.create)}</Button> : undefined}
       />
 
       {isCreating ? (
@@ -304,6 +309,17 @@ export default function Tournaments() {
           <div className="lg:col-span-1 space-y-4">
             <h2 className="text-sm font-bold text-neutral-400 uppercase tracking-wider">{translate($ => $.tournaments.list)}</h2>
 
+            <div className="grid grid-cols-2 gap-1 rounded-lg border border-[#2a2c31] bg-black/10 p-1">
+              {(['promotion', 'international'] as const).map(scope => <button
+                key={scope}
+                type="button"
+                onClick={() => { setScopeFilter(scope); setSelectedTourneyId(null); }}
+                className={`min-h-11 rounded px-2 text-xs font-bold uppercase ${scopeFilter === scope ? 'bg-white text-black' : 'text-neutral-300 hover:bg-[#1b1c20] hover:text-white'}`}
+              >
+                {scope === 'promotion' ? translate($ => $.tournaments.domestic) : translate($ => $.tournaments.international)}
+              </button>)}
+            </div>
+
             <div className="grid grid-cols-2 gap-1 sm:grid-cols-4 rounded-lg border border-[#2a2c31] bg-black/10 p-1">
               {statusFilters.map(filter => (
                 <button
@@ -381,7 +397,7 @@ export default function Tournaments() {
                     </p>
                   </div>
                   <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
-                    {selectedTourney.status === 'planned' && (
+                    {selectedTourney.scope === 'promotion' && selectedTourney.status === 'planned' && (
                       selectedTourney.format === 'eight_man' ? (
                         <Button
                           variant="primary"
@@ -400,7 +416,7 @@ export default function Tournaments() {
                         </Button>
                       )
                     )}
-                    {selectedTourney.status === 'active' && 
+                    {selectedTourney.scope === 'promotion' && selectedTourney.status === 'active' &&
                       selectedTourney.format === 'eight_man' && 
                       selectedTourney.fights.filter(f => f.round === 'quarterfinal').every(q => q.isCompleted) && 
                       !selectedTourney.fights.find(f => f.round === 'semifinal')?.eventId && (
@@ -412,7 +428,7 @@ export default function Tournaments() {
                           {translate($ => $.tournaments.scheduleSemifinals)}
                         </Button>
                     )}
-                    {selectedTourney.status === 'active' && 
+                    {selectedTourney.scope === 'promotion' && selectedTourney.status === 'active' &&
                       selectedTourney.fights.filter(f => f.round === 'semifinal').every(s => s.isCompleted) && 
                       !selectedTourney.fights.find(f => f.round === 'final')?.eventId && (
                         <Button
@@ -423,7 +439,7 @@ export default function Tournaments() {
                           {translate($ => $.tournaments.scheduleFinal)}
                         </Button>
                     )}
-                    {!selectedTourney.fights.some(f => f.isCompleted) && selectedTourney.status !== 'cancelled' && (
+                    {selectedTourney.scope === 'promotion' && !selectedTourney.fights.some(f => f.isCompleted) && selectedTourney.status !== 'cancelled' && (
                       <Button
                         variant="danger"
                         className="min-h-11 w-full px-3 text-xs sm:w-auto"
@@ -496,11 +512,11 @@ export default function Tournaments() {
                                 </div>
                                 <div className="space-y-1">
                                   <div className={`flex min-w-0 items-center justify-between gap-1 rounded p-1 text-sm ${slot.winnerId === slot.redFighterId ? 'bg-green-500/10 font-bold text-green-400' : ''}`}>
-                                    <span className="flex min-w-0 items-center gap-1"><span className="shrink-0">({redSeed})</span>{redF && <><FighterRankBadge fighterId={redF.id} /><FighterAvatar id={redF.id} name={`${redF.firstName} ${redF.lastName}`} nationality={redF.nationality} className="h-5 w-5 shrink-0" /><CountryFlag nationality={redF.nationality} className="shrink-0 text-xs" /></>}<span className="min-w-0 truncate">{redF ? `${redF.firstName} ${redF.lastName}` : translate($ => $.tournaments.pending)}</span></span>
+                                    <span className="flex min-w-0 items-center gap-1"><span className="shrink-0">({redSeed})</span>{redF && <><FighterRankBadge fighterId={redF.id} /><FighterAvatar id={redF.id} name={`${redF.firstName} ${redF.lastName}`} nationality={redF.nationality} className="h-5 w-5 shrink-0" /><CountryFlag nationality={redF.nationality} className="shrink-0 text-xs" /></>}<span className="min-w-0 truncate">{redF ? `${redF.firstName} ${redF.lastName}` : translate($ => $.tournaments.pending)}</span>{selectedTourney.scope === 'international' && redF?.contract?.promotionId && <span className="shrink-0 font-mono text-[9px] text-neutral-500">{promotions[redF.contract.promotionId]?.shortName}</span>}</span>
                                     {slot.winnerId === slot.redFighterId && <Check className="shrink-0" size={14} />}
                                   </div>
                                   <div className={`flex min-w-0 items-center justify-between gap-1 rounded p-1 text-sm ${slot.winnerId === slot.blueFighterId ? 'bg-green-500/10 font-bold text-green-400' : ''}`}>
-                                    <span className="flex min-w-0 items-center gap-1"><span className="shrink-0">({blueSeed})</span>{blueF && <><FighterRankBadge fighterId={blueF.id} /><FighterAvatar id={blueF.id} name={`${blueF.firstName} ${blueF.lastName}`} nationality={blueF.nationality} className="h-5 w-5 shrink-0" /><CountryFlag nationality={blueF.nationality} className="shrink-0 text-xs" /></>}<span className="min-w-0 truncate">{blueF ? `${blueF.firstName} ${blueF.lastName}` : translate($ => $.tournaments.pending)}</span></span>
+                                    <span className="flex min-w-0 items-center gap-1"><span className="shrink-0">({blueSeed})</span>{blueF && <><FighterRankBadge fighterId={blueF.id} /><FighterAvatar id={blueF.id} name={`${blueF.firstName} ${blueF.lastName}`} nationality={blueF.nationality} className="h-5 w-5 shrink-0" /><CountryFlag nationality={blueF.nationality} className="shrink-0 text-xs" /></>}<span className="min-w-0 truncate">{blueF ? `${blueF.firstName} ${blueF.lastName}` : translate($ => $.tournaments.pending)}</span>{selectedTourney.scope === 'international' && blueF?.contract?.promotionId && <span className="shrink-0 font-mono text-[9px] text-neutral-500">{promotions[blueF.contract.promotionId]?.shortName}</span>}</span>
                                     {slot.winnerId === slot.blueFighterId && <Check className="shrink-0" size={14} />}
                                   </div>
                                 </div>
@@ -537,11 +553,11 @@ export default function Tournaments() {
                               </div>
                               <div className="space-y-1">
                                 <div className={`flex min-w-0 items-center justify-between gap-1 rounded p-1 text-sm ${slot.winnerId === slot.redFighterId ? 'bg-green-500/10 font-bold text-green-400' : ''}`}>
-                                  <span className="flex min-w-0 items-center gap-1"><span className="shrink-0">{redSeed ? `(${redSeed})` : ''}</span>{redF && <FighterRankBadge fighterId={redF.id} />}<span className="min-w-0 truncate">{redF ? `${redF.firstName} ${redF.lastName}` : translate($ => $.tournaments.pending)}</span></span>
+                                  <span className="flex min-w-0 items-center gap-1"><span className="shrink-0">{redSeed ? `(${redSeed})` : ''}</span>{redF && <FighterRankBadge fighterId={redF.id} />}<span className="min-w-0 truncate">{redF ? `${redF.firstName} ${redF.lastName}` : translate($ => $.tournaments.pending)}</span>{selectedTourney.scope === 'international' && redF?.contract?.promotionId && <span className="shrink-0 font-mono text-[9px] text-neutral-500">{promotions[redF.contract.promotionId]?.shortName}</span>}</span>
                                   {slot.winnerId === slot.redFighterId && <Check className="shrink-0" size={14} />}
                                 </div>
                                 <div className={`flex min-w-0 items-center justify-between gap-1 rounded p-1 text-sm ${slot.winnerId === slot.blueFighterId ? 'bg-green-500/10 font-bold text-green-400' : ''}`}>
-                                  <span className="flex min-w-0 items-center gap-1"><span className="shrink-0">{blueSeed ? `(${blueSeed})` : ''}</span>{blueF && <FighterRankBadge fighterId={blueF.id} />}<span className="min-w-0 truncate">{blueF ? `${blueF.firstName} ${blueF.lastName}` : translate($ => $.tournaments.pending)}</span></span>
+                                  <span className="flex min-w-0 items-center gap-1"><span className="shrink-0">{blueSeed ? `(${blueSeed})` : ''}</span>{blueF && <FighterRankBadge fighterId={blueF.id} />}<span className="min-w-0 truncate">{blueF ? `${blueF.firstName} ${blueF.lastName}` : translate($ => $.tournaments.pending)}</span>{selectedTourney.scope === 'international' && blueF?.contract?.promotionId && <span className="shrink-0 font-mono text-[9px] text-neutral-500">{promotions[blueF.contract.promotionId]?.shortName}</span>}</span>
                                   {slot.winnerId === slot.blueFighterId && <Check className="shrink-0" size={14} />}
                                 </div>
                               </div>
@@ -635,7 +651,7 @@ export default function Tournaments() {
                         })}
                       </div>
                     )}
-                    {selectedTourney.titleShotPromised && (
+                    {selectedTourney.scope === 'promotion' && selectedTourney.titleShotPromised && (
                       <div className="bg-purple-950/20 border border-purple-800/40 p-3 rounded mt-4">
                         <p title={translate($ => $.tournaments.titleShotHelp)} className="text-xs font-bold text-purple-300 flex items-center gap-1">
                           🛡 {translate($ => $.tournaments.titleShotPromised)}

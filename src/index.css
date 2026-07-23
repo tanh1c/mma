@@ -63,6 +63,16 @@ textarea {
 .fight-recovery { animation: fight-recovery 450ms ease-out; }
 .fight-finish { animation: fight-finish 700ms ease-out; }
 
+.fight-sprite-frame {
+  image-rendering: pixelated;
+  background-position: 0 0;
+  background-repeat: no-repeat;
+}
+
+.fight-sprite-effect {
+  opacity: 1;
+}
+
 @keyframes fight-strike { 50% { transform: translateX(12%) scale(1.04); } }
 @keyframes fight-takedown { 45% { transform: translateX(10%) translateY(10%) rotate(-4deg); } }
 @keyframes fight-clinch { 50% { transform: translateX(8%) scale(1.02); } }

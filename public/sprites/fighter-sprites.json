@@ -1,0 +1,4202 @@
+{
+  "$schema": "./fighter-sprites.schema.json",
+  "bundle": "mma-fighter-complete",
+  "version": 1,
+  "frameIndexBase": 0,
+  "frameSize": {
+    "width": 256,
+    "height": 256
+  },
+  "pivot": {
+    "x": 128,
+    "y": 228
+  },
+  "authoredFacing": "right",
+  "runtimeMirroring": "mirror X for left-facing; defender/bottom roles may also mirror for pairs",
+  "style": {
+    "rendering": "modern crisp hard pixel art",
+    "outline": "dark plum-brown",
+    "shading": "two-step cel shading",
+    "backgroundRemovedFrom": "#FF00FF"
+  },
+  "interactionContract": {
+    "standingPairPivotSeparation": 112,
+    "contactPlaneFromEachPivot": 56,
+    "groundPairPivotSeparation": 0,
+    "startFrame": 0,
+    "defaultFps": 10
+  },
+  "actions": {
+    "effect-block": {
+      "path": "effects/effect-block.png",
+      "category": "effects",
+      "frameCount": 4,
+      "frameSize": {
+        "width": 256,
+        "height": 256
+      },
+      "layout": {
+        "type": "horizontal-strip",
+        "columns": 4,
+        "rows": 1
+      },
+      "frames": [
+        {
+          "x": 0,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 256,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 512,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 768,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        }
+      ],
+      "fps": 20,
+      "durationMs": 50,
+      "loop": false,
+      "holdLast": false,
+      "pivot": {
+        "x": 128,
+        "y": 228
+      },
+      "facing": "right",
+      "mirrorForLeft": true,
+      "impactFrames": [],
+      "qc": {
+        "passed": true,
+        "emptyFrames": [],
+        "outputEdgeTouchFrames": [],
+        "pasteClampedFrames": [],
+        "acceptedSourceEdgeTouchFrames": [],
+        "bodyScaleCv": 0.5767,
+        "anchorYStd": 0.0462
+      }
+    },
+    "effect-dust": {
+      "path": "effects/effect-dust.png",
+      "category": "effects",
+      "frameCount": 4,
+      "frameSize": {
+        "width": 256,
+        "height": 256
+      },
+      "layout": {
+        "type": "horizontal-strip",
+        "columns": 4,
+        "rows": 1
+      },
+      "frames": [
+        {
+          "x": 0,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 256,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 512,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 768,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        }
+      ],
+      "fps": 15,
+      "durationMs": 67,
+      "loop": false,
+      "holdLast": false,
+      "pivot": {
+        "x": 128,
+        "y": 228
+      },
+      "facing": "right",
+      "mirrorForLeft": true,
+      "impactFrames": [],
+      "qc": {
+        "passed": true,
+        "emptyFrames": [],
+        "outputEdgeTouchFrames": [],
+        "pasteClampedFrames": [],
+        "acceptedSourceEdgeTouchFrames": [],
+        "bodyScaleCv": 0.5119,
+        "anchorYStd": 0.0805
+      }
+    },
+    "effect-heavy-hit": {
+      "path": "effects/effect-heavy-hit.png",
+      "category": "effects",
+      "frameCount": 4,
+      "frameSize": {
+        "width": 256,
+        "height": 256
+      },
+      "layout": {
+        "type": "horizontal-strip",
+        "columns": 4,
+        "rows": 1
+      },
+      "frames": [
+        {
+          "x": 0,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 256,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 512,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 768,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        }
+      ],
+      "fps": 20,
+      "durationMs": 50,
+      "loop": false,
+      "holdLast": false,
+      "pivot": {
+        "x": 128,
+        "y": 228
+      },
+      "facing": "right",
+      "mirrorForLeft": true,
+      "impactFrames": [],
+      "qc": {
+        "passed": true,
+        "emptyFrames": [],
+        "outputEdgeTouchFrames": [],
+        "pasteClampedFrames": [],
+        "acceptedSourceEdgeTouchFrames": [],
+        "bodyScaleCv": 0.4875,
+        "anchorYStd": 0.0324
+      }
+    },
+    "effect-kick-impact": {
+      "path": "effects/effect-kick-impact.png",
+      "category": "effects",
+      "frameCount": 4,
+      "frameSize": {
+        "width": 256,
+        "height": 256
+      },
+      "layout": {
+        "type": "horizontal-strip",
+        "columns": 4,
+        "rows": 1
+      },
+      "frames": [
+        {
+          "x": 0,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 256,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 512,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 768,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        }
+      ],
+      "fps": 20,
+      "durationMs": 50,
+      "loop": false,
+      "holdLast": false,
+      "pivot": {
+        "x": 128,
+        "y": 228
+      },
+      "facing": "right",
+      "mirrorForLeft": true,
+      "impactFrames": [],
+      "qc": {
+        "passed": true,
+        "emptyFrames": [],
+        "outputEdgeTouchFrames": [],
+        "pasteClampedFrames": [],
+        "acceptedSourceEdgeTouchFrames": [],
+        "bodyScaleCv": 0.5514,
+        "anchorYStd": 0.1241
+      }
+    },
+    "effect-knockdown": {
+      "path": "effects/effect-knockdown.png",
+      "category": "effects",
+      "frameCount": 4,
+      "frameSize": {
+        "width": 256,
+        "height": 256
+      },
+      "layout": {
+        "type": "horizontal-strip",
+        "columns": 4,
+        "rows": 1
+      },
+      "frames": [
+        {
+          "x": 0,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 256,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 512,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 768,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        }
+      ],
+      "fps": 15,
+      "durationMs": 67,
+      "loop": false,
+      "holdLast": false,
+      "pivot": {
+        "x": 128,
+        "y": 228
+      },
+      "facing": "right",
+      "mirrorForLeft": true,
+      "impactFrames": [],
+      "qc": {
+        "passed": true,
+        "emptyFrames": [],
+        "outputEdgeTouchFrames": [],
+        "pasteClampedFrames": [],
+        "acceptedSourceEdgeTouchFrames": [],
+        "bodyScaleCv": 0.4134,
+        "anchorYStd": 0.0874
+      }
+    },
+    "effect-ko": {
+      "path": "effects/effect-ko.png",
+      "category": "effects",
+      "frameCount": 4,
+      "frameSize": {
+        "width": 256,
+        "height": 256
+      },
+      "layout": {
+        "type": "horizontal-strip",
+        "columns": 4,
+        "rows": 1
+      },
+      "frames": [
+        {
+          "x": 0,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 256,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 512,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 768,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        }
+      ],
+      "fps": 15,
+      "durationMs": 67,
+      "loop": false,
+      "holdLast": false,
+      "pivot": {
+        "x": 128,
+        "y": 228
+      },
+      "facing": "right",
+      "mirrorForLeft": true,
+      "impactFrames": [],
+      "qc": {
+        "passed": true,
+        "emptyFrames": [],
+        "outputEdgeTouchFrames": [],
+        "pasteClampedFrames": [],
+        "acceptedSourceEdgeTouchFrames": [],
+        "bodyScaleCv": 0.5043,
+        "anchorYStd": 0.0163
+      }
+    },
+    "effect-light-hit": {
+      "path": "effects/effect-light-hit.png",
+      "category": "effects",
+      "frameCount": 4,
+      "frameSize": {
+        "width": 256,
+        "height": 256
+      },
+      "layout": {
+        "type": "horizontal-strip",
+        "columns": 4,
+        "rows": 1
+      },
+      "frames": [
+        {
+          "x": 0,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 256,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 512,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 768,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        }
+      ],
+      "fps": 20,
+      "durationMs": 50,
+      "loop": false,
+      "holdLast": false,
+      "pivot": {
+        "x": 128,
+        "y": 228
+      },
+      "facing": "right",
+      "mirrorForLeft": true,
+      "impactFrames": [],
+      "qc": {
+        "passed": true,
+        "emptyFrames": [],
+        "outputEdgeTouchFrames": [],
+        "pasteClampedFrames": [],
+        "acceptedSourceEdgeTouchFrames": [],
+        "bodyScaleCv": 0.6922,
+        "anchorYStd": 0.045
+      }
+    },
+    "effect-sweat": {
+      "path": "effects/effect-sweat.png",
+      "category": "effects",
+      "frameCount": 4,
+      "frameSize": {
+        "width": 256,
+        "height": 256
+      },
+      "layout": {
+        "type": "horizontal-strip",
+        "columns": 4,
+        "rows": 1
+      },
+      "frames": [
+        {
+          "x": 0,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 256,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 512,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 768,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        }
+      ],
+      "fps": 15,
+      "durationMs": 67,
+      "loop": false,
+      "holdLast": false,
+      "pivot": {
+        "x": 128,
+        "y": 228
+      },
+      "facing": "right",
+      "mirrorForLeft": true,
+      "impactFrames": [],
+      "qc": {
+        "passed": true,
+        "emptyFrames": [],
+        "outputEdgeTouchFrames": [],
+        "pasteClampedFrames": [],
+        "acceptedSourceEdgeTouchFrames": [],
+        "bodyScaleCv": 0.4082,
+        "anchorYStd": 0.0433
+      }
+    },
+    "fighter-block-high": {
+      "path": "fighters/fighter-block-high.png",
+      "category": "fighters",
+      "frameCount": 6,
+      "frameSize": {
+        "width": 256,
+        "height": 256
+      },
+      "layout": {
+        "type": "horizontal-strip",
+        "columns": 6,
+        "rows": 1
+      },
+      "frames": [
+        {
+          "x": 0,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 256,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 512,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 768,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1024,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1280,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        }
+      ],
+      "fps": 12,
+      "durationMs": 83,
+      "loop": true,
+      "holdLast": false,
+      "pivot": {
+        "x": 128,
+        "y": 228
+      },
+      "facing": "right",
+      "mirrorForLeft": true,
+      "impactFrames": [],
+      "qc": {
+        "passed": true,
+        "emptyFrames": [],
+        "outputEdgeTouchFrames": [],
+        "pasteClampedFrames": [],
+        "acceptedSourceEdgeTouchFrames": [],
+        "bodyScaleCv": 0.0148,
+        "anchorYStd": 0.0077
+      }
+    },
+    "fighter-block-low": {
+      "path": "fighters/fighter-block-low.png",
+      "category": "fighters",
+      "frameCount": 6,
+      "frameSize": {
+        "width": 256,
+        "height": 256
+      },
+      "layout": {
+        "type": "horizontal-strip",
+        "columns": 6,
+        "rows": 1
+      },
+      "frames": [
+        {
+          "x": 0,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 256,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 512,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 768,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1024,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1280,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        }
+      ],
+      "fps": 12,
+      "durationMs": 83,
+      "loop": true,
+      "holdLast": false,
+      "pivot": {
+        "x": 128,
+        "y": 228
+      },
+      "facing": "right",
+      "mirrorForLeft": true,
+      "impactFrames": [],
+      "qc": {
+        "passed": true,
+        "emptyFrames": [],
+        "outputEdgeTouchFrames": [],
+        "pasteClampedFrames": [],
+        "acceptedSourceEdgeTouchFrames": [],
+        "bodyScaleCv": 0.0177,
+        "anchorYStd": 0.0055
+      }
+    },
+    "fighter-body-hook": {
+      "path": "fighters/fighter-body-hook.png",
+      "category": "fighters",
+      "frameCount": 6,
+      "frameSize": {
+        "width": 256,
+        "height": 256
+      },
+      "layout": {
+        "type": "horizontal-strip",
+        "columns": 6,
+        "rows": 1
+      },
+      "frames": [
+        {
+          "x": 0,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 256,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 512,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 768,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1024,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1280,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        }
+      ],
+      "fps": 12,
+      "durationMs": 83,
+      "loop": false,
+      "holdLast": false,
+      "pivot": {
+        "x": 128,
+        "y": 228
+      },
+      "facing": "right",
+      "mirrorForLeft": true,
+      "impactFrames": [
+        3
+      ],
+      "qc": {
+        "passed": true,
+        "emptyFrames": [],
+        "outputEdgeTouchFrames": [],
+        "pasteClampedFrames": [],
+        "acceptedSourceEdgeTouchFrames": [],
+        "bodyScaleCv": 0.0209,
+        "anchorYStd": 0.011
+      }
+    },
+    "fighter-body-kick": {
+      "path": "fighters/fighter-body-kick.png",
+      "category": "fighters",
+      "frameCount": 6,
+      "frameSize": {
+        "width": 256,
+        "height": 256
+      },
+      "layout": {
+        "type": "horizontal-strip",
+        "columns": 6,
+        "rows": 1
+      },
+      "frames": [
+        {
+          "x": 0,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 256,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 512,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 768,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1024,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1280,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        }
+      ],
+      "fps": 12,
+      "durationMs": 83,
+      "loop": false,
+      "holdLast": false,
+      "pivot": {
+        "x": 128,
+        "y": 228
+      },
+      "facing": "right",
+      "mirrorForLeft": true,
+      "impactFrames": [
+        3
+      ],
+      "qc": {
+        "passed": true,
+        "emptyFrames": [],
+        "outputEdgeTouchFrames": [],
+        "pasteClampedFrames": [],
+        "acceptedSourceEdgeTouchFrames": [],
+        "bodyScaleCv": 0.0383,
+        "anchorYStd": 0.0009
+      }
+    },
+    "fighter-clinch-entry-attacker": {
+      "path": "interactions/fighter-clinch-entry-attacker.png",
+      "category": "interactions",
+      "frameCount": 8,
+      "frameSize": {
+        "width": 256,
+        "height": 256
+      },
+      "layout": {
+        "type": "horizontal-strip",
+        "columns": 8,
+        "rows": 1
+      },
+      "frames": [
+        {
+          "x": 0,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 256,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 512,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 768,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1024,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1280,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1536,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1792,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        }
+      ],
+      "fps": 10,
+      "durationMs": 100,
+      "loop": false,
+      "holdLast": false,
+      "pivot": {
+        "x": 128,
+        "y": 228
+      },
+      "facing": "right",
+      "mirrorForLeft": true,
+      "impactFrames": [],
+      "qc": {
+        "passed": true,
+        "emptyFrames": [],
+        "outputEdgeTouchFrames": [],
+        "pasteClampedFrames": [],
+        "acceptedSourceEdgeTouchFrames": [
+          [
+            0,
+            3
+          ]
+        ],
+        "bodyScaleCv": 0.0536,
+        "anchorYStd": 0.0305
+      },
+      "nextAnimation": "fighter-clinch-idle-attacker",
+      "role": "attacker",
+      "interaction": {
+        "pairGroup": "clinch-entry",
+        "syncPartner": "fighter-clinch-entry-defender",
+        "interactionOffset": {
+          "x": 56,
+          "y": 0
+        },
+        "mirrorAtRuntime": false,
+        "startFrame": 0
+      }
+    },
+    "fighter-clinch-entry-defender": {
+      "path": "interactions/fighter-clinch-entry-defender.png",
+      "category": "interactions",
+      "frameCount": 8,
+      "frameSize": {
+        "width": 256,
+        "height": 256
+      },
+      "layout": {
+        "type": "horizontal-strip",
+        "columns": 8,
+        "rows": 1
+      },
+      "frames": [
+        {
+          "x": 0,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 256,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 512,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 768,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1024,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1280,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1536,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1792,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        }
+      ],
+      "fps": 10,
+      "durationMs": 100,
+      "loop": false,
+      "holdLast": false,
+      "pivot": {
+        "x": 128,
+        "y": 228
+      },
+      "facing": "right",
+      "mirrorForLeft": true,
+      "impactFrames": [],
+      "qc": {
+        "passed": true,
+        "emptyFrames": [],
+        "outputEdgeTouchFrames": [],
+        "pasteClampedFrames": [],
+        "acceptedSourceEdgeTouchFrames": [
+          [
+            0,
+            2
+          ],
+          [
+            1,
+            0
+          ]
+        ],
+        "bodyScaleCv": 0.0226,
+        "anchorYStd": 0.0382
+      },
+      "nextAnimation": "fighter-clinch-idle-defender",
+      "role": "defender",
+      "interaction": {
+        "pairGroup": "clinch-entry",
+        "syncPartner": "fighter-clinch-entry-attacker",
+        "interactionOffset": {
+          "x": -56,
+          "y": 0
+        },
+        "mirrorAtRuntime": true,
+        "startFrame": 0
+      }
+    },
+    "fighter-clinch-idle-attacker": {
+      "path": "interactions/fighter-clinch-idle-attacker.png",
+      "category": "interactions",
+      "frameCount": 6,
+      "frameSize": {
+        "width": 256,
+        "height": 256
+      },
+      "layout": {
+        "type": "horizontal-strip",
+        "columns": 6,
+        "rows": 1
+      },
+      "frames": [
+        {
+          "x": 0,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 256,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 512,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 768,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1024,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1280,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        }
+      ],
+      "fps": 10,
+      "durationMs": 100,
+      "loop": true,
+      "holdLast": false,
+      "pivot": {
+        "x": 128,
+        "y": 228
+      },
+      "facing": "right",
+      "mirrorForLeft": true,
+      "impactFrames": [],
+      "qc": {
+        "passed": true,
+        "emptyFrames": [],
+        "outputEdgeTouchFrames": [],
+        "pasteClampedFrames": [],
+        "acceptedSourceEdgeTouchFrames": [],
+        "bodyScaleCv": 0.0126,
+        "anchorYStd": 0.018
+      },
+      "role": "attacker",
+      "interaction": {
+        "pairGroup": "clinch-idle",
+        "syncPartner": "fighter-clinch-idle-defender",
+        "interactionOffset": {
+          "x": 56,
+          "y": 0
+        },
+        "mirrorAtRuntime": false,
+        "startFrame": 0
+      }
+    },
+    "fighter-clinch-idle-defender": {
+      "path": "interactions/fighter-clinch-idle-defender.png",
+      "category": "interactions",
+      "frameCount": 6,
+      "frameSize": {
+        "width": 256,
+        "height": 256
+      },
+      "layout": {
+        "type": "horizontal-strip",
+        "columns": 6,
+        "rows": 1
+      },
+      "frames": [
+        {
+          "x": 0,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 256,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 512,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 768,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1024,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1280,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        }
+      ],
+      "fps": 10,
+      "durationMs": 100,
+      "loop": true,
+      "holdLast": false,
+      "pivot": {
+        "x": 128,
+        "y": 228
+      },
+      "facing": "right",
+      "mirrorForLeft": true,
+      "impactFrames": [],
+      "qc": {
+        "passed": true,
+        "emptyFrames": [],
+        "outputEdgeTouchFrames": [],
+        "pasteClampedFrames": [],
+        "acceptedSourceEdgeTouchFrames": [],
+        "bodyScaleCv": 0.0029,
+        "anchorYStd": 0.0087
+      },
+      "role": "defender",
+      "interaction": {
+        "pairGroup": "clinch-idle",
+        "syncPartner": "fighter-clinch-idle-attacker",
+        "interactionOffset": {
+          "x": -56,
+          "y": 0
+        },
+        "mirrorAtRuntime": true,
+        "startFrame": 0
+      }
+    },
+    "fighter-cross": {
+      "path": "fighters/fighter-cross.png",
+      "category": "fighters",
+      "frameCount": 6,
+      "frameSize": {
+        "width": 256,
+        "height": 256
+      },
+      "layout": {
+        "type": "horizontal-strip",
+        "columns": 6,
+        "rows": 1
+      },
+      "frames": [
+        {
+          "x": 0,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 256,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 512,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 768,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1024,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1280,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        }
+      ],
+      "fps": 15,
+      "durationMs": 67,
+      "loop": false,
+      "holdLast": false,
+      "pivot": {
+        "x": 128,
+        "y": 228
+      },
+      "facing": "right",
+      "mirrorForLeft": true,
+      "impactFrames": [
+        3
+      ],
+      "qc": {
+        "passed": true,
+        "emptyFrames": [],
+        "outputEdgeTouchFrames": [],
+        "pasteClampedFrames": [],
+        "acceptedSourceEdgeTouchFrames": [],
+        "bodyScaleCv": 0.0097,
+        "anchorYStd": 0.0022
+      }
+    },
+    "fighter-defeat": {
+      "path": "fighters/fighter-defeat.png",
+      "category": "fighters",
+      "frameCount": 6,
+      "frameSize": {
+        "width": 256,
+        "height": 256
+      },
+      "layout": {
+        "type": "horizontal-strip",
+        "columns": 6,
+        "rows": 1
+      },
+      "frames": [
+        {
+          "x": 0,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 256,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 512,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 768,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1024,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1280,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        }
+      ],
+      "fps": 10,
+      "durationMs": 100,
+      "loop": false,
+      "holdLast": true,
+      "pivot": {
+        "x": 128,
+        "y": 228
+      },
+      "facing": "right",
+      "mirrorForLeft": true,
+      "impactFrames": [],
+      "qc": {
+        "passed": true,
+        "emptyFrames": [],
+        "outputEdgeTouchFrames": [],
+        "pasteClampedFrames": [],
+        "acceptedSourceEdgeTouchFrames": [],
+        "bodyScaleCv": 0.0256,
+        "anchorYStd": 0.0242
+      }
+    },
+    "fighter-dodge": {
+      "path": "fighters/fighter-dodge.png",
+      "category": "fighters",
+      "frameCount": 6,
+      "frameSize": {
+        "width": 256,
+        "height": 256
+      },
+      "layout": {
+        "type": "horizontal-strip",
+        "columns": 6,
+        "rows": 1
+      },
+      "frames": [
+        {
+          "x": 0,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 256,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 512,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 768,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1024,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1280,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        }
+      ],
+      "fps": 15,
+      "durationMs": 67,
+      "loop": false,
+      "holdLast": false,
+      "pivot": {
+        "x": 128,
+        "y": 228
+      },
+      "facing": "right",
+      "mirrorForLeft": true,
+      "impactFrames": [],
+      "qc": {
+        "passed": true,
+        "emptyFrames": [],
+        "outputEdgeTouchFrames": [],
+        "pasteClampedFrames": [],
+        "acceptedSourceEdgeTouchFrames": [],
+        "bodyScaleCv": 0.0303,
+        "anchorYStd": 0.0022
+      },
+      "nextAnimation": "fighter-idle"
+    },
+    "fighter-elbow-strike": {
+      "path": "fighters/fighter-elbow-strike.png",
+      "category": "fighters",
+      "frameCount": 6,
+      "frameSize": {
+        "width": 256,
+        "height": 256
+      },
+      "layout": {
+        "type": "horizontal-strip",
+        "columns": 6,
+        "rows": 1
+      },
+      "frames": [
+        {
+          "x": 0,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 256,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 512,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 768,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1024,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1280,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        }
+      ],
+      "fps": 12,
+      "durationMs": 83,
+      "loop": false,
+      "holdLast": false,
+      "pivot": {
+        "x": 128,
+        "y": 228
+      },
+      "facing": "right",
+      "mirrorForLeft": true,
+      "impactFrames": [
+        3
+      ],
+      "qc": {
+        "passed": true,
+        "emptyFrames": [],
+        "outputEdgeTouchFrames": [],
+        "pasteClampedFrames": [],
+        "acceptedSourceEdgeTouchFrames": [],
+        "bodyScaleCv": 0.0223,
+        "anchorYStd": 0.0066
+      }
+    },
+    "fighter-get-up": {
+      "path": "fighters/fighter-get-up.png",
+      "category": "fighters",
+      "frameCount": 8,
+      "frameSize": {
+        "width": 256,
+        "height": 256
+      },
+      "layout": {
+        "type": "horizontal-strip",
+        "columns": 8,
+        "rows": 1
+      },
+      "frames": [
+        {
+          "x": 0,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 256,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 512,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 768,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1024,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1280,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1536,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1792,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        }
+      ],
+      "fps": 10,
+      "durationMs": 100,
+      "loop": false,
+      "holdLast": false,
+      "pivot": {
+        "x": 128,
+        "y": 228
+      },
+      "facing": "right",
+      "mirrorForLeft": true,
+      "impactFrames": [],
+      "qc": {
+        "passed": true,
+        "emptyFrames": [],
+        "outputEdgeTouchFrames": [],
+        "pasteClampedFrames": [],
+        "acceptedSourceEdgeTouchFrames": [],
+        "bodyScaleCv": 0.049,
+        "anchorYStd": 0.0491
+      },
+      "nextAnimation": "fighter-idle"
+    },
+    "fighter-ground-position-bottom": {
+      "path": "interactions/fighter-ground-position-bottom.png",
+      "category": "interactions",
+      "frameCount": 6,
+      "frameSize": {
+        "width": 256,
+        "height": 256
+      },
+      "layout": {
+        "type": "horizontal-strip",
+        "columns": 6,
+        "rows": 1
+      },
+      "frames": [
+        {
+          "x": 0,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 256,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 512,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 768,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1024,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1280,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        }
+      ],
+      "fps": 10,
+      "durationMs": 100,
+      "loop": true,
+      "holdLast": false,
+      "pivot": {
+        "x": 128,
+        "y": 228
+      },
+      "facing": "right",
+      "mirrorForLeft": true,
+      "impactFrames": [],
+      "qc": {
+        "passed": true,
+        "emptyFrames": [],
+        "outputEdgeTouchFrames": [],
+        "pasteClampedFrames": [],
+        "acceptedSourceEdgeTouchFrames": [],
+        "bodyScaleCv": 0.0284,
+        "anchorYStd": 0.0956
+      },
+      "role": "bottom",
+      "interaction": {
+        "pairGroup": "ground-position",
+        "syncPartner": "fighter-ground-position-top",
+        "interactionOffset": {
+          "x": 0,
+          "y": 0
+        },
+        "mirrorAtRuntime": true,
+        "startFrame": 0
+      }
+    },
+    "fighter-ground-position-top": {
+      "path": "interactions/fighter-ground-position-top.png",
+      "category": "interactions",
+      "frameCount": 6,
+      "frameSize": {
+        "width": 256,
+        "height": 256
+      },
+      "layout": {
+        "type": "horizontal-strip",
+        "columns": 6,
+        "rows": 1
+      },
+      "frames": [
+        {
+          "x": 0,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 256,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 512,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 768,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1024,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1280,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        }
+      ],
+      "fps": 10,
+      "durationMs": 100,
+      "loop": true,
+      "holdLast": false,
+      "pivot": {
+        "x": 128,
+        "y": 228
+      },
+      "facing": "right",
+      "mirrorForLeft": true,
+      "impactFrames": [],
+      "qc": {
+        "passed": true,
+        "emptyFrames": [],
+        "outputEdgeTouchFrames": [],
+        "pasteClampedFrames": [],
+        "acceptedSourceEdgeTouchFrames": [],
+        "bodyScaleCv": 0.0265,
+        "anchorYStd": 0.1095
+      },
+      "role": "top",
+      "interaction": {
+        "pairGroup": "ground-position",
+        "syncPartner": "fighter-ground-position-bottom",
+        "interactionOffset": {
+          "x": 0,
+          "y": 0
+        },
+        "mirrorAtRuntime": false,
+        "startFrame": 0
+      }
+    },
+    "fighter-ground-and-pound-attacker": {
+      "path": "interactions/fighter-ground-and-pound-attacker.png",
+      "category": "interactions",
+      "frameCount": 8,
+      "frameSize": {
+        "width": 256,
+        "height": 256
+      },
+      "layout": {
+        "type": "horizontal-strip",
+        "columns": 8,
+        "rows": 1
+      },
+      "frames": [
+        {
+          "x": 0,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 256,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 512,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 768,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1024,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1280,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1536,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1792,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        }
+      ],
+      "fps": 10,
+      "durationMs": 100,
+      "loop": true,
+      "holdLast": false,
+      "pivot": {
+        "x": 128,
+        "y": 228
+      },
+      "facing": "right",
+      "mirrorForLeft": true,
+      "impactFrames": [
+        3,
+        6
+      ],
+      "qc": {
+        "passed": true,
+        "emptyFrames": [],
+        "outputEdgeTouchFrames": [],
+        "pasteClampedFrames": [],
+        "acceptedSourceEdgeTouchFrames": [],
+        "bodyScaleCv": 0.0403,
+        "anchorYStd": 0.0493
+      },
+      "role": "attacker",
+      "interaction": {
+        "pairGroup": "ground-pound",
+        "syncPartner": "fighter-ground-and-pound-defender",
+        "interactionOffset": {
+          "x": 0,
+          "y": 0
+        },
+        "mirrorAtRuntime": false,
+        "startFrame": 0
+      }
+    },
+    "fighter-ground-and-pound-defender": {
+      "path": "interactions/fighter-ground-and-pound-defender.png",
+      "category": "interactions",
+      "frameCount": 8,
+      "frameSize": {
+        "width": 256,
+        "height": 256
+      },
+      "layout": {
+        "type": "horizontal-strip",
+        "columns": 8,
+        "rows": 1
+      },
+      "frames": [
+        {
+          "x": 0,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 256,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 512,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 768,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1024,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1280,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1536,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1792,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        }
+      ],
+      "fps": 10,
+      "durationMs": 100,
+      "loop": true,
+      "holdLast": false,
+      "pivot": {
+        "x": 128,
+        "y": 228
+      },
+      "facing": "right",
+      "mirrorForLeft": true,
+      "impactFrames": [],
+      "qc": {
+        "passed": true,
+        "emptyFrames": [],
+        "outputEdgeTouchFrames": [],
+        "pasteClampedFrames": [],
+        "acceptedSourceEdgeTouchFrames": [],
+        "bodyScaleCv": 0.0234,
+        "anchorYStd": 0.1078
+      },
+      "role": "defender",
+      "interaction": {
+        "pairGroup": "ground-pound",
+        "syncPartner": "fighter-ground-and-pound-attacker",
+        "interactionOffset": {
+          "x": 0,
+          "y": 0
+        },
+        "mirrorAtRuntime": true,
+        "startFrame": 0
+      }
+    },
+    "fighter-high-kick": {
+      "path": "fighters/fighter-high-kick.png",
+      "category": "fighters",
+      "frameCount": 6,
+      "frameSize": {
+        "width": 256,
+        "height": 256
+      },
+      "layout": {
+        "type": "horizontal-strip",
+        "columns": 6,
+        "rows": 1
+      },
+      "frames": [
+        {
+          "x": 0,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 256,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 512,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 768,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1024,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1280,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        }
+      ],
+      "fps": 12,
+      "durationMs": 83,
+      "loop": false,
+      "holdLast": false,
+      "pivot": {
+        "x": 128,
+        "y": 228
+      },
+      "facing": "right",
+      "mirrorForLeft": true,
+      "impactFrames": [
+        3
+      ],
+      "qc": {
+        "passed": true,
+        "emptyFrames": [],
+        "outputEdgeTouchFrames": [],
+        "pasteClampedFrames": [],
+        "acceptedSourceEdgeTouchFrames": [],
+        "bodyScaleCv": 0.0244,
+        "anchorYStd": 0.0149
+      }
+    },
+    "fighter-hook": {
+      "path": "fighters/fighter-hook.png",
+      "category": "fighters",
+      "frameCount": 6,
+      "frameSize": {
+        "width": 256,
+        "height": 256
+      },
+      "layout": {
+        "type": "horizontal-strip",
+        "columns": 6,
+        "rows": 1
+      },
+      "frames": [
+        {
+          "x": 0,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 256,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 512,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 768,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1024,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1280,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        }
+      ],
+      "fps": 15,
+      "durationMs": 67,
+      "loop": false,
+      "holdLast": false,
+      "pivot": {
+        "x": 128,
+        "y": 228
+      },
+      "facing": "right",
+      "mirrorForLeft": true,
+      "impactFrames": [
+        3
+      ],
+      "qc": {
+        "passed": true,
+        "emptyFrames": [],
+        "outputEdgeTouchFrames": [],
+        "pasteClampedFrames": [],
+        "acceptedSourceEdgeTouchFrames": [],
+        "bodyScaleCv": 0.0242,
+        "anchorYStd": 0.0055
+      }
+    },
+    "fighter-hurt": {
+      "path": "fighters/fighter-hurt.png",
+      "category": "fighters",
+      "frameCount": 6,
+      "frameSize": {
+        "width": 256,
+        "height": 256
+      },
+      "layout": {
+        "type": "horizontal-strip",
+        "columns": 6,
+        "rows": 1
+      },
+      "frames": [
+        {
+          "x": 0,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 256,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 512,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 768,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1024,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1280,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        }
+      ],
+      "fps": 12,
+      "durationMs": 83,
+      "loop": false,
+      "holdLast": false,
+      "pivot": {
+        "x": 128,
+        "y": 228
+      },
+      "facing": "right",
+      "mirrorForLeft": true,
+      "impactFrames": [],
+      "qc": {
+        "passed": true,
+        "emptyFrames": [],
+        "outputEdgeTouchFrames": [],
+        "pasteClampedFrames": [],
+        "acceptedSourceEdgeTouchFrames": [],
+        "bodyScaleCv": 0.022,
+        "anchorYStd": 0.0045
+      },
+      "nextAnimation": "fighter-idle"
+    },
+    "fighter-idle": {
+      "path": "fighters/fighter-idle.png",
+      "category": "fighters",
+      "frameCount": 6,
+      "frameSize": {
+        "width": 256,
+        "height": 256
+      },
+      "layout": {
+        "type": "horizontal-strip",
+        "columns": 6,
+        "rows": 1
+      },
+      "frames": [
+        {
+          "x": 0,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 256,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 512,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 768,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1024,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1280,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        }
+      ],
+      "fps": 10,
+      "durationMs": 100,
+      "loop": true,
+      "holdLast": false,
+      "pivot": {
+        "x": 128,
+        "y": 228
+      },
+      "facing": "right",
+      "mirrorForLeft": true,
+      "impactFrames": [],
+      "qc": {
+        "passed": true,
+        "emptyFrames": [],
+        "outputEdgeTouchFrames": [],
+        "pasteClampedFrames": [],
+        "acceptedSourceEdgeTouchFrames": [],
+        "bodyScaleCv": 0.015,
+        "anchorYStd": 0.009
+      }
+    },
+    "fighter-jab": {
+      "path": "fighters/fighter-jab.png",
+      "category": "fighters",
+      "frameCount": 6,
+      "frameSize": {
+        "width": 256,
+        "height": 256
+      },
+      "layout": {
+        "type": "horizontal-strip",
+        "columns": 6,
+        "rows": 1
+      },
+      "frames": [
+        {
+          "x": 0,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 256,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 512,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 768,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1024,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1280,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        }
+      ],
+      "fps": 15,
+      "durationMs": 67,
+      "loop": false,
+      "holdLast": false,
+      "pivot": {
+        "x": 128,
+        "y": 228
+      },
+      "facing": "right",
+      "mirrorForLeft": true,
+      "impactFrames": [
+        3
+      ],
+      "qc": {
+        "passed": true,
+        "emptyFrames": [],
+        "outputEdgeTouchFrames": [],
+        "pasteClampedFrames": [],
+        "acceptedSourceEdgeTouchFrames": [],
+        "bodyScaleCv": 0.015,
+        "anchorYStd": 0.0076
+      }
+    },
+    "fighter-knee-strike": {
+      "path": "fighters/fighter-knee-strike.png",
+      "category": "fighters",
+      "frameCount": 6,
+      "frameSize": {
+        "width": 256,
+        "height": 256
+      },
+      "layout": {
+        "type": "horizontal-strip",
+        "columns": 6,
+        "rows": 1
+      },
+      "frames": [
+        {
+          "x": 0,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 256,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 512,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 768,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1024,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1280,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        }
+      ],
+      "fps": 12,
+      "durationMs": 83,
+      "loop": false,
+      "holdLast": false,
+      "pivot": {
+        "x": 128,
+        "y": 228
+      },
+      "facing": "right",
+      "mirrorForLeft": true,
+      "impactFrames": [
+        3
+      ],
+      "qc": {
+        "passed": true,
+        "emptyFrames": [],
+        "outputEdgeTouchFrames": [],
+        "pasteClampedFrames": [],
+        "acceptedSourceEdgeTouchFrames": [],
+        "bodyScaleCv": 0.0329,
+        "anchorYStd": 0.0209
+      }
+    },
+    "fighter-knockdown": {
+      "path": "fighters/fighter-knockdown.png",
+      "category": "fighters",
+      "frameCount": 8,
+      "frameSize": {
+        "width": 256,
+        "height": 256
+      },
+      "layout": {
+        "type": "horizontal-strip",
+        "columns": 8,
+        "rows": 1
+      },
+      "frames": [
+        {
+          "x": 0,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 256,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 512,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 768,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1024,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1280,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1536,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1792,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        }
+      ],
+      "fps": 10,
+      "durationMs": 100,
+      "loop": false,
+      "holdLast": true,
+      "pivot": {
+        "x": 128,
+        "y": 228
+      },
+      "facing": "right",
+      "mirrorForLeft": true,
+      "impactFrames": [
+        3
+      ],
+      "qc": {
+        "passed": true,
+        "emptyFrames": [],
+        "outputEdgeTouchFrames": [],
+        "pasteClampedFrames": [],
+        "acceptedSourceEdgeTouchFrames": [],
+        "bodyScaleCv": 0.1401,
+        "anchorYStd": 0.131
+      }
+    },
+    "fighter-ko": {
+      "path": "fighters/fighter-ko.png",
+      "category": "fighters",
+      "frameCount": 8,
+      "frameSize": {
+        "width": 256,
+        "height": 256
+      },
+      "layout": {
+        "type": "horizontal-strip",
+        "columns": 8,
+        "rows": 1
+      },
+      "frames": [
+        {
+          "x": 0,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 256,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 512,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 768,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1024,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1280,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1536,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1792,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        }
+      ],
+      "fps": 10,
+      "durationMs": 100,
+      "loop": false,
+      "holdLast": true,
+      "pivot": {
+        "x": 128,
+        "y": 228
+      },
+      "facing": "right",
+      "mirrorForLeft": true,
+      "impactFrames": [],
+      "qc": {
+        "passed": true,
+        "emptyFrames": [],
+        "outputEdgeTouchFrames": [],
+        "pasteClampedFrames": [],
+        "acceptedSourceEdgeTouchFrames": [
+          [
+            0,
+            3
+          ],
+          [
+            1,
+            2
+          ]
+        ],
+        "bodyScaleCv": 0.1815,
+        "anchorYStd": 0.0848
+      }
+    },
+    "fighter-low-kick": {
+      "path": "fighters/fighter-low-kick.png",
+      "category": "fighters",
+      "frameCount": 6,
+      "frameSize": {
+        "width": 256,
+        "height": 256
+      },
+      "layout": {
+        "type": "horizontal-strip",
+        "columns": 6,
+        "rows": 1
+      },
+      "frames": [
+        {
+          "x": 0,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 256,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 512,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 768,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1024,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1280,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        }
+      ],
+      "fps": 12,
+      "durationMs": 83,
+      "loop": false,
+      "holdLast": false,
+      "pivot": {
+        "x": 128,
+        "y": 228
+      },
+      "facing": "right",
+      "mirrorForLeft": true,
+      "impactFrames": [
+        3
+      ],
+      "qc": {
+        "passed": true,
+        "emptyFrames": [],
+        "outputEdgeTouchFrames": [],
+        "pasteClampedFrames": [],
+        "acceptedSourceEdgeTouchFrames": [],
+        "bodyScaleCv": 0.0162,
+        "anchorYStd": 0.0049
+      }
+    },
+    "fighter-sprawl-attacker": {
+      "path": "interactions/fighter-sprawl-attacker.png",
+      "category": "interactions",
+      "frameCount": 8,
+      "frameSize": {
+        "width": 256,
+        "height": 256
+      },
+      "layout": {
+        "type": "horizontal-strip",
+        "columns": 8,
+        "rows": 1
+      },
+      "frames": [
+        {
+          "x": 0,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 256,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 512,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 768,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1024,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1280,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1536,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1792,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        }
+      ],
+      "fps": 10,
+      "durationMs": 100,
+      "loop": false,
+      "holdLast": false,
+      "pivot": {
+        "x": 128,
+        "y": 228
+      },
+      "facing": "right",
+      "mirrorForLeft": true,
+      "impactFrames": [],
+      "qc": {
+        "passed": true,
+        "emptyFrames": [],
+        "outputEdgeTouchFrames": [],
+        "pasteClampedFrames": [],
+        "acceptedSourceEdgeTouchFrames": [
+          [
+            0,
+            1
+          ],
+          [
+            0,
+            2
+          ],
+          [
+            0,
+            3
+          ],
+          [
+            1,
+            3
+          ]
+        ],
+        "bodyScaleCv": 0.1012,
+        "anchorYStd": 0.1103
+      },
+      "role": "attacker",
+      "interaction": {
+        "pairGroup": "sprawl",
+        "syncPartner": "fighter-sprawl-defender",
+        "interactionOffset": {
+          "x": 0,
+          "y": 0
+        },
+        "mirrorAtRuntime": false,
+        "startFrame": 0
+      }
+    },
+    "fighter-sprawl-defender": {
+      "path": "interactions/fighter-sprawl-defender.png",
+      "category": "interactions",
+      "frameCount": 8,
+      "frameSize": {
+        "width": 256,
+        "height": 256
+      },
+      "layout": {
+        "type": "horizontal-strip",
+        "columns": 8,
+        "rows": 1
+      },
+      "frames": [
+        {
+          "x": 0,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 256,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 512,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 768,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1024,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1280,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1536,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1792,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        }
+      ],
+      "fps": 10,
+      "durationMs": 100,
+      "loop": false,
+      "holdLast": false,
+      "pivot": {
+        "x": 128,
+        "y": 228
+      },
+      "facing": "right",
+      "mirrorForLeft": true,
+      "impactFrames": [],
+      "qc": {
+        "passed": true,
+        "emptyFrames": [],
+        "outputEdgeTouchFrames": [],
+        "pasteClampedFrames": [],
+        "acceptedSourceEdgeTouchFrames": [
+          [
+            0,
+            2
+          ],
+          [
+            0,
+            3
+          ],
+          [
+            1,
+            1
+          ]
+        ],
+        "bodyScaleCv": 0.1443,
+        "anchorYStd": 0.1014
+      },
+      "role": "defender",
+      "interaction": {
+        "pairGroup": "sprawl",
+        "syncPartner": "fighter-sprawl-attacker",
+        "interactionOffset": {
+          "x": 0,
+          "y": 0
+        },
+        "mirrorAtRuntime": true,
+        "startFrame": 0
+      }
+    },
+    "fighter-stand-up-from-ground": {
+      "path": "interactions/fighter-stand-up-from-ground.png",
+      "category": "interactions",
+      "frameCount": 8,
+      "frameSize": {
+        "width": 256,
+        "height": 256
+      },
+      "layout": {
+        "type": "horizontal-strip",
+        "columns": 8,
+        "rows": 1
+      },
+      "frames": [
+        {
+          "x": 0,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 256,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 512,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 768,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1024,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1280,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1536,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1792,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        }
+      ],
+      "fps": 10,
+      "durationMs": 100,
+      "loop": false,
+      "holdLast": false,
+      "pivot": {
+        "x": 128,
+        "y": 228
+      },
+      "facing": "right",
+      "mirrorForLeft": true,
+      "impactFrames": [],
+      "qc": {
+        "passed": true,
+        "emptyFrames": [],
+        "outputEdgeTouchFrames": [],
+        "pasteClampedFrames": [],
+        "acceptedSourceEdgeTouchFrames": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            1
+          ],
+          [
+            1,
+            3
+          ]
+        ],
+        "bodyScaleCv": 0.0767,
+        "anchorYStd": 0.0805
+      },
+      "nextAnimation": "fighter-idle"
+    },
+    "fighter-stunned": {
+      "path": "fighters/fighter-stunned.png",
+      "category": "fighters",
+      "frameCount": 6,
+      "frameSize": {
+        "width": 256,
+        "height": 256
+      },
+      "layout": {
+        "type": "horizontal-strip",
+        "columns": 6,
+        "rows": 1
+      },
+      "frames": [
+        {
+          "x": 0,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 256,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 512,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 768,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1024,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1280,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        }
+      ],
+      "fps": 10,
+      "durationMs": 100,
+      "loop": true,
+      "holdLast": false,
+      "pivot": {
+        "x": 128,
+        "y": 228
+      },
+      "facing": "right",
+      "mirrorForLeft": true,
+      "impactFrames": [],
+      "qc": {
+        "passed": true,
+        "emptyFrames": [],
+        "outputEdgeTouchFrames": [],
+        "pasteClampedFrames": [],
+        "acceptedSourceEdgeTouchFrames": [],
+        "bodyScaleCv": 0.0101,
+        "anchorYStd": 0.0008
+      }
+    },
+    "fighter-submission-attempt-attacker": {
+      "path": "interactions/fighter-submission-attempt-attacker.png",
+      "category": "interactions",
+      "frameCount": 8,
+      "frameSize": {
+        "width": 256,
+        "height": 256
+      },
+      "layout": {
+        "type": "horizontal-strip",
+        "columns": 8,
+        "rows": 1
+      },
+      "frames": [
+        {
+          "x": 0,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 256,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 512,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 768,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1024,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1280,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1536,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1792,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        }
+      ],
+      "fps": 10,
+      "durationMs": 100,
+      "loop": false,
+      "holdLast": false,
+      "pivot": {
+        "x": 128,
+        "y": 228
+      },
+      "facing": "right",
+      "mirrorForLeft": true,
+      "impactFrames": [],
+      "qc": {
+        "passed": true,
+        "emptyFrames": [],
+        "outputEdgeTouchFrames": [],
+        "pasteClampedFrames": [],
+        "acceptedSourceEdgeTouchFrames": [],
+        "bodyScaleCv": 0.0472,
+        "anchorYStd": 0.095
+      },
+      "role": "attacker",
+      "interaction": {
+        "pairGroup": "submission-attempt",
+        "syncPartner": "fighter-submission-attempt-defender",
+        "interactionOffset": {
+          "x": 0,
+          "y": 0
+        },
+        "mirrorAtRuntime": false,
+        "startFrame": 0
+      }
+    },
+    "fighter-submission-attempt-defender": {
+      "path": "interactions/fighter-submission-attempt-defender.png",
+      "category": "interactions",
+      "frameCount": 8,
+      "frameSize": {
+        "width": 256,
+        "height": 256
+      },
+      "layout": {
+        "type": "horizontal-strip",
+        "columns": 8,
+        "rows": 1
+      },
+      "frames": [
+        {
+          "x": 0,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 256,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 512,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 768,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1024,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1280,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1536,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1792,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        }
+      ],
+      "fps": 10,
+      "durationMs": 100,
+      "loop": false,
+      "holdLast": false,
+      "pivot": {
+        "x": 128,
+        "y": 228
+      },
+      "facing": "right",
+      "mirrorForLeft": true,
+      "impactFrames": [],
+      "qc": {
+        "passed": true,
+        "emptyFrames": [],
+        "outputEdgeTouchFrames": [],
+        "pasteClampedFrames": [],
+        "acceptedSourceEdgeTouchFrames": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            1
+          ]
+        ],
+        "bodyScaleCv": 0.0585,
+        "anchorYStd": 0.1664
+      },
+      "role": "defender",
+      "interaction": {
+        "pairGroup": "submission-attempt",
+        "syncPartner": "fighter-submission-attempt-attacker",
+        "interactionOffset": {
+          "x": 0,
+          "y": 0
+        },
+        "mirrorAtRuntime": true,
+        "startFrame": 0
+      }
+    },
+    "fighter-submission-finish-attacker": {
+      "path": "interactions/fighter-submission-finish-attacker.png",
+      "category": "interactions",
+      "frameCount": 8,
+      "frameSize": {
+        "width": 256,
+        "height": 256
+      },
+      "layout": {
+        "type": "horizontal-strip",
+        "columns": 8,
+        "rows": 1
+      },
+      "frames": [
+        {
+          "x": 0,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 256,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 512,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 768,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1024,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1280,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1536,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1792,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        }
+      ],
+      "fps": 10,
+      "durationMs": 100,
+      "loop": false,
+      "holdLast": true,
+      "pivot": {
+        "x": 128,
+        "y": 228
+      },
+      "facing": "right",
+      "mirrorForLeft": true,
+      "impactFrames": [],
+      "qc": {
+        "passed": true,
+        "emptyFrames": [],
+        "outputEdgeTouchFrames": [],
+        "pasteClampedFrames": [],
+        "acceptedSourceEdgeTouchFrames": [],
+        "bodyScaleCv": 0.0982,
+        "anchorYStd": 0.096
+      },
+      "role": "attacker",
+      "interaction": {
+        "pairGroup": "submission-finish",
+        "syncPartner": "fighter-submission-finish-defender",
+        "interactionOffset": {
+          "x": 0,
+          "y": 0
+        },
+        "mirrorAtRuntime": false,
+        "startFrame": 0
+      }
+    },
+    "fighter-submission-finish-defender": {
+      "path": "interactions/fighter-submission-finish-defender.png",
+      "category": "interactions",
+      "frameCount": 8,
+      "frameSize": {
+        "width": 256,
+        "height": 256
+      },
+      "layout": {
+        "type": "horizontal-strip",
+        "columns": 8,
+        "rows": 1
+      },
+      "frames": [
+        {
+          "x": 0,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 256,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 512,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 768,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1024,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1280,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1536,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1792,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        }
+      ],
+      "fps": 10,
+      "durationMs": 100,
+      "loop": false,
+      "holdLast": true,
+      "pivot": {
+        "x": 128,
+        "y": 228
+      },
+      "facing": "right",
+      "mirrorForLeft": true,
+      "impactFrames": [],
+      "qc": {
+        "passed": true,
+        "emptyFrames": [],
+        "outputEdgeTouchFrames": [],
+        "pasteClampedFrames": [],
+        "acceptedSourceEdgeTouchFrames": [
+          [
+            0,
+            3
+          ],
+          [
+            1,
+            3
+          ]
+        ],
+        "bodyScaleCv": 0.1138,
+        "anchorYStd": 0.1037
+      },
+      "role": "defender",
+      "interaction": {
+        "pairGroup": "submission-finish",
+        "syncPartner": "fighter-submission-finish-attacker",
+        "interactionOffset": {
+          "x": 0,
+          "y": 0
+        },
+        "mirrorAtRuntime": true,
+        "startFrame": 0
+      }
+    },
+    "fighter-takedown-attacker": {
+      "path": "interactions/fighter-takedown-attacker.png",
+      "category": "interactions",
+      "frameCount": 8,
+      "frameSize": {
+        "width": 256,
+        "height": 256
+      },
+      "layout": {
+        "type": "horizontal-strip",
+        "columns": 8,
+        "rows": 1
+      },
+      "frames": [
+        {
+          "x": 0,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 256,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 512,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 768,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1024,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1280,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1536,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1792,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        }
+      ],
+      "fps": 10,
+      "durationMs": 100,
+      "loop": false,
+      "holdLast": false,
+      "pivot": {
+        "x": 128,
+        "y": 228
+      },
+      "facing": "right",
+      "mirrorForLeft": true,
+      "impactFrames": [],
+      "qc": {
+        "passed": true,
+        "emptyFrames": [],
+        "outputEdgeTouchFrames": [],
+        "pasteClampedFrames": [],
+        "acceptedSourceEdgeTouchFrames": [],
+        "bodyScaleCv": 0.0766,
+        "anchorYStd": 0.058
+      },
+      "role": "attacker",
+      "interaction": {
+        "pairGroup": "takedown",
+        "syncPartner": "fighter-takedown-defender",
+        "interactionOffset": {
+          "x": 56,
+          "y": 0
+        },
+        "mirrorAtRuntime": false,
+        "startFrame": 0
+      }
+    },
+    "fighter-takedown-defender": {
+      "path": "interactions/fighter-takedown-defender.png",
+      "category": "interactions",
+      "frameCount": 8,
+      "frameSize": {
+        "width": 256,
+        "height": 256
+      },
+      "layout": {
+        "type": "horizontal-strip",
+        "columns": 8,
+        "rows": 1
+      },
+      "frames": [
+        {
+          "x": 0,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 256,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 512,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 768,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1024,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1280,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1536,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1792,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        }
+      ],
+      "fps": 10,
+      "durationMs": 100,
+      "loop": false,
+      "holdLast": false,
+      "pivot": {
+        "x": 128,
+        "y": 228
+      },
+      "facing": "right",
+      "mirrorForLeft": true,
+      "impactFrames": [],
+      "qc": {
+        "passed": true,
+        "emptyFrames": [],
+        "outputEdgeTouchFrames": [],
+        "pasteClampedFrames": [],
+        "acceptedSourceEdgeTouchFrames": [],
+        "bodyScaleCv": 0.067,
+        "anchorYStd": 0.1117
+      },
+      "role": "defender",
+      "interaction": {
+        "pairGroup": "takedown",
+        "syncPartner": "fighter-takedown-attacker",
+        "interactionOffset": {
+          "x": -56,
+          "y": 0
+        },
+        "mirrorAtRuntime": true,
+        "startFrame": 0
+      }
+    },
+    "fighter-takedown-defense-attacker": {
+      "path": "interactions/fighter-takedown-defense-attacker.png",
+      "category": "interactions",
+      "frameCount": 8,
+      "frameSize": {
+        "width": 256,
+        "height": 256
+      },
+      "layout": {
+        "type": "horizontal-strip",
+        "columns": 8,
+        "rows": 1
+      },
+      "frames": [
+        {
+          "x": 0,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 256,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 512,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 768,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1024,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1280,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1536,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1792,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        }
+      ],
+      "fps": 10,
+      "durationMs": 100,
+      "loop": false,
+      "holdLast": false,
+      "pivot": {
+        "x": 128,
+        "y": 228
+      },
+      "facing": "right",
+      "mirrorForLeft": true,
+      "impactFrames": [],
+      "qc": {
+        "passed": true,
+        "emptyFrames": [],
+        "outputEdgeTouchFrames": [],
+        "pasteClampedFrames": [],
+        "acceptedSourceEdgeTouchFrames": [],
+        "bodyScaleCv": 0.061,
+        "anchorYStd": 0.0666
+      },
+      "role": "attacker",
+      "interaction": {
+        "pairGroup": "takedown-defense",
+        "syncPartner": "fighter-takedown-defense-defender",
+        "interactionOffset": {
+          "x": 56,
+          "y": 0
+        },
+        "mirrorAtRuntime": false,
+        "startFrame": 0
+      }
+    },
+    "fighter-takedown-defense-defender": {
+      "path": "interactions/fighter-takedown-defense-defender.png",
+      "category": "interactions",
+      "frameCount": 8,
+      "frameSize": {
+        "width": 256,
+        "height": 256
+      },
+      "layout": {
+        "type": "horizontal-strip",
+        "columns": 8,
+        "rows": 1
+      },
+      "frames": [
+        {
+          "x": 0,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 256,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 512,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 768,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1024,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1280,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1536,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1792,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        }
+      ],
+      "fps": 10,
+      "durationMs": 100,
+      "loop": false,
+      "holdLast": false,
+      "pivot": {
+        "x": 128,
+        "y": 228
+      },
+      "facing": "right",
+      "mirrorForLeft": true,
+      "impactFrames": [],
+      "qc": {
+        "passed": true,
+        "emptyFrames": [],
+        "outputEdgeTouchFrames": [],
+        "pasteClampedFrames": [],
+        "acceptedSourceEdgeTouchFrames": [],
+        "bodyScaleCv": 0.0307,
+        "anchorYStd": 0.0238
+      },
+      "role": "defender",
+      "interaction": {
+        "pairGroup": "takedown-defense",
+        "syncPartner": "fighter-takedown-defense-attacker",
+        "interactionOffset": {
+          "x": -56,
+          "y": 0
+        },
+        "mirrorAtRuntime": true,
+        "startFrame": 0
+      }
+    },
+    "fighter-tap-out": {
+      "path": "interactions/fighter-tap-out.png",
+      "category": "interactions",
+      "frameCount": 8,
+      "frameSize": {
+        "width": 256,
+        "height": 256
+      },
+      "layout": {
+        "type": "horizontal-strip",
+        "columns": 8,
+        "rows": 1
+      },
+      "frames": [
+        {
+          "x": 0,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 256,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 512,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 768,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1024,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1280,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1536,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1792,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        }
+      ],
+      "fps": 10,
+      "durationMs": 100,
+      "loop": false,
+      "holdLast": true,
+      "pivot": {
+        "x": 128,
+        "y": 228
+      },
+      "facing": "right",
+      "mirrorForLeft": true,
+      "impactFrames": [],
+      "qc": {
+        "passed": true,
+        "emptyFrames": [],
+        "outputEdgeTouchFrames": [],
+        "pasteClampedFrames": [],
+        "acceptedSourceEdgeTouchFrames": [],
+        "bodyScaleCv": 0.0695,
+        "anchorYStd": 0.0935
+      },
+      "role": "defender",
+      "interaction": {
+        "pairGroup": "submission-finish",
+        "syncPartner": "fighter-submission-finish-attacker",
+        "interactionOffset": {
+          "x": 0,
+          "y": 0
+        },
+        "mirrorAtRuntime": true,
+        "startFrame": 0
+      }
+    },
+    "fighter-tko-cover": {
+      "path": "fighters/fighter-tko-cover.png",
+      "category": "fighters",
+      "frameCount": 8,
+      "frameSize": {
+        "width": 256,
+        "height": 256
+      },
+      "layout": {
+        "type": "horizontal-strip",
+        "columns": 8,
+        "rows": 1
+      },
+      "frames": [
+        {
+          "x": 0,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 256,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 512,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 768,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1024,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1280,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1536,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1792,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        }
+      ],
+      "fps": 10,
+      "durationMs": 100,
+      "loop": false,
+      "holdLast": true,
+      "pivot": {
+        "x": 128,
+        "y": 228
+      },
+      "facing": "right",
+      "mirrorForLeft": true,
+      "impactFrames": [],
+      "qc": {
+        "passed": true,
+        "emptyFrames": [],
+        "outputEdgeTouchFrames": [],
+        "pasteClampedFrames": [],
+        "acceptedSourceEdgeTouchFrames": [
+          [
+            0,
+            3
+          ],
+          [
+            1,
+            2
+          ]
+        ],
+        "bodyScaleCv": 0.1308,
+        "anchorYStd": 0.0816
+      }
+    },
+    "fighter-victory": {
+      "path": "fighters/fighter-victory.png",
+      "category": "fighters",
+      "frameCount": 6,
+      "frameSize": {
+        "width": 256,
+        "height": 256
+      },
+      "layout": {
+        "type": "horizontal-strip",
+        "columns": 6,
+        "rows": 1
+      },
+      "frames": [
+        {
+          "x": 0,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 256,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 512,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 768,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1024,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1280,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        }
+      ],
+      "fps": 10,
+      "durationMs": 100,
+      "loop": false,
+      "holdLast": true,
+      "pivot": {
+        "x": 128,
+        "y": 228
+      },
+      "facing": "right",
+      "mirrorForLeft": true,
+      "impactFrames": [],
+      "qc": {
+        "passed": true,
+        "emptyFrames": [],
+        "outputEdgeTouchFrames": [],
+        "pasteClampedFrames": [],
+        "acceptedSourceEdgeTouchFrames": [],
+        "bodyScaleCv": 0.0244,
+        "anchorYStd": 0.0125
+      }
+    },
+    "fighter-walk-backward": {
+      "path": "fighters/fighter-walk-backward.png",
+      "category": "fighters",
+      "frameCount": 8,
+      "frameSize": {
+        "width": 256,
+        "height": 256
+      },
+      "layout": {
+        "type": "horizontal-strip",
+        "columns": 8,
+        "rows": 1
+      },
+      "frames": [
+        {
+          "x": 0,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 256,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 512,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 768,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1024,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1280,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1536,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1792,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        }
+      ],
+      "fps": 12,
+      "durationMs": 83,
+      "loop": true,
+      "holdLast": false,
+      "pivot": {
+        "x": 128,
+        "y": 228
+      },
+      "facing": "right",
+      "mirrorForLeft": true,
+      "impactFrames": [],
+      "qc": {
+        "passed": true,
+        "emptyFrames": [],
+        "outputEdgeTouchFrames": [],
+        "pasteClampedFrames": [],
+        "acceptedSourceEdgeTouchFrames": [],
+        "bodyScaleCv": 0.0042,
+        "anchorYStd": 0.0474
+      }
+    },
+    "fighter-walk-forward": {
+      "path": "fighters/fighter-walk-forward.png",
+      "category": "fighters",
+      "frameCount": 8,
+      "frameSize": {
+        "width": 256,
+        "height": 256
+      },
+      "layout": {
+        "type": "horizontal-strip",
+        "columns": 8,
+        "rows": 1
+      },
+      "frames": [
+        {
+          "x": 0,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 256,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 512,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 768,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1024,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1280,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1536,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "x": 1792,
+          "y": 0,
+          "width": 256,
+          "height": 256
+        }
+      ],
+      "fps": 12,
+      "durationMs": 83,
+      "loop": true,
+      "holdLast": false,
+      "pivot": {
+        "x": 128,
+        "y": 228
+      },
+      "facing": "right",
+      "mirrorForLeft": true,
+      "impactFrames": [],
+      "qc": {
+        "passed": true,
+        "emptyFrames": [],
+        "outputEdgeTouchFrames": [],
+        "pasteClampedFrames": [],
+        "acceptedSourceEdgeTouchFrames": [],
+        "bodyScaleCv": 0.0106,
+        "anchorYStd": 0.0265
+      }
+    }
+  }
+}

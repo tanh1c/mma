@@ -32,7 +32,7 @@ try {
   const lwFighters = Object.values(state.fighters).filter(f => f.weightClass === 'Lightweight' && !f.isChampion);
   const candidates4 = lwFighters.slice(0, 6).map(f => ({
     ...f,
-    contract: f.contract || { fightsRemaining: 4, payPerFight: 5000, winBonus: 5000, exclusivity: true, endDate: '2027-01-01' },
+    contract: { ...(f.contract || { fightsRemaining: 4, payPerFight: 5000, winBonus: 5000, exclusivity: true, endDate: '2027-01-01' }), promotionId: state.playerPromotionId },
     injuryStatus: null,
     medicalSuspension: null,
     fatigue: 0
@@ -66,7 +66,7 @@ try {
   const hwFighters = Object.values(state.fighters).filter(f => f.weightClass === 'Heavyweight' && !f.isChampion);
   const candidates8 = hwFighters.slice(0, 11).map(f => ({
     ...f,
-    contract: f.contract || { fightsRemaining: 4, payPerFight: 5000, winBonus: 5000, exclusivity: true, endDate: '2027-01-01' },
+    contract: { ...(f.contract || { fightsRemaining: 4, payPerFight: 5000, winBonus: 5000, exclusivity: true, endDate: '2027-01-01' }), promotionId: state.playerPromotionId },
     injuryStatus: null,
     medicalSuspension: null,
     fatigue: 0
@@ -134,6 +134,12 @@ try {
   state = repairEventAvailability(state, eventId);
 
   const repairedEvent = state.events[eventId];
+  if (repairedEvent.fights.some(fight =>
+    state.fighters[fight.redCornerId].contract?.promotionId !== state.playerPromotionId ||
+    state.fighters[fight.blueCornerId].contract?.promotionId !== state.playerPromotionId
+  )) {
+    throw new Error('FAIL: Player event repair inserted a rival fighter.');
+  }
   const repairedFight = repairedEvent.fights[0];
   if (repairedFight) {
     if (repairedFight.redCornerId === f1.id) {
@@ -156,7 +162,7 @@ try {
     .slice(0, 6)
     .map(fighter => ({
       ...fighter,
-      contract: { fightsRemaining: 4, payPerFight: 5000, winBonus: 5000, exclusivity: true, endDate: '2027-01-01' },
+      contract: { promotionId: starterGpState.playerPromotionId, fightsRemaining: 4, payPerFight: 5000, winBonus: 5000, exclusivity: true, endDate: '2027-01-01' },
       injuryStatus: null,
       medicalSuspension: null,
       fatigue: 0
@@ -219,7 +225,7 @@ try {
   retryState.promotion = { ...retryState.promotion, reputation: 50, money: 250000 };
   const activeParticipants = Object.values(retryState.fighters).filter(f => f.contract && f.weightClass === 'Lightweight' && !f.isChampion).slice(0, 6);
   activeParticipants.forEach(fighter => {
-    retryState.fighters[fighter.id] = { ...fighter, injuryStatus: null, medicalSuspension: null, fatigue: 0 };
+    retryState.fighters[fighter.id] = { ...fighter, contract: { ...fighter.contract!, promotionId: retryState.playerPromotionId }, injuryStatus: null, medicalSuspension: null, fatigue: 0 };
   });
   retryState = createGrandPrixTournament(retryState, {
     weightClass: 'Lightweight',

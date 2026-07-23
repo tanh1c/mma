@@ -7,11 +7,13 @@ import { generateSeasonPlan, syncCalendarSlots } from './season';
 import { scheduleTournamentRound, getPendingTitleShotDebts, isFighterBookedUpcoming, evaluateAndCreateTournament, bindTournamentToCalendarSlots, repairScheduledTournamentRound } from './tournament';
 import { quickSimulateEvent } from '../engine';
 import { getEventName } from '../branding';
-import { getContractEndDate } from './contracts';
+import { getContractEndDate, isContractMarketOpen } from './contracts';
+import { getPlayerPromotionId } from './leagues';
 import { ensureEmergencyProspectPool, scoreObserverRosterCandidate, shouldObserverRenewFighter } from './careerEcosystem';
 import { getFighterOverall } from './fighterRatings';
 import { buildPromotionRankings } from './rankings';
 import { hasPendingIncidentForEvent } from './drama';
+import { refreshPromotionEconomy } from './promotionEconomy';
 
 const EVENT_INTERVAL_DAYS = 28;
 const OBSERVER_DIVISION_ROSTER_SIZE = 12;
@@ -336,37 +338,9 @@ export function autoBookEventsAndContracts(state: GameState, language: Language 
     }
 
     // Otherwise, let's schedule a new event!
-    // Emergency funding check
-    if (newState.promotion.money < -100000) {
-      newState.promotion.money += 100000;
-      newState.promotion.reputation = Math.max(0, newState.promotion.reputation - 5);
-      newState.news = [{
-        id: uuidv4(),
-        date: newState.currentDate,
-        title: t($ => $.generated.autobooker.emergencyFundingTitle),
-        content: t($ => $.generated.autobooker.emergencyFunding, { amount: formatCurrency(100000, language) }),
-        type: 'general'
-      }, ...newState.news];
-      
-      if (!newState.financeLedger) newState.financeLedger = [];
-      newState.financeLedger.unshift({
-         id: uuidv4(),
-         date: newState.currentDate,
-         type: 'owner_injection',
-         amount: 100000,
-         description: t($ => $.generated.autobooker.emergencyFundingLedger),
-         affectsCash: true,
-         isSummary: false
-      });
-      
-      if (newState.lastAutopilotSummary) {
-        newState.lastAutopilotSummary.ownerCashInjections += 1;
-        newState.lastAutopilotSummary.emergencyModeTriggered += 1;
-      }
-    }
 
     // Emergency roster signing under recovery mode
-    if (isRecovery) {
+    if (isRecovery && !isContractMarketOpen(newState)) {
       const healthySigned = Object.values(newState.fighters).filter(f => f.contract && !f.injuryStatus && (!f.medicalSuspension || f.medicalSuspension.daysRemaining <= 0) && f.fatigue < 50);
       if (healthySigned.length < 6) {
         const freeAgents = Object.values(newState.fighters)
@@ -378,7 +352,7 @@ export function autoBookEventsAndContracts(state: GameState, language: Language 
           const pay = 5000;
           newState.fighters[fa.id] = {
             ...fa,
-            contract: { payPerFight: pay, winBonus: pay, fightsRemaining: 4, exclusivity: true, endDate: getContractEndDate(newState.currentDate, 4) }
+            contract: { promotionId: getPlayerPromotionId(newState), payPerFight: pay, winBonus: pay, fightsRemaining: 4, exclusivity: true, endDate: getContractEndDate(newState.currentDate, 4) }
           };
           newState.news.unshift({
             id: uuidv4(),
@@ -620,7 +594,7 @@ export function maintainDeals(state: GameState, language: Language = readLanguag
     });
   }
   
-  return newState;
+  return refreshPromotionEconomy(newState, getPlayerPromotionId(newState));
 }
 
 function generateAutoEvent(
@@ -1011,6 +985,8 @@ function generateAutoEvent(
 
   return {
     id: uuidv4(),
+    promotionId: getPlayerPromotionId(state),
+    scope: 'promotion',
     name: eventName,
     date: dateStr,
     venueId: bestVenue.id,
@@ -1022,11 +998,18 @@ function generateAutoEvent(
 }
 
 function maintainRoster(state: GameState, language: Language): GameState {
+  if (isContractMarketOpen(state)) return state;
   const t = fixedT(language);
   const suppliedState = ensureEmergencyProspectPool(state, state.currentDate, language);
   const newState = { ...suppliedState, fighters: { ...suppliedState.fighters }, news: [...suppliedState.news] };
-  const signedFighters = Object.values(newState.fighters).filter(f => f.contract && f.careerPhase !== 'retired');
-  
+  const playerPromotionId = getPlayerPromotionId(newState);
+  const tournamentFighterIds = new Set(Object.values(newState.tournaments)
+    .filter(tournament => tournament.status === 'planned' || tournament.status === 'active')
+    .flatMap(tournament => tournament.participants.map(participant => participant.fighterId)));
+  const signedFighters = Object.values(newState.fighters).filter(f =>
+    f.contract?.promotionId === playerPromotionId && f.careerPhase !== 'retired'
+  );
+
   // Group by wc
   const wcGroups: Record<string, Fighter[]> = {};
   signedFighters.forEach(f => {
@@ -1043,7 +1026,7 @@ function maintainRoster(state: GameState, language: Language): GameState {
     if (inWc.length > 10) {
       // Find lowest popularity/rating with few fights left
       const disposable = inWc
-        .filter(f => !f.isChampion && f.contract && f.contract.fightsRemaining <= 2)
+        .filter(f => !f.isChampion && f.contract && f.contract.fightsRemaining <= 2 && !tournamentFighterIds.has(f.id))
         .sort((a, b) => a.popularity - b.popularity);
       
       if (disposable.length > 0 && newState.promotion.money < 100000) { // only release if we need money
@@ -1070,7 +1053,7 @@ function maintainRoster(state: GameState, language: Language): GameState {
         const pay = 5000 + (toSign.popularity * 100);
         newState.fighters[toSign.id] = {
           ...toSign,
-          contract: { payPerFight: pay, winBonus: pay, fightsRemaining: 4, exclusivity: true, endDate: getContractEndDate(newState.currentDate, 4) }
+          contract: { promotionId: getPlayerPromotionId(newState), payPerFight: pay, winBonus: pay, fightsRemaining: 4, exclusivity: true, endDate: getContractEndDate(newState.currentDate, 4) }
         };
         newState.news.unshift({
           id: uuidv4(), date: newState.currentDate, type: 'contract',
@@ -1083,13 +1066,14 @@ function maintainRoster(state: GameState, language: Language): GameState {
 
   // Auto-renew or sign back champions with expired/expiring contracts
   Object.values(newState.fighters).forEach(f => {
+    if (f.contract?.promotionId !== getPlayerPromotionId(newState)) return;
     const isChamp = f.isChampion || Object.values(newState.titles || {}).some(t => t.undisputedChampionId === f.id || t.interimChampionId === f.id);
     if (isChamp && f.careerPhase !== 'retired') {
       if (!f.contract || f.contract.fightsRemaining <= 1) {
         const pay = 10000 + (f.popularity * 200);
         newState.fighters[f.id] = {
           ...f,
-          contract: { payPerFight: pay, winBonus: pay, fightsRemaining: 4, exclusivity: true, endDate: getContractEndDate(newState.currentDate, 4) }
+          contract: { promotionId: getPlayerPromotionId(newState), payPerFight: pay, winBonus: pay, fightsRemaining: 4, exclusivity: true, endDate: getContractEndDate(newState.currentDate, 4) }
         };
         newState.news.unshift({
           id: uuidv4(), date: newState.currentDate, type: 'contract',
@@ -1102,7 +1086,7 @@ function maintainRoster(state: GameState, language: Language): GameState {
       const pay = 10000 + (f.popularity * 200);
       newState.fighters[f.id] = {
         ...f,
-        contract: { payPerFight: pay, winBonus: pay, fightsRemaining: 4, exclusivity: true, endDate: getContractEndDate(newState.currentDate, 4) }
+        contract: { promotionId: getPlayerPromotionId(newState), payPerFight: pay, winBonus: pay, fightsRemaining: 4, exclusivity: true, endDate: getContractEndDate(newState.currentDate, 4) }
       };
       newState.news.unshift({
         id: uuidv4(), date: newState.currentDate, type: 'contract',
@@ -1112,7 +1096,10 @@ function maintainRoster(state: GameState, language: Language): GameState {
     }
   });
 
-  return { ...newState, rankings: buildPromotionRankings(newState).newRankings };
+  return refreshPromotionEconomy(
+    { ...newState, rankings: buildPromotionRankings(newState).newRankings },
+    getPlayerPromotionId(newState)
+  );
 }
 
 export function repairEventAvailability(state: GameState, eventId: string, language: Language = readLanguage()): GameState {
@@ -1136,8 +1123,11 @@ export function repairEventAvailability(state: GameState, eventId: string, langu
     const red = newState.fighters[fight.redCornerId];
     const blue = newState.fighters[fight.blueCornerId];
 
-    const redUnavailable = !red || !red.contract || red.injuryStatus !== null || (red.medicalSuspension && red.medicalSuspension.daysRemaining > 0);
-    const blueUnavailable = !blue || !blue.contract || blue.injuryStatus !== null || (blue.medicalSuspension && blue.medicalSuspension.daysRemaining > 0);
+    const ownsFighter = (fighter: Fighter | undefined) =>
+      Boolean(fighter?.contract) &&
+      (event.scope === 'international' || fighter!.contract!.promotionId === (event.promotionId ?? getPlayerPromotionId(newState)));
+    const redUnavailable = !ownsFighter(red) || red!.injuryStatus !== null || (red!.medicalSuspension && red!.medicalSuspension.daysRemaining > 0);
+    const blueUnavailable = !ownsFighter(blue) || blue!.injuryStatus !== null || (blue!.medicalSuspension && blue!.medicalSuspension.daysRemaining > 0);
 
     if (redUnavailable || blueUnavailable) {
       changed = true;
@@ -1182,6 +1172,7 @@ export function repairEventAvailability(state: GameState, eventId: string, langu
 
         const replacementCandidates = Object.values(newState.fighters).filter(f =>
           f.weightClass === weightClass &&
+          ownsFighter(f) &&
           hasContractThrough(f, event.date) &&
           f.injuryStatus === null &&
           (!f.medicalSuspension || f.medicalSuspension.daysRemaining <= 0) &&
@@ -1267,8 +1258,9 @@ export function rebuildCard(state: GameState, eventId: string): GameState {
     currentlyBooked.add(f.blueCornerId);
   });
 
-  const availableFighters = Object.values(newState.fighters).filter(f => 
+  const availableFighters = Object.values(newState.fighters).filter(f =>
     hasContractThrough(f, event.date) &&
+    (event.scope === 'international' || f.contract!.promotionId === (event.promotionId ?? getPlayerPromotionId(newState))) &&
     f.injuryStatus === null &&
     (!f.medicalSuspension || f.medicalSuspension.daysRemaining <= 0) &&
     f.fatigue < 50 &&

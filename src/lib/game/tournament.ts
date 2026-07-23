@@ -1,9 +1,10 @@
-import { GameState, GrandPrixTournament, TournamentParticipant, TournamentFightSlot, WeightClass, Fighter, FightMatchup, FightResult, TournamentFormat, TournamentRound, TournamentStatus, SeasonCalendarSlot } from '../../types/game';
+import { GameState, GrandPrixTournament, TournamentParticipant, TournamentFightSlot, WeightClass, Fighter, FightMatchup, FightResult, TournamentFormat, TournamentRound, TournamentStatus, SeasonCalendarSlot, CompetitionScope, InternationalCompetitionTier } from '../../types/game';
 import { v4 as uuidv4 } from 'uuid';
 import { addDays } from 'date-fns';
 import { getTournamentBranding } from '../branding';
 import { generateSeasonPlan } from './season';
-import { getContractEndDate } from './contracts';
+import { getContractEndDate, isContractMarketOpen } from './contracts';
+import { getPlayerPromotionId, isFighterInPromotion } from './leagues';
 import { getFighterOverall } from './fighterRatings';
 import '../../i18n';
 import { fixedT, formatWeightClass, readLanguage, type Language } from '../localization';
@@ -32,12 +33,17 @@ export function createGrandPrixTournament(
     format?: TournamentFormat;
     participantIds?: string[];
     reserveIds?: string[];
+    scope?: CompetitionScope;
+    promotionId?: string | null;
+    internationalTier?: InternationalCompetitionTier;
+    winnerBeltId?: string;
+    qualifyingPromotionIds?: string[];
   },
   language: Language = readLanguage()
 ): GameState {
   const t = fixedT(language);
-  const { weightClass, name, titleShotPromised, format = 'four_man', participantIds = [], reserveIds = [] } = options;
-  
+  const { weightClass, name, titleShotPromised, format = 'four_man', participantIds = [], reserveIds = [], scope = 'promotion', promotionId = getPlayerPromotionId(state) } = options;
+
   if (format === 'four_man') {
     if (participantIds.length !== 4) {
       throw new Error("A 4-Man Grand Prix must have exactly 4 participants.");
@@ -65,7 +71,7 @@ export function createGrandPrixTournament(
     if (fighter.weightClass !== weightClass) {
       throw new Error(`${role} fighter ${fighter.lastName} is not in the correct weight class (${weightClass}).`);
     }
-    if (!fighter.contract || fighter.careerPhase === 'retired') {
+    if (fighter.careerPhase === 'retired' || (scope === 'promotion' && fighter.contract?.promotionId !== promotionId) || (scope === 'international' && !fighter.contract?.promotionId)) {
       throw new Error(`${role} fighter ${fighter.lastName} is not active in the promotion.`);
     }
     if (fighter.injuryStatus) {
@@ -177,6 +183,8 @@ export function createGrandPrixTournament(
   
   const newTourney: GrandPrixTournament = {
     id: uuidv4(),
+    promotionId,
+    scope,
     name,
     shortName: getTournamentBranding(weightClass, format).shortName,
     weightClass,
@@ -187,7 +195,10 @@ export function createGrandPrixTournament(
     reserveFighterIds: reserveIds,
     usedReserveFighterIds: [],
     fights,
-    titleShotPromised,
+    titleShotPromised: scope === 'international' ? false : titleShotPromised,
+    internationalTier: options.internationalTier,
+    winnerBeltId: options.winnerBeltId,
+    qualifyingPromotionIds: options.qualifyingPromotionIds,
     prestige: format === 'eight_man' ? 85 : 70,
     notes: [t($ => $.generated.tournament.plannedNote, {
       date: state.currentDate,
@@ -224,7 +235,7 @@ export function createGrandPrixTournament(
     ]
   };
   
-  return bindTournamentToCalendarSlots(newState, newTourney.id, language);
+  return scope === 'international' ? newState : bindTournamentToCalendarSlots(newState, newTourney.id, language);
 }
 
 export function scheduleTournamentRound(
@@ -610,9 +621,10 @@ export function cancelTournament(state: GameState, tournamentId: string, languag
 
 export function maintainTournamentRosterDepth(state: GameState, weightClass: WeightClass, language: Language = readLanguage()): GameState {
   const t = fixedT(language);
-  const eligible = Object.values(state.fighters).filter(f => 
+  const promotionId = getPlayerPromotionId(state);
+  const eligible = Object.values(state.fighters).filter(f =>
     f.weightClass === weightClass &&
-    f.contract &&
+    isFighterInPromotion(f, promotionId) &&
     f.careerPhase !== 'retired' &&
     !f.injuryStatus &&
     (!f.medicalSuspension || f.medicalSuspension.daysRemaining <= 0) &&
@@ -621,7 +633,7 @@ export function maintainTournamentRosterDepth(state: GameState, weightClass: Wei
   
   let newState = { ...state, fighters: { ...state.fighters }, news: [...state.news] };
   let currentEligibleCount = eligible.length;
-  let signedCount = Object.values(state.fighters).filter(f => f.weightClass === weightClass && f.contract && f.careerPhase !== 'retired').length;
+  let signedCount = Object.values(state.fighters).filter(f => f.weightClass === weightClass && isFighterInPromotion(f, promotionId)).length;
   
   // Scale target based on reputation level
   let targetCount = 6; // Base for 4-man
@@ -635,7 +647,7 @@ export function maintainTournamentRosterDepth(state: GameState, weightClass: Wei
   const minMoneyForSigning = 100000;
   const maxSignPerTick = 2; // Don't sign too many at once
   
-  if (currentEligibleCount < targetCount && newState.promotion.money > minMoneyForSigning) {
+  if (!isContractMarketOpen(newState) && currentEligibleCount < targetCount && newState.promotion.money > minMoneyForSigning) {
     const freeAgents = Object.values(newState.fighters)
       .filter(f => !f.contract && f.careerPhase !== 'retired' && f.weightClass === weightClass)
       .sort((a, b) => b.popularity - a.popularity || b.potential - a.potential);
@@ -648,7 +660,7 @@ export function maintainTournamentRosterDepth(state: GameState, weightClass: Wei
       if (newState.promotion.money > pay * 4) {
         newState.fighters[toSign.id] = {
           ...toSign,
-          contract: { payPerFight: pay, winBonus: pay, fightsRemaining: 4, exclusivity: true, endDate: getContractEndDate(newState.currentDate, 4) }
+          contract: { promotionId: getPlayerPromotionId(newState), payPerFight: pay, winBonus: pay, fightsRemaining: 4, exclusivity: true, endDate: getContractEndDate(newState.currentDate, 4) }
         };
         newState.news.unshift({
           id: uuidv4(),
@@ -844,6 +856,32 @@ export function applyTournamentProgression(
       }
     }
 
+    if (updatedTourney.scope === 'international' && updatedTourney.internationalTier && updatedTourney.winnerBeltId && advancementWinnerId) {
+      const tier = updatedTourney.internationalTier;
+      const previous = newState.internationalTitles[tier][updatedTourney.weightClass];
+      const isDefense = previous.undisputedChampionId === advancementWinnerId;
+      newState.internationalTitles = {
+        ...newState.internationalTitles,
+        [tier]: {
+          ...newState.internationalTitles[tier],
+          [updatedTourney.weightClass]: {
+            ...previous,
+            undisputedChampionId: advancementWinnerId,
+            undisputedDefenses: isDefense ? previous.undisputedDefenses + 1 : 0,
+            lastUndisputedDefenseDate: isDefense ? state.currentDate : null,
+            status: 'active'
+          }
+        }
+      };
+      newState.titleHistory = isDefense
+        ? newState.titleHistory.map(item => item.scope === 'international' && item.promotionId === null && item.beltId === updatedTourney.winnerBeltId && item.fighterId === advancementWinnerId && item.status === 'active' ? { ...item, defenses: item.defenses + 1 } : item)
+        : [
+            ...newState.titleHistory.map(item => item.scope === 'international' && item.promotionId === null && item.beltId === updatedTourney.winnerBeltId && item.status === 'active' ? { ...item, status: 'lost' as const, dateLost: state.currentDate, lostToFighterId: advancementWinnerId } : item),
+            { id: uuidv4(), promotionId: null, scope: 'international' as const, beltId: updatedTourney.winnerBeltId, weightClass: updatedTourney.weightClass, fighterId: advancementWinnerId, dateWon: state.currentDate, dateLost: null, defenses: 0, wonFromFighterId: previous.undisputedChampionId, status: 'active' as const, beltType: 'undisputed' as const }
+          ];
+      newState.fighters[advancementWinnerId] = { ...newState.fighters[advancementWinnerId], isChampion: true };
+    }
+
     newState.news = [
       {
         id: uuidv4(),
@@ -931,7 +969,7 @@ export function runAutopilotTournaments(state: GameState, language: Language = r
       }
       
       // 3. Reserve emergency signing recovery if active and out of reserves
-      if (activeTourney.status === 'active' && (!activeTourney.reserveFighterIds || activeTourney.reserveFighterIds.length === 0)) {
+      if (!isContractMarketOpen(newState) && activeTourney.status === 'active' && (!activeTourney.reserveFighterIds || activeTourney.reserveFighterIds.length === 0)) {
         const tournamentFighterIds = new Set([
           ...activeTourney.participants.map(participant => participant.fighterId),
           ...(activeTourney.usedReserveFighterIds || []),
@@ -946,7 +984,7 @@ export function runAutopilotTournaments(state: GameState, language: Language = r
           const pay = 5000 + (candidate.popularity * 100);
           newState.fighters[candidate.id] = {
             ...candidate,
-            contract: { payPerFight: pay, winBonus: pay, fightsRemaining: 4, exclusivity: true, endDate: getContractEndDate(newState.currentDate, 4) }
+            contract: { promotionId: getPlayerPromotionId(newState), payPerFight: pay, winBonus: pay, fightsRemaining: 4, exclusivity: true, endDate: getContractEndDate(newState.currentDate, 4) }
           };
           
           const updated = { ...newState.tournaments[activeTourney.id] };
@@ -1249,10 +1287,10 @@ export function evaluateAndCreateTournament(
     format = Math.random() < eightManChance ? 'eight_man' : 'four_man';
   }
 
-  const wcFighters = Object.values(newState.fighters).filter(f => 
+  const promotionId = getPlayerPromotionId(newState);
+  const wcFighters = Object.values(newState.fighters).filter(f =>
     f.weightClass === targetWc &&
-    f.contract &&
-    f.careerPhase !== 'retired' &&
+    isFighterInPromotion(f, promotionId) &&
     !f.injuryStatus &&
     (!f.medicalSuspension || f.medicalSuspension.daysRemaining <= 0) &&
     !f.isChampion &&

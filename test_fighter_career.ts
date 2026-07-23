@@ -28,8 +28,8 @@ for (const fighter of Object.values(legacy.fighters) as any[]) {
 const oldFighter = Object.values(legacy.fighters)[0] as any;
 oldFighter.age = 50;
 const migrated = validateAndMigrateState(legacy)!;
-assert.equal(CURRENT_SAVE_VERSION, 11);
-assert.equal(migrated.saveVersion, 11);
+assert.equal(CURRENT_SAVE_VERSION, 15);
+assert.equal(migrated.saveVersion, 15);
 assert.equal(migrated.fighters[oldFighter.id].lastLifecycleYear, 2025);
 assert.notEqual(migrated.fighters[oldFighter.id].careerPhase, 'retired');
 assert.ok(migrated.fighters[oldFighter.id].primeEndAge >= 30 && migrated.fighters[oldFighter.id].primeEndAge <= 34);
@@ -222,9 +222,17 @@ const retiring: Fighter = {
 };
 const retirementWorld = structuredClone(world);
 retirementWorld.currentDate = '2026-01-01';
+const retirementPromotionId = Object.keys(retirementWorld.promotions).find(id => id !== retirementWorld.playerPromotionId)!;
+retiring.contract = { ...retiring.contract!, promotionId: retirementPromotionId };
 retirementWorld.fighters[retiring.id] = retiring;
 retirementWorld.titles[retiring.weightClass] = {
   ...retirementWorld.titles[retiring.weightClass],
+  undisputedChampionId: retiring.id,
+  undisputedDefenses: 2,
+  status: 'active'
+};
+retirementWorld.titlesByPromotion[retirementPromotionId][retiring.weightClass] = {
+  ...retirementWorld.titlesByPromotion[retirementPromotionId][retiring.weightClass],
   undisputedChampionId: retiring.id,
   undisputedDefenses: 2,
   status: 'active'
@@ -351,6 +359,7 @@ assert.equal(retired.fighters[retiring.id].counterOffer, undefined);
 assert.equal(retired.fighters[retiring.id].titleShotPromised, false);
 assert.equal(retired.fighters[retiring.id].isChampion, false);
 assert.equal(retired.titles[retiring.weightClass].undisputedChampionId, null);
+assert.equal(retired.titlesByPromotion[retirementPromotionId][retiring.weightClass].undisputedChampionId, null);
 assert.equal(retired.rankings[retiring.weightClass].some(item => item.fighterId === retiring.id), false);
 assert.equal(retired.events.retirementEvent.fights.length, 0);
 assert.equal(retired.events.retirementGpEvent.fights.length, 2);
@@ -413,6 +422,28 @@ assert.equal(annualProcessed.fighters[annualFighterId].age, 45);
 assert.equal(annualProcessed.fighters[annualFighterId].lastLifecycleYear, 2026);
 assert.equal(annualProcessed.fighters[annualFighterId].careerPhase, 'retired');
 assert.deepEqual(processAnnualCareerLifecycle(annualProcessed, 2026, 'en'), annualProcessed);
+
+const protectedAnnualWorld = structuredClone(annualWorld);
+protectedAnnualWorld.tournaments.protectedInternational = {
+  id: 'protectedInternational',
+  name: 'Protected International Cup',
+  shortName: 'PIC',
+  weightClass: protectedAnnualWorld.fighters[annualFighterId].weightClass,
+  status: 'active',
+  format: 'eight_man',
+  createdDate: '2025-07-01',
+  participants: [{ fighterId: annualFighterId, seed: 1 }],
+  reserveFighterIds: [],
+  fights: [],
+  scope: 'international',
+  promotionId: null,
+  titleShotPromised: false,
+  titleShotUsed: false,
+  prestige: 90
+};
+const protectedAnnualProcessed = processAnnualCareerLifecycle(protectedAnnualWorld, 2026, 'en');
+assert.notEqual(protectedAnnualProcessed.fighters[annualFighterId].careerPhase, 'retired');
+assert.equal(protectedAnnualProcessed.fighters[annualFighterId].contract?.promotionId, protectedAnnualWorld.fighters[annualFighterId].contract?.promotionId);
 
 const multiYearWorld = structuredClone(world);
 multiYearWorld.currentDate = '2025-12-31';

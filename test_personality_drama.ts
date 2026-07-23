@@ -5,12 +5,13 @@ import { assignPersonalityTraits } from './src/lib/game/personality';
 import { chooseObserverDramaResponse, generateScheduledDrama, hasPendingIncidentForEvent, resolveDramaIncident, resolveObserverDrama } from './src/lib/game/drama';
 import { advanceTime } from './src/lib/engine';
 import { simulateDueEvents } from './src/lib/game/autobooker';
+import { validateTitleShotDebtState } from './src/lib/game/tournament';
 import { useGameStore } from './src/store/gameStore';
 import type { Event } from './src/types/game';
 
 const first = generateInitialWorld(701);
 
-assert.equal(CURRENT_SAVE_VERSION, 12);
+assert.equal(CURRENT_SAVE_VERSION, 15);
 
 for (const fighter of Object.values(first.fighters)) {
   assert.ok(fighter.personalityTraits.length >= 1 && fighter.personalityTraits.length <= 2);
@@ -28,7 +29,7 @@ const migrated = validateAndMigrateState(legacy)!;
 const migratedAgain = validateAndMigrateState(structuredClone(migrated))!;
 
 assert.deepEqual(migratedAgain, migrated);
-assert.equal(migrated.saveVersion, 12);
+assert.equal(migrated.saveVersion, 15);
 assert.equal(migrated.drama.promoterIdentity, 'meritocracy');
 assert.deepEqual(migrated.drama.incidents, {});
 assert.deepEqual(migrated.drama.triggerKeys, []);
@@ -85,6 +86,31 @@ assert.equal(hasPendingIncidentForEvent(resolved, event.id), false);
 assert.deepEqual(resolveDramaIncident(resolved, incident.id, incident.responseKeys[0], 'manager', undefined, 'en'), resolved);
 assert.ok(Object.values(resolved.fighters).every(fighter => fighter.morale >= 0 && fighter.morale <= 100 && fighter.popularity >= 0 && fighter.popularity <= 100));
 assert.ok(resolved.promotion.money >= 0 && resolved.promotion.reputation >= 0 && resolved.promotion.reputation <= 100 && resolved.promotion.fanbase >= 0);
+const titleComplaintId = 'title-picture-complaint';
+const titleComplaint = {
+  ...generated,
+  fighters: { ...generated.fighters, [red.id]: { ...generated.fighters[red.id], titleShotPromised: false } },
+  drama: {
+    ...generated.drama,
+    incidents: {
+      ...generated.drama.incidents,
+      [titleComplaintId]: {
+        id: titleComplaintId,
+        type: 'title_picture_complaint' as const,
+        severity: 'major' as const,
+        status: 'pending' as const,
+        createdDate: generated.currentDate,
+        fighterIds: [red.id, blue.id] as [string, string],
+        eventId: event.id,
+        fightId: event.fights[0].id,
+        responseKeys: ['promise_eliminator', 'reject_demand']
+      }
+    }
+  }
+};
+const promisedEliminator = resolveDramaIncident(titleComplaint, titleComplaintId, 'promise_eliminator', 'manager', undefined, 'en');
+assert.equal(promisedEliminator.fighters[red.id].titleShotPromised, false);
+assert.deepEqual(validateTitleShotDebtState(promisedEliminator), []);
 const completed = generateScheduledDrama({ ...dramaFixture, events: { [event.id]: { ...event, isCompleted: true } } }, dramaFixture.currentDate, 'en');
 assert.equal(Object.keys(completed.drama.incidents).length, 0);
 

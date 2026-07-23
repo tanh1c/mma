@@ -341,6 +341,10 @@ export function retireFighter(
       weightClass,
       vacateRetiredChampion(title, fighterId)
     ])) as GameState['titles'],
+    titlesByPromotion: Object.fromEntries(Object.entries(state.titlesByPromotion).map(([promotionId, titles]) => [
+      promotionId,
+      Object.fromEntries(Object.entries(titles).map(([weightClass, title]) => [weightClass, vacateRetiredChampion(title, fighterId)]))
+    ])) as GameState['titlesByPromotion'],
     titleHistory: state.titleHistory.map(item => item.fighterId === fighterId && item.status === 'active'
       ? { ...item, dateLost: date, lostToFighterId: null, status: 'vacated' as const }
       : item),
@@ -515,7 +519,12 @@ export function processAnnualCareerLifecycle(
         [fighterId]: { ...outcome.fighter, lastLifecycleYear: year }
       }
     };
-    if (outcome.shouldRetire && outcome.retirementReason) {
+    const activeInternationalParticipant = Object.values(nextState.tournaments).some(tournament =>
+      tournament.scope === 'international' &&
+      (tournament.status === 'planned' || tournament.status === 'active') &&
+      tournament.participants.some(participant => participant.fighterId === fighterId)
+    );
+    if (outcome.shouldRetire && outcome.retirementReason && !activeInternationalParticipant) {
       nextState = retireFighter(nextState, fighterId, outcome.retirementReason, `${year}-01-01`, language);
     }
   }

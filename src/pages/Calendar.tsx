@@ -1,6 +1,7 @@
 import React from 'react';
 import { AlertTriangle, ArrowRight, Calendar, Play, RefreshCw, Trash2 } from 'lucide-react';
 import { useGameStore } from '../store/gameStore';
+import type { SeasonCalendarSlot } from '../types/game';
 import { diagnoseActiveTournaments } from '../lib/game/tournament';
 import { getGrandPrixExplanation } from '../lib/game/insights';
 import { Button, DataSurface, PageHeader, Panel, Stat, StatusBadge, type StatusTone } from '../components/ui';
@@ -25,13 +26,30 @@ export default function CalendarPage() {
   const { t } = useTranslation('translation');
   const language = useSettingsStore(state => state.language);
   const gameState = useGameStore();
+  const state = gameState;
   const { currentDate, seasonPlans = {}, events = {}, eventArchive = {}, tournaments = {}, generateCurrentYearPlan, cancelCalendarSlot, setView } = gameState;
 
   const [filter, setFilter] = React.useState<'All' | 'Regular' | 'Tentpole' | 'Title' | 'GP Window' | 'GP Round' | 'Recovery' | 'Missed/Cancelled'>('All');
   const currentYear = new Date(currentDate).getFullYear();
   const plan = seasonPlans[currentYear];
-  const slots = plan?.slots || [];
-  slots.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  const domesticEvents = [...Object.values(events), ...Object.values(eventArchive)]
+    .filter(event => event.scope === 'international' || event.promotionId === state.playerPromotionId)
+    .sort((a, b) => a.date.localeCompare(b.date));
+  const internationalSlots: SeasonCalendarSlot[] = domesticEvents
+    .filter(event => event.scope === 'international')
+    .map(event => ({
+      id: `international-calendar-${event.id}`,
+      year: new Date(event.date).getFullYear(),
+      date: event.date,
+      type: 'grand_prix_round',
+      status: 'isCompleted' in event && !event.isCompleted ? 'scheduled' : 'completed',
+      eventId: event.id,
+      priority: 0,
+      notes: [event.name]
+    }));
+  const slots = [...(plan?.slots || []), ...internationalSlots]
+    .filter(slot => !slot.eventId || domesticEvents.some(event => event.id === slot.eventId))
+    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
   const diagnoses = React.useMemo(() => Object.fromEntries(diagnoseActiveTournaments(gameState).map(diagnosis => [diagnosis.tournamentId, diagnosis])), [gameState]);
 
   const handleRebuild = () => {

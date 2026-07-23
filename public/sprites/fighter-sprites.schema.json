@@ -1,0 +1,195 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "fighter-sprites.schema.json",
+  "title": "MMA Fighter Sprite Bundle",
+  "type": "object",
+  "required": [
+    "bundle",
+    "version",
+    "frameIndexBase",
+    "frameSize",
+    "pivot",
+    "actions"
+  ],
+  "properties": {
+    "bundle": {
+      "type": "string"
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "frameIndexBase": {
+      "const": 0
+    },
+    "frameSize": {
+      "$ref": "#/$defs/size"
+    },
+    "pivot": {
+      "$ref": "#/$defs/point"
+    },
+    "actions": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/action"
+      }
+    }
+  },
+  "$defs": {
+    "size": {
+      "type": "object",
+      "required": [
+        "width",
+        "height"
+      ],
+      "properties": {
+        "width": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "point": {
+      "type": "object",
+      "required": [
+        "x",
+        "y"
+      ],
+      "properties": {
+        "x": {
+          "type": "number"
+        },
+        "y": {
+          "type": "number"
+        }
+      },
+      "additionalProperties": false
+    },
+    "frame": {
+      "type": "object",
+      "required": [
+        "x",
+        "y",
+        "width",
+        "height"
+      ],
+      "properties": {
+        "x": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "y": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "width": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "action": {
+      "type": "object",
+      "required": [
+        "path",
+        "category",
+        "frameCount",
+        "frameSize",
+        "layout",
+        "frames",
+        "fps",
+        "durationMs",
+        "loop",
+        "holdLast",
+        "pivot",
+        "facing",
+        "mirrorForLeft",
+        "impactFrames",
+        "qc"
+      ],
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "category": {
+          "enum": [
+            "fighters",
+            "interactions",
+            "effects"
+          ]
+        },
+        "frameCount": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "frameSize": {
+          "$ref": "#/$defs/size"
+        },
+        "layout": {
+          "type": "object"
+        },
+        "frames": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/frame"
+          }
+        },
+        "fps": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "durationMs": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "loop": {
+          "type": "boolean"
+        },
+        "holdLast": {
+          "type": "boolean"
+        },
+        "pivot": {
+          "$ref": "#/$defs/point"
+        },
+        "facing": {
+          "enum": [
+            "right"
+          ]
+        },
+        "mirrorForLeft": {
+          "type": "boolean"
+        },
+        "impactFrames": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "qc": {
+          "type": "object"
+        },
+        "nextAnimation": {
+          "type": "string"
+        },
+        "role": {
+          "type": "string"
+        },
+        "interaction": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

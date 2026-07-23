@@ -4,6 +4,8 @@ import { runAutopilotTournaments, syncTournamentTitleShotFlags, validateTourname
 import { advanceTime, applyFightResult } from './src/lib/engine';
 import { syncCalendarSlots, validateSeasonCalendarState } from './src/lib/game/season';
 import { runObserverDecisions } from './src/lib/game/observer';
+import { validateContractMarketState } from './src/lib/game/contractMarket';
+import { validatePromotionEconomies } from './src/lib/game/promotionEconomy';
 import { GameState, GrandPrixTournament } from './src/types/game';
 
 function runDaysSimulation(initialState: GameState, days: number): { state: GameState; crashCount: number; errorMessage?: string } {
@@ -28,6 +30,10 @@ function runDaysSimulation(initialState: GameState, days: number): { state: Game
       state = repairPastScheduledEvents(state);
       state = simulateDueEvents(state, false).state;
       state = syncCalendarSlots(state);
+      const economyErrors = validatePromotionEconomies(state);
+      if (economyErrors.length) throw new Error(`Promotion economy invariant: ${economyErrors[0]}`);
+      const marketErrors = validateContractMarketState(state);
+      if (marketErrors.length) throw new Error(`Contract market invariant: ${marketErrors[0]}`);
     } catch (err: any) {
       crashCount++;
       errorMessage = err.message || String(err);
@@ -143,6 +149,24 @@ function computeDiagnostics(state: GameState, crashCount: number) {
 
   const calendarErrors = validateSeasonCalendarState(state);
   const tournamentErrors = validateTournamentState(state);
+  const economyErrors = validatePromotionEconomies(state);
+  const marketErrors = validateContractMarketState(state);
+  let duplicateEconomySettlements = 0;
+  for (const economy of Object.values(state.promotionEconomies)) {
+    const keys = new Set<string>();
+    for (const entry of economy.ledger) {
+      if (entry.category === 'liability_payment') continue;
+      const key = `${entry.settlementKey}:${entry.category}`;
+      if (keys.has(key)) duplicateEconomySettlements++;
+      keys.add(key);
+    }
+    duplicateEconomySettlements += economy.settledEventIds.length - new Set(economy.settledEventIds).size;
+  }
+  const domesticChampionOwnershipErrors = Object.entries(state.titlesByPromotion).flatMap(([promotionId, titles]) =>
+    Object.values(titles).flatMap(title => [title.undisputedChampionId, title.interimChampionId]
+      .filter((fighterId): fighterId is string => Boolean(fighterId))
+      .filter(fighterId => state.fighters[fighterId]?.contract?.promotionId !== promotionId))
+  ).length;
   const calendarIntegrityErrors = calendarErrors.length;
   const tournamentInvariantErrors = tournamentErrors.length;
   const titleShotDebtErrors = validateTitleShotDebtState(state).length;
@@ -189,6 +213,12 @@ function computeDiagnostics(state: GameState, crashCount: number) {
     calendarIntegrityErrors,
     tournamentInvariantErrors,
     titleShotDebtErrors,
+    promotionEconomyErrors: economyErrors.length,
+    duplicateEconomySettlements,
+    contractMarketErrors: marketErrors.length,
+    domesticChampionOwnershipErrors,
+    firstPromotionEconomyError: economyErrors[0],
+    firstContractMarketError: marketErrors[0],
     roundStatsErrors,
     completedEventMissingResult,
     firstCalendarError: calendarErrors[0],
@@ -215,6 +245,10 @@ function printReport(label: string, d: ReturnType<typeof computeDiagnostics>) {
   console.log(`- Calendar Integrity Errors: ${d.calendarIntegrityErrors}${d.firstCalendarError ? ` (${d.firstCalendarError})` : ''}`);
   console.log(`- Tournament Invariant Errors: ${d.tournamentInvariantErrors}${d.firstTournamentError ? ` (${d.firstTournamentError})` : ''}`);
   console.log(`- Title Shot Debt Errors: ${d.titleShotDebtErrors}`);
+  console.log(`- Promotion Economy Errors: ${d.promotionEconomyErrors}${d.firstPromotionEconomyError ? ` (${d.firstPromotionEconomyError})` : ''}`);
+  console.log(`- Duplicate Economy Settlements: ${d.duplicateEconomySettlements}`);
+  console.log(`- Contract Market Errors: ${d.contractMarketErrors}${d.firstContractMarketError ? ` (${d.firstContractMarketError})` : ''}`);
+  console.log(`- Domestic Champion Ownership Errors: ${d.domesticChampionOwnershipErrors}`);
   console.log(`- roundStats Validation Errors: ${d.roundStatsErrors}`);
   console.log(`- Completed Event Missing Result Count: ${d.completedEventMissingResult}`);
   console.log(`- Crash Count: ${d.crashCount}`);
@@ -453,6 +487,10 @@ function assertAcceptanceReports(reports: Array<{ label: string; diagnostics: Re
     'calendarIntegrityErrors',
     'tournamentInvariantErrors',
     'titleShotDebtErrors',
+    'promotionEconomyErrors',
+    'duplicateEconomySettlements',
+    'contractMarketErrors',
+    'domesticChampionOwnershipErrors',
     'roundStatsErrors',
     'completedEventMissingResult'
   ];

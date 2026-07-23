@@ -4,7 +4,7 @@ import { useGameStore } from '../store/gameStore';
 import type { ContractCounterOffer, Fighter, FighterAttributes, FighterStyle, WeightClass } from '../types/game';
 import type { FighterEditError, FighterEditInput } from '../lib/game/career';
 import { FIGHTER_STYLES, WEIGHT_CLASSES } from '../lib/game/constants';
-import { getContractExpectation, getContractStatus, evaluateOffer } from '../lib/game/contracts';
+import { getContractExpectation, getContractStatus, evaluateOffer, isContractMarketOpen } from '../lib/game/contracts';
 import { deriveFighterAchievements, type FighterAchievement } from '../lib/game/fighterAchievements';
 import { deriveFighterTimeline } from '../lib/game/timeline';
 import { CountryFlag } from '../components/CountryFlag';
@@ -60,6 +60,7 @@ export default function FighterDetail() {
   const state = useGameStore();
   const { unitSystem, language } = useSettingsStore();
   const { selectedFighterId, fighters, setView, goBack, signFighter, renewFighter, setCounterOffer: saveCounterOffer, releaseFighter, editFighter, promotion, fightArchive } = state;
+  const marketOpen = isContractMarketOpen(state);
   const f = selectedFighterId ? fighters[selectedFighterId] : null;
   const [activeTab, setActiveTab] = useState<FighterTab>('overview');
   const [isEditing, setIsEditing] = useState(false);
@@ -373,13 +374,16 @@ export default function FighterDetail() {
       </div>}
 
       {activeTab === 'contract' && <Panel>
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3"><h2 className="text-lg font-medium tracking-tight text-white">{f.contract ? t($ => $.fighterDetail.contractExtension) : t($ => $.fighterDetail.negotiateContract)}</h2>{f.contract && <Button variant="danger" onClick={handleRelease} className="inline-flex items-center gap-2"><UserMinus size={16} /> {t($ => $.fighterDetail.release)}</Button>}</div>
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3"><h2 className="text-lg font-medium tracking-tight text-white">{f.contract ? t($ => $.fighterDetail.contractExtension) : t($ => $.fighterDetail.negotiateContract)}</h2>{f.contract && !marketOpen && <Button variant="danger" onClick={handleRelease} className="inline-flex items-center gap-2"><UserMinus size={16} /> {t($ => $.fighterDetail.release)}</Button>}</div>
+        {marketOpen && <div className="mb-4 rounded-lg border border-amber-900 bg-amber-950/20 p-4 text-amber-100"><p className="font-medium">{t($ => $.contractMarket.marketRequired)}</p><Button variant="secondary" onClick={() => setView('contract-market')} className="mt-3 border-amber-700 text-amber-50 hover:border-amber-500 hover:bg-amber-900/30">{t($ => $.navigation.contractMarket)}</Button></div>}
         {f.contract && <div className="mb-6 flex flex-col justify-between gap-3 rounded-lg border border-[#2a2c31] bg-neutral-950 p-4 sm:flex-row sm:items-center"><div><p className="text-sm text-neutral-400">{t($ => $.fighterDetail.currentDeal, { pay: formatCurrency(f.contract!.payPerFight, language), bonus: formatCurrency(f.contract!.winBonus, language) })}</p><p className={`mt-1 text-sm ${getContractStatus(f.contract, state.currentDate) !== 'active' ? 'text-red-300' : 'text-neutral-400'}`}>{t($ => $.fighterDetail.fightsRemaining, { count: f.contract.fightsRemaining, date: formatDate(f.contract.endDate, language) })}</p></div>{f.isChampion && getContractStatus(f.contract, state.currentDate) === 'expired' && <p className="text-sm text-red-300">{t($ => $.fighterDetail.championExpired)}</p>}</div>}
-        {negotiationResult && <div className={`mb-4 rounded-lg border p-4 ${negotiationResult.accepted ? 'border-emerald-900 text-emerald-300' : 'border-red-900 text-red-300'}`}><p className="font-medium">{negotiationResult.accepted ? t($ => $.fighterDetail.offerAccepted) : t($ => $.fighterDetail.offerRejected)}</p><p className="mt-1 text-sm">{negotiationResult.reason}</p></div>}
-        {counterOffer && <div className="mb-4 rounded-lg border border-amber-900 bg-amber-950/20 p-4 text-amber-100"><p className="font-medium">{t($ => $.fighterDetail.counterOffer)}</p><p className="mt-1 text-sm">{t($ => $.fighterDetail.counterOfferTerms, { pay: formatCurrency(counterOffer.payPerFight, language), bonus: formatCurrency(counterOffer.winBonus, language), count: counterOffer.fights, date: formatDate(counterOffer.expiresDate, language) })}</p><Button variant="primary" onClick={() => completeSigning(counterOffer.payPerFight, counterOffer.winBonus, counterOffer.fights)} className="mt-3">{t($ => $.fighterDetail.acceptCounter)}</Button></div>}
-        <p className="mb-4 text-sm text-neutral-400">{t($ => $.fighterDetail.expected, { pay: formatCurrency(contractExpectation.basePay, language), bonus: formatCurrency(contractExpectation.winBonus, language), interest: formatContractInterest(contractExpectation.interestLabel, language) })}</p>
-        <div className="grid gap-4 md:grid-cols-3"><ContractInput label={t($ => $.fighterDetail.payPerFight)} value={offerPay} onChange={setOfferPay} step={1000} /><ContractInput label={t($ => $.fighterDetail.winBonus)} value={offerBonus} onChange={setOfferBonus} step={1000} /><ContractInput label={t($ => $.fighterDetail.fights)} value={offerFights} onChange={setOfferFights} min={1} max={8} /></div>
-        {!negotiationResult?.accepted && <Button variant="primary" onClick={handleSign} className="mt-5 inline-flex items-center gap-2"><UserCheck size={16} /> {f.contract ? t($ => $.fighterDetail.offerExtension) : t($ => $.fighterDetail.offerContract)}</Button>}
+        {!marketOpen && <>
+          {negotiationResult && <div className={`mb-4 rounded-lg border p-4 ${negotiationResult.accepted ? 'border-emerald-900 text-emerald-300' : 'border-red-900 text-red-300'}`}><p className="font-medium">{negotiationResult.accepted ? t($ => $.fighterDetail.offerAccepted) : t($ => $.fighterDetail.offerRejected)}</p><p className="mt-1 text-sm">{negotiationResult.reason}</p></div>}
+          {counterOffer && <div className="mb-4 rounded-lg border border-amber-900 bg-amber-950/20 p-4 text-amber-100"><p className="font-medium">{t($ => $.fighterDetail.counterOffer)}</p><p className="mt-1 text-sm">{t($ => $.fighterDetail.counterOfferTerms, { pay: formatCurrency(counterOffer.payPerFight, language), bonus: formatCurrency(counterOffer.winBonus, language), count: counterOffer.fights, date: formatDate(counterOffer.expiresDate, language) })}</p><Button variant="primary" onClick={() => completeSigning(counterOffer.payPerFight, counterOffer.winBonus, counterOffer.fights)} className="mt-3">{t($ => $.fighterDetail.acceptCounter)}</Button></div>}
+          <p className="mb-4 text-sm text-neutral-400">{t($ => $.fighterDetail.expected, { pay: formatCurrency(contractExpectation.basePay, language), bonus: formatCurrency(contractExpectation.winBonus, language), interest: formatContractInterest(contractExpectation.interestLabel, language) })}</p>
+          <div className="grid gap-4 md:grid-cols-3"><ContractInput label={t($ => $.fighterDetail.payPerFight)} value={offerPay} onChange={setOfferPay} step={1000} /><ContractInput label={t($ => $.fighterDetail.winBonus)} value={offerBonus} onChange={setOfferBonus} step={1000} /><ContractInput label={t($ => $.fighterDetail.fights)} value={offerFights} onChange={setOfferFights} min={1} max={8} /></div>
+          {!negotiationResult?.accepted && <Button variant="primary" onClick={handleSign} className="mt-5 inline-flex items-center gap-2"><UserCheck size={16} /> {f.contract ? t($ => $.fighterDetail.offerExtension) : t($ => $.fighterDetail.offerContract)}</Button>}
+        </>}
       </Panel>}
 
       {activeTab === 'fights' && <Panel>

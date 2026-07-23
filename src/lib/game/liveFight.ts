@@ -20,11 +20,34 @@ type FightEventType =
   | 'finish';
 
 type FightMethod = FightResult['method'];
+export type FightEventImportance = 'routine' | 'notable' | 'key';
+
+type PendingFightFinish = {
+  winner: FightCorner | null;
+  method: FightMethod;
+  commentary: string;
+};
+
+export type FightStrikeVisual = 'jab' | 'cross' | 'hook' | 'body-hook' | 'low-kick' | 'body-kick' | 'high-kick' | 'knee' | 'elbow';
+export type FightVisualAction = 'idle' | 'movement' | 'strike' | 'defense' | 'clinch' | 'takedown' | 'takedown-defense' | 'sprawl' | 'ground-pound' | 'submission' | 'knockdown' | 'recovery' | 'finish';
+
+export interface FightVisualCue {
+  action: FightVisualAction;
+  strike?: FightStrikeVisual;
+  outcome?: 'landed' | 'missed' | 'blocked' | 'dodged' | 'failed' | 'escaped' | 'finished';
+  targetZone?: 'head' | 'body' | 'leg';
+  intensity: 'light' | 'heavy';
+  finish?: 'ko' | 'tko' | 'doctor' | 'submission' | 'decision' | 'draw';
+  transition?: 'close-distance' | 'disengage' | 'ground-to-distance' | 'ground-to-clinch';
+}
 
 export interface FightTimelineEvent {
   sequence: number;
   round: number;
-  clock: number;
+  clockBeforeMs: number;
+  clockAfterMs: number;
+  durationMs: number;
+  importance: FightEventImportance;
   type: FightEventType;
   actor?: FightCorner;
   target?: FightCorner;
@@ -37,6 +60,7 @@ export interface FightTimelineEvent {
   headline: string;
   commentary: string;
   intensity: number;
+  visual: FightVisualCue;
 }
 
 export interface FightCombatantState {
@@ -61,15 +85,18 @@ export interface FightSession {
   blue: FightCombatantState;
   phase: FightPhase;
   round: number;
-  clock: number;
+  clockMs: number;
   position: FightPosition;
+  pressure: FightCorner | null;
+  controller: FightCorner | null;
+  pendingRoundEnd: boolean;
+  pendingFinish: PendingFightFinish | null;
   rngState: number;
   timeline: FightTimelineEvent[];
   roundStats: RoundStats[];
   currentRoundStats: { red: FighterRoundStats; blue: FighterRoundStats; keyMoments: string[] };
   judgeTotals: Array<{ judgeId: string; red: number; blue: number }>;
   scorecards: string[];
-  commentary: string[];
   winnerId: string | null;
   loserId: string | null;
   method: FightMethod | null;
@@ -77,7 +104,9 @@ export interface FightSession {
   finishTime: string | null;
 }
 
-const ROUND_SECONDS = 300;
+const ROUND_MS = 300_000;
+const ROUND_SECONDS = ROUND_MS / 1_000;
+const MAX_EVENTS_PER_ROUND = 1_000;
 const MAX_ROUNDS = 5;
 const MIN_ROUNDS = 1;
 const RNG_MOD = 4294967296;
@@ -86,8 +115,31 @@ const clamp = (value: number, min = 0, max = 100) => Math.min(max, Math.max(min,
 const round1 = (value: number) => Math.round(value * 10) / 10;
 const round0 = (value: number) => Math.round(value);
 const otherCorner = (corner: FightCorner): FightCorner => corner === 'red' ? 'blue' : 'red';
-const clockTime = (clock: number) => `${Math.floor(clock / 60)}:${String(clock % 60).padStart(2, '0')}`;
+const clockTime = (elapsedMs: number) => {
+  const elapsedSeconds = Math.floor(elapsedMs / 1_000);
+  return `${Math.floor(elapsedSeconds / 60)}:${String(elapsedSeconds % 60).padStart(2, '0')}`;
+};
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
+const cloneFightSessionForStep = (session: FightSession): FightSession => ({
+  ...session,
+  red: { ...session.red },
+  blue: { ...session.blue },
+  pendingFinish: session.pendingFinish ? { ...session.pendingFinish } : null,
+  roundStats: session.roundStats.map(round => ({
+    ...round,
+    red: { ...round.red },
+    blue: { ...round.blue },
+    judges: round.judges.map(judge => ({ ...judge })),
+    keyMoments: [...round.keyMoments]
+  })),
+  currentRoundStats: {
+    red: { ...session.currentRoundStats.red },
+    blue: { ...session.currentRoundStats.blue },
+    keyMoments: [...session.currentRoundStats.keyMoments]
+  },
+  judgeTotals: session.judgeTotals.map(judge => ({ ...judge })),
+  scorecards: [...session.scorecards]
+});
 const fightT = (session: FightSession) => fixedT(session.language);
 const positionLabel = (position: FightPosition, language: Language) => {
   const t = fixedT(language);
@@ -120,6 +172,38 @@ function hashSeed(input: string): number {
     hash = Math.imul(hash, 16777619);
   }
   return hash >>> 0;
+}
+
+function stableVisualIndex(parts: Array<string | number>, size: number): number {
+  return hashSeed(parts.join(':')) % size;
+}
+
+function selectStrikeVisual(session: FightSession, actor: FightCorner, targetZone: FightVisualCue['targetZone']): FightStrikeVisual {
+  const style = combatant(session, actor).fighter.style;
+  const options: FightStrikeVisual[] = session.position === 'clinch'
+    ? targetZone === 'body' ? ['body-hook', 'knee'] : ['hook', 'knee', 'elbow']
+    : targetZone === 'leg'
+      ? ['low-kick']
+      : targetZone === 'body'
+        ? ['body-hook', 'body-kick', 'jab', 'cross']
+        : style === 'Boxer'
+          ? ['jab', 'cross', 'hook']
+          : style === 'Kickboxer' || style === 'Muay Thai'
+            ? ['jab', 'cross', 'hook', 'high-kick']
+            : ['jab', 'cross', 'hook', 'high-kick'];
+  return options[stableVisualIndex([session.matchup.id, session.timeline.length, actor, session.round, session.clockMs, session.position], options.length)];
+}
+
+function visualIntensity(intensity: number): FightVisualCue['intensity'] {
+  return intensity >= 60 ? 'heavy' : 'light';
+}
+
+function finishVisual(session: FightSession, method: FightMethod): NonNullable<FightVisualCue['finish']> {
+  if (method === 'Submission') return 'submission';
+  if (method === 'Doctor Stoppage') return 'doctor';
+  if (method === 'Draw') return 'draw';
+  if (method.includes('Decision')) return 'decision';
+  return session.timeline.at(-1)?.visual.action === 'knockdown' ? 'ko' : 'tko';
 }
 
 function emptyFighterRoundStats(stamina: number): FighterRoundStats {
@@ -205,12 +289,13 @@ function currentStats(session: FightSession, corner: FightCorner): FighterRoundS
 
 function addEvent(
   session: FightSession,
-  event: Omit<FightTimelineEvent, 'sequence' | 'round' | 'clock'>
+  event: Omit<FightTimelineEvent, 'sequence' | 'round' | 'clockBeforeMs' | 'clockAfterMs'>
 ): FightSession {
   const full: FightTimelineEvent = {
     sequence: session.timeline.length + 1,
     round: session.round,
-    clock: session.clock,
+    clockBeforeMs: session.clockMs + event.durationMs,
+    clockAfterMs: session.clockMs,
     ...event,
     redConditionDelta: round1(event.redConditionDelta),
     blueConditionDelta: round1(event.blueConditionDelta),
@@ -218,11 +303,58 @@ function addEvent(
     blueStaminaDelta: round1(event.blueStaminaDelta),
     intensity: round0(clamp(event.intensity))
   };
-  return {
-    ...session,
-    timeline: [...session.timeline, full],
-    commentary: [...session.commentary, full.commentary]
-  };
+  return { ...session, timeline: [...session.timeline, full] };
+}
+
+type MicroActionFamily = 'movement' | 'strike' | 'clinch' | 'takedown' | 'ground-control' | 'ground-pound' | 'submission' | 'recovery';
+
+const ACTION_DURATION_MS: Record<MicroActionFamily, readonly [number, number]> = {
+  movement: [800, 1_500],
+  strike: [800, 900],
+  clinch: [800, 1_400],
+  takedown: [900, 1_800],
+  'ground-control': [1_000, 2_500],
+  'ground-pound': [800, 1_200],
+  submission: [1_000, 2_500],
+  recovery: [1_200, 2_500]
+};
+
+const FAMILY_VISUAL: Record<MicroActionFamily, FightVisualAction> = {
+  movement: 'movement',
+  strike: 'strike',
+  clinch: 'clinch',
+  takedown: 'takedown',
+  'ground-control': 'idle',
+  'ground-pound': 'ground-pound',
+  submission: 'submission',
+  recovery: 'recovery'
+};
+
+function consumeFightTime(session: FightSession, requestedMs: number): [FightSession, number] {
+  const durationMs = Math.min(Math.max(1, Math.trunc(requestedMs)), session.clockMs);
+  return [{ ...session, clockMs: session.clockMs - durationMs }, durationMs];
+}
+
+function consumeActionTime(session: FightSession, family: MicroActionFamily): [FightSession, number] {
+  const [min, max] = ACTION_DURATION_MS[family];
+  const [requested, rngState] = randInt(session, min, max);
+  return consumeFightTime({ ...session, rngState }, requested);
+}
+
+function repetitionPenalty(session: FightSession, family: MicroActionFamily): number {
+  const action = FAMILY_VISUAL[family];
+  const matches = session.timeline.slice(-5).filter(event => event.visual.action === action).length;
+  return 1 / (1 + matches * 2);
+}
+
+function queueFinish(session: FightSession, winner: FightCorner | null, method: FightMethod, commentary: string): FightSession {
+  return { ...session, pendingFinish: { winner, method, commentary }, pendingRoundEnd: false };
+}
+
+function completeActionStep(session: FightSession): FightSession {
+  return session.clockMs === 0 && !session.pendingFinish
+    ? { ...session, pendingRoundEnd: true }
+    : session;
 }
 
 function spendStamina(state: FightCombatantState, amount: number): FightCombatantState {
@@ -249,6 +381,8 @@ function damageState(state: FightCombatantState, damage: number, headLanded: num
 function finishSession(session: FightSession, winner: FightCorner | null, method: FightMethod, commentary: string, eventType: FightEventType = 'finish'): FightSession {
   const loser = winner ? otherCorner(winner) : null;
   const finished = addEvent({ ...session, phase: 'finished' }, {
+    durationMs: 0,
+    importance: 'key',
     type: eventType,
     actor: winner ?? undefined,
     target: loser ?? undefined,
@@ -260,7 +394,8 @@ function finishSession(session: FightSession, winner: FightCorner | null, method
     blueStaminaDelta: 0,
     headline: formatFightMethod(method, session.language),
     commentary,
-    intensity: method === 'Draw' ? 55 : 95
+    intensity: method === 'Draw' ? 55 : 95,
+    visual: { action: 'finish', outcome: 'finished', intensity: method === 'Draw' ? 'light' : 'heavy', finish: finishVisual(session, method) }
   });
   return {
     ...finished,
@@ -269,7 +404,7 @@ function finishSession(session: FightSession, winner: FightCorner | null, method
     loserId: loser ? combatant(session, loser).fighter.id : null,
     method,
     finishRound: session.round,
-    finishTime: clockTime(ROUND_SECONDS - session.clock)
+    finishTime: clockTime(ROUND_MS - session.clockMs)
   };
 }
 
@@ -303,43 +438,59 @@ function actionScore(state: FightCombatantState, position: FightPosition): numbe
 }
 
 function chooseActor(session: FightSession): [FightCorner, number] {
-  let rngState = session.rngState;
-  const redScore = actionScore(session.red, session.position);
-  const blueScore = actionScore(session.blue, session.position);
-  const [roll, state] = rand(session, 0, redScore + blueScore);
-  rngState = state;
+  const context = (corner: FightCorner) => (session.controller === corner ? 1.45 : 1) * (session.pressure === corner ? 1.12 : 1);
+  const redScore = actionScore(session.red, session.position) * context('red');
+  const blueScore = actionScore(session.blue, session.position) * context('blue');
+  const [roll, rngState] = rand(session, 0, redScore + blueScore);
   return [roll <= redScore ? 'red' : 'blue', rngState];
 }
 
-function applyStrike(session: FightSession, actor: FightCorner, seconds: number): FightSession {
-  const t = fightT(session);
+function addControl(stats: FighterRoundStats, other: FighterRoundStats, seconds: number): number {
+  const added = Math.max(0, Math.min(seconds, ROUND_SECONDS - stats.controlSeconds - other.controlSeconds));
+  stats.controlSeconds = round1(stats.controlSeconds + added);
+  return added;
+}
+
+function applyStrike(session: FightSession, actor: FightCorner, family: 'strike' | 'ground-pound' = 'strike'): FightSession {
+  const [timed, durationMs] = consumeActionTime(session, family);
+  const t = fightT(timed);
   const target = otherCorner(actor);
-  const attacker = combatant(session, actor);
-  const defender = combatant(session, target);
-  const beforeRed = session.red;
-  const beforeBlue = session.blue;
-  const positionBefore = session.position;
-  let rngState = session.rngState;
-  const [accuracyRoll, s1] = rand(session, 0.65, 1.35); rngState = s1;
-  const [powerRoll, s2] = rand({ ...session, rngState }, 0.65, 1.45); rngState = s2;
+  const attacker = combatant(timed, actor);
+  const defender = combatant(timed, target);
+  const beforeRed = timed.red;
+  const beforeBlue = timed.blue;
+  const positionBefore = timed.position;
+  let rngState = timed.rngState;
+  const targetZone = timed.position === 'ground'
+    ? 'head'
+    : timed.position === 'clinch'
+      ? ['head', 'body'][stableVisualIndex([timed.matchup.id, timed.timeline.length, actor, timed.round, timed.clockMs, 'zone'], 2)] as NonNullable<FightVisualCue['targetZone']>
+      : ['head', 'body', 'leg'][stableVisualIndex([timed.matchup.id, timed.timeline.length, actor, timed.round, timed.clockMs, 'zone'], 3)] as NonNullable<FightVisualCue['targetZone']>;
+  const strike = timed.position === 'ground' ? undefined : selectStrikeVisual(timed, actor, targetZone);
+  const [accuracyRoll, s1] = rand(timed, 0.55, 1.45); rngState = s1;
+  const [powerRoll, s2] = rand({ ...timed, rngState }, 0.65, 1.45); rngState = s2;
   const offense = (attacker.fighter.attributes.striking * 0.55 + attacker.fighter.attributes.speed * 0.2 + attacker.fighter.attributes.fightIq * 0.25) * (0.45 + attacker.stamina / 120) * attacker.modifier * accuracyRoll;
   const defense = (defender.fighter.attributes.defense * 0.6 + defender.fighter.attributes.chin * 0.2 + defender.fighter.attributes.speed * 0.2) * (0.45 + defender.stamina / 130) * defender.modifier;
-  const landed = offense > defense * (session.position === 'ground' ? 0.75 : 0.9);
-  const attempted = landed ? 2 + Math.floor(powerRoll * 3) : 1 + Math.floor(powerRoll * 2);
-  const significant = landed ? Math.max(1, Math.floor(attempted * (session.position === 'distance' ? 0.65 : 0.45))) : 0;
-  const rawDamage = landed ? Math.max(1, significant * (attacker.fighter.attributes.power / 32) * powerRoll) : 0;
-  const headShare = session.position === 'ground' ? 0.75 : 0.55;
-  let red = spendStamina(session.red, actor === 'red' ? 1.4 + attempted * 0.28 : 0.45);
-  let blue = spendStamina(session.blue, actor === 'blue' ? 1.4 + attempted * 0.28 : 0.45);
-  const actorStats = currentStats(session, actor);
-  const targetStats = currentStats(session, target);
+  const landed = offense > defense * (timed.position === 'ground' ? 0.72 : 0.92);
+  const attempted = 1;
+  const significant = 1;
+  const baseDamage = strike === 'jab' ? 0.55 : strike === 'cross' || strike === 'body-hook' ? 0.9 : strike?.includes('kick') ? 1.1 : 0.95;
+  const rawDamage = landed ? baseDamage * (0.35 + attacker.fighter.attributes.power / 190) * powerRoll : 0;
+  const attackCost = strike === 'jab' ? 0.08 : strike?.includes('kick') ? 0.18 : 0.12;
+  const missOutcome: FightVisualCue['outcome'] = stableVisualIndex([timed.matchup.id, timed.timeline.length, actor, timed.round, timed.clockMs, 'miss'], 2) ? 'blocked' : 'dodged';
+  const outcome: FightVisualCue['outcome'] = landed ? 'landed' : missOutcome;
+  const defenseCost = outcome === 'blocked' || outcome === 'dodged' ? 0.06 : 0.03;
+  let red = spendStamina(timed.red, actor === 'red' ? attackCost : defenseCost);
+  let blue = spendStamina(timed.blue, actor === 'blue' ? attackCost : defenseCost);
+  const actorStats = currentStats(timed, actor);
+  const targetStats = currentStats(timed, target);
   actorStats.totalStrikesAttempted += attempted;
-  actorStats.significantStrikesAttempted += significant + (landed ? 1 : 0);
+  actorStats.significantStrikesAttempted += significant;
+  const headLanded = landed && targetZone === 'head' ? 1 : 0;
+  const bodyLanded = landed && targetZone === 'body' ? 1 : 0;
+  const legLanded = landed && targetZone === 'leg' ? 1 : 0;
   if (landed) {
-    const headLanded = Math.floor(significant * headShare);
-    const bodyLanded = Math.floor((significant - headLanded) / 2);
-    const legLanded = significant - headLanded - bodyLanded;
-    actorStats.totalStrikesLanded += attempted;
+    actorStats.totalStrikesLanded += 1;
     actorStats.significantStrikesLanded += significant;
     actorStats.headStrikesLanded += headLanded;
     actorStats.bodyStrikesLanded += bodyLanded;
@@ -348,73 +499,83 @@ function applyStrike(session: FightSession, actor: FightCorner, seconds: number)
     targetStats.damageTaken = round1(targetStats.damageTaken + rawDamage);
     if (target === 'red') red = damageState(red, rawDamage, headLanded, bodyLanded, legLanded); else blue = damageState(blue, rawDamage, headLanded, bodyLanded, legLanded);
   }
-  let nextPosition = session.position;
+  let nextPosition = timed.position;
   let type: FightEventType = 'strike';
   let headline: string = landed ? t($ => $.fight.prose.strikeLands, { name: attacker.fighter.lastName }) : t($ => $.fight.prose.strikeMisses, { name: attacker.fighter.lastName });
   let commentary: string = landed
-    ? session.position === 'ground'
+    ? timed.position === 'ground'
       ? t($ => $.fight.prose.groundStrikes, { name: attacker.fighter.lastName })
       : t($ => $.fight.prose.sharpCombination, { name: attacker.fighter.lastName })
     : t($ => $.fight.prose.avoidsAttack, { name: defender.fighter.lastName });
-  let intensity = landed ? 35 + rawDamage * 2 : 18;
-  const kdThreshold = Math.max(7, defender.fighter.attributes.chin * (0.55 + defender.stamina / 220));
-  const [kdRoll, s3] = rand({ ...session, rngState }, 0, 100); rngState = s3;
-  if (landed && rawDamage > kdThreshold && kdRoll < 20 + attacker.fighter.attributes.power / 5) {
+  let intensity = landed ? 35 + rawDamage * 10 : 18;
+  const kdThreshold = Math.max(0.85, defender.fighter.attributes.chin / 110 + defender.stamina / 180);
+  const [kdRoll, s3] = rand({ ...timed, rngState }, 0, 100); rngState = s3;
+  if (timed.position !== 'ground' && landed && targetZone === 'head' && rawDamage > kdThreshold && kdRoll < 7 + attacker.fighter.attributes.power / 11) {
     type = 'knockdown';
     nextPosition = 'ground';
     headline = t($ => $.fight.prose.knockdownHeadline, { name: attacker.fighter.lastName });
     commentary = t($ => $.fight.prose.knockdown, { attacker: attacker.fighter.lastName, defender: defender.fighter.lastName });
     intensity = 88;
-    currentStats(session, actor).knockdowns += 1;
+    currentStats(timed, actor).knockdowns += 1;
     if (actor === 'red') red = { ...red, knockdowns: red.knockdowns + 1 }; else blue = { ...blue, knockdowns: blue.knockdowns + 1 };
-    session.currentRoundStats.keyMoments.push(t($ => $.fight.prose.knockdownMoment, { round: session.round, name: attacker.fighter.lastName }));
+    timed.currentRoundStats.keyMoments.push(t($ => $.fight.prose.knockdownMoment, { round: timed.round, name: attacker.fighter.lastName }));
   }
-  let next = withUpdatedCombatants({ ...session, position: nextPosition, rngState }, red, blue);
-  next = addEvent(next, {
+  const visual: FightVisualCue = timed.position === 'ground'
+    ? { action: 'ground-pound', outcome, targetZone, intensity: visualIntensity(intensity) }
+    : { action: type === 'knockdown' ? 'knockdown' : 'strike', strike, outcome, targetZone, intensity: visualIntensity(intensity) };
+  const next = addEvent(withUpdatedCombatants({ ...timed, position: nextPosition, controller: nextPosition === 'ground' ? actor : timed.controller, pressure: actor, rngState }, red, blue), {
+    durationMs,
+    importance: type === 'knockdown' ? 'key' : landed && significant ? 'notable' : 'routine',
     type,
     actor,
     target,
     positionBefore,
     positionAfter: nextPosition,
-    redConditionDelta: next.red.condition - beforeRed.condition,
-    blueConditionDelta: next.blue.condition - beforeBlue.condition,
-    redStaminaDelta: next.red.stamina - beforeRed.stamina,
-    blueStaminaDelta: next.blue.stamina - beforeBlue.stamina,
+    redConditionDelta: red.condition - beforeRed.condition,
+    blueConditionDelta: blue.condition - beforeBlue.condition,
+    redStaminaDelta: red.stamina - beforeRed.stamina,
+    blueStaminaDelta: blue.stamina - beforeBlue.stamina,
     headline,
     commentary,
-    intensity
+    intensity,
+    visual
   });
-  return checkImmediateFinish(next, actor, target);
+  const checked = checkImmediateFinish(next, actor, target);
+  return completeActionStep(checked.pendingFinish || type !== 'knockdown' || kdRoll >= 18
+    ? checked
+    : queueFinish(checked, actor, 'KO/TKO', t($ => $.fight.prose.refereeStoppage, { name: attacker.fighter.lastName })));
 }
-
-function applyTakedown(session: FightSession, actor: FightCorner, seconds: number): FightSession {
-  const t = fightT(session);
+function applyTakedown(session: FightSession, actor: FightCorner): FightSession {
+  const [timed, durationMs] = consumeActionTime(session, 'takedown');
+  const t = fightT(timed);
   const target = otherCorner(actor);
-  const attacker = combatant(session, actor);
-  const defender = combatant(session, target);
-  const beforeRed = session.red;
-  const beforeBlue = session.blue;
-  let rngState = session.rngState;
-  const [roll, s1] = rand(session, 0.75, 1.25); rngState = s1;
-  const attack = (attacker.fighter.attributes.wrestling * 0.65 + attacker.fighter.attributes.grappling * 0.2 + attacker.fighter.attributes.fightIq * 0.15) * (0.4 + attacker.stamina / 120) * roll;
-  const defense = (defender.fighter.attributes.wrestling * 0.45 + defender.fighter.attributes.defense * 0.35 + defender.fighter.attributes.speed * 0.2) * (0.4 + defender.stamina / 125);
-  const landed = attack > defense;
-  let red = spendStamina(session.red, actor === 'red' ? 2.8 : 1.1);
-  let blue = spendStamina(session.blue, actor === 'blue' ? 2.8 : 1.1);
-  const stats = currentStats(session, actor);
+  const attacker = combatant(timed, actor);
+  const defender = combatant(timed, target);
+  const beforeRed = timed.red;
+  const beforeBlue = timed.blue;
+  let rngState = timed.rngState;
+  const [roll, s1] = rand(timed, 0.75, 1.25); rngState = s1;
+  const attack = (attacker.fighter.attributes.wrestling * 0.65 + attacker.fighter.attributes.grappling * 0.2 + attacker.fighter.attributes.fightIq * 0.15) * (0.45 + attacker.stamina / 125) * attacker.modifier * roll;
+  const defense = (defender.fighter.attributes.wrestling * 0.45 + defender.fighter.attributes.defense * 0.35 + defender.fighter.attributes.speed * 0.2) * (0.45 + defender.stamina / 130) * defender.modifier;
+  const landed = attack > defense * (timed.position === 'clinch' ? 0.92 : 1.08);
+  let red = spendStamina(timed.red, actor === 'red' ? 0.22 : 0.1);
+  let blue = spendStamina(timed.blue, actor === 'blue' ? 0.22 : 0.1);
+  const stats = currentStats(timed, actor);
   stats.takedownsAttempted += 1;
   if (landed) {
     stats.takedownsLanded += 1;
-    stats.controlSeconds = Math.min(300, stats.controlSeconds + seconds);
-    if (actor === 'red') red = { ...red, accumulatedControlSeconds: red.accumulatedControlSeconds + seconds }; else blue = { ...blue, accumulatedControlSeconds: blue.accumulatedControlSeconds + seconds };
-    session.currentRoundStats.keyMoments.push(t($ => $.fight.prose.takedownMoment, { round: session.round, name: attacker.fighter.lastName }));
+    const controlSeconds = addControl(stats, currentStats(timed, target), durationMs / 1_000);
+    if (actor === 'red') red = { ...red, accumulatedControlSeconds: round1(red.accumulatedControlSeconds + controlSeconds) }; else blue = { ...blue, accumulatedControlSeconds: round1(blue.accumulatedControlSeconds + controlSeconds) };
+    timed.currentRoundStats.keyMoments.push(t($ => $.fight.prose.takedownMoment, { round: timed.round, name: attacker.fighter.lastName }));
   }
-  const nextPosition: FightPosition = landed ? 'ground' : 'clinch';
-  const next = addEvent(withUpdatedCombatants({ ...session, position: nextPosition, rngState }, red, blue), {
+  const nextPosition: FightPosition = landed ? 'ground' : timed.position;
+  const next = addEvent(withUpdatedCombatants({ ...timed, position: nextPosition, controller: landed ? actor : null, pressure: actor, rngState }, red, blue), {
+    durationMs,
+    importance: landed ? 'notable' : 'routine',
     type: landed ? 'takedown' : 'clinch',
     actor,
     target,
-    positionBefore: session.position,
+    positionBefore: timed.position,
     positionAfter: nextPosition,
     redConditionDelta: red.condition - beforeRed.condition,
     blueConditionDelta: blue.condition - beforeBlue.condition,
@@ -422,62 +583,125 @@ function applyTakedown(session: FightSession, actor: FightCorner, seconds: numbe
     blueStaminaDelta: blue.stamina - beforeBlue.stamina,
     headline: landed ? t($ => $.fight.prose.takedownHeadline, { name: attacker.fighter.lastName }) : t($ => $.fight.prose.clinchHeadline, { name: attacker.fighter.lastName }),
     commentary: landed ? t($ => $.fight.prose.takedown, { name: attacker.fighter.lastName }) : t($ => $.fight.prose.clinch, { name: defender.fighter.lastName }),
-    intensity: landed ? 55 : 32
+    intensity: landed ? 55 : 32,
+    visual: landed
+      ? { action: 'takedown', outcome: 'landed', intensity: 'light', transition: timed.position === 'clinch' ? 'ground-to-clinch' : undefined }
+      : { action: stableVisualIndex([timed.matchup.id, timed.timeline.length, actor, timed.round, timed.clockMs, 'takedown-defense'], 2) ? 'sprawl' : 'takedown-defense', outcome: 'failed', intensity: 'light' }
   });
-  return next;
+  return completeActionStep(next);
 }
 
-function applySubmission(session: FightSession, actor: FightCorner, seconds: number): FightSession {
-  const t = fightT(session);
+function applySubmission(session: FightSession, actor: FightCorner): FightSession {
+  const [timed, durationMs] = consumeActionTime(session, 'submission');
+  const t = fightT(timed);
   const target = otherCorner(actor);
-  const attacker = combatant(session, actor);
-  const defender = combatant(session, target);
-  const beforeRed = session.red;
-  const beforeBlue = session.blue;
-  let rngState = session.rngState;
-  const [roll, s1] = rand(session, 0.65, 1.45); rngState = s1;
-  const attack = (attacker.fighter.attributes.submissions * 0.6 + attacker.fighter.attributes.grappling * 0.25 + attacker.fighter.attributes.fightIq * 0.15) * (0.35 + attacker.stamina / 125) * roll;
-  const defense = (defender.fighter.attributes.grappling * 0.55 + defender.fighter.attributes.fightIq * 0.25 + defender.fighter.attributes.toughness * 0.2) * (0.35 + defender.stamina / 130);
+  const attacker = combatant(timed, actor);
+  const defender = combatant(timed, target);
+  const beforeRed = timed.red;
+  const beforeBlue = timed.blue;
+  let rngState = timed.rngState;
+  const [roll, s1] = rand(timed, 0.65, 1.45); rngState = s1;
+  const attack = (attacker.fighter.attributes.submissions * 0.6 + attacker.fighter.attributes.grappling * 0.25 + attacker.fighter.attributes.fightIq * 0.15) * (0.35 + attacker.stamina / 125) * attacker.modifier * roll;
+  const defense = (defender.fighter.attributes.grappling * 0.55 + defender.fighter.attributes.fightIq * 0.25 + defender.fighter.attributes.toughness * 0.2) * (0.35 + defender.stamina / 130) * defender.modifier;
   const close = attack > defense * 0.92;
-  let red = spendStamina(session.red, actor === 'red' ? 2.5 : 1.6);
-  let blue = spendStamina(session.blue, actor === 'blue' ? 2.5 : 1.6);
-  currentStats(session, actor).submissionAttempts += 1;
+  let red = spendStamina(timed.red, actor === 'red' ? 0.2 : 0.1);
+  let blue = spendStamina(timed.blue, actor === 'blue' ? 0.2 : 0.1);
+  currentStats(timed, actor).submissionAttempts += 1;
   if (actor === 'red') red = { ...red, submissionAttempts: red.submissionAttempts + 1 }; else blue = { ...blue, submissionAttempts: blue.submissionAttempts + 1 };
-  session.currentRoundStats.keyMoments.push(t($ => $.fight.prose.submissionMoment, { round: session.round, name: attacker.fighter.lastName }));
-  const [finishRoll, s2] = rand({ ...session, rngState }, 0, 100); rngState = s2;
-  const next = addEvent(withUpdatedCombatants({ ...session, rngState }, red, blue), {
+  if (close) timed.currentRoundStats.keyMoments.push(t($ => $.fight.prose.submissionMoment, { round: timed.round, name: attacker.fighter.lastName }));
+  const [finishRoll, s2] = rand({ ...timed, rngState }, 0, 100); rngState = s2;
+  const finishChance = close ? clamp(0.7 + (attack - defense) / 16 + (100 - defender.stamina) / 36, 0.4, 8) : 0.04;
+  const finished = finishRoll < finishChance;
+  const next = addEvent(withUpdatedCombatants({ ...timed, controller: actor, rngState }, red, blue), {
+    durationMs,
+    importance: close ? 'notable' : 'routine',
     type: 'submission-attempt',
     actor,
     target,
-    positionBefore: session.position,
-    positionAfter: session.position,
+    positionBefore: timed.position,
+    positionAfter: timed.position,
     redConditionDelta: red.condition - beforeRed.condition,
     blueConditionDelta: blue.condition - beforeBlue.condition,
     redStaminaDelta: red.stamina - beforeRed.stamina,
     blueStaminaDelta: blue.stamina - beforeBlue.stamina,
     headline: t($ => $.fight.prose.submissionHeadline, { name: attacker.fighter.lastName }),
     commentary: close ? t($ => $.fight.prose.submissionDanger, { name: attacker.fighter.lastName }) : t($ => $.fight.prose.submissionEscape, { name: defender.fighter.lastName }),
-    intensity: close ? 78 : 42
+    intensity: close ? 78 : 42,
+    visual: { action: 'submission', outcome: finished ? 'finished' : close ? 'landed' : 'escaped', intensity: close ? 'heavy' : 'light' }
   });
-  const finishChance = close ? clamp(5 + (attack - defense) / 5 + (100 - defender.stamina) / 12, 4, 35) : 1;
-  return finishRoll < finishChance
-    ? finishSession(next, actor, 'Submission', t($ => $.fight.prose.submissionFinish, { attacker: attacker.fighter.lastName, defender: defender.fighter.lastName }))
-    : next;
+  return finished
+    ? queueFinish(next, actor, 'Submission', t($ => $.fight.prose.submissionFinish, { attacker: attacker.fighter.lastName, defender: defender.fighter.lastName }))
+    : completeActionStep(next);
+}
+
+function applyMovement(session: FightSession, actor: FightCorner): FightSession {
+  const [timed, durationMs] = consumeActionTime(session, 'movement');
+  const target = otherCorner(actor);
+  const retreating = timed.pressure === target;
+  const red = spendStamina(timed.red, actor === 'red' ? 0.05 : 0.03);
+  const blue = spendStamina(timed.blue, actor === 'blue' ? 0.05 : 0.03);
+  const contextual = { ...withUpdatedCombatants(timed, red, blue), pressure: retreating ? null : actor };
+  return completeActionStep(addEvent(contextual, {
+    durationMs,
+    importance: 'routine',
+    type: 'position-change',
+    actor,
+    target,
+    positionBefore: timed.position,
+    positionAfter: timed.position,
+    redConditionDelta: 0,
+    blueConditionDelta: 0,
+    redStaminaDelta: red.stamina - timed.red.stamina,
+    blueStaminaDelta: blue.stamina - timed.blue.stamina,
+    headline: '',
+    commentary: '',
+    intensity: 10,
+    visual: { action: 'movement', outcome: 'landed', intensity: 'light', transition: retreating ? 'disengage' : 'close-distance' }
+  }));
+}
+
+function applyGroundControl(session: FightSession, actor: FightCorner): FightSession {
+  const [timed, durationMs] = consumeActionTime(session, 'ground-control');
+  const stats = currentStats(timed, actor);
+  const added = addControl(stats, currentStats(timed, otherCorner(actor)), durationMs / 1_000);
+  const state = combatant(timed, actor);
+  const updated = { ...state, accumulatedControlSeconds: round1(state.accumulatedControlSeconds + added) };
+  const next = actor === 'red' ? { ...timed, red: updated, controller: actor } : { ...timed, blue: updated, controller: actor };
+  return completeActionStep(addEvent(next, {
+    durationMs,
+    importance: 'routine',
+    type: 'position-change',
+    actor,
+    target: otherCorner(actor),
+    positionBefore: 'ground',
+    positionAfter: 'ground',
+    redConditionDelta: 0,
+    blueConditionDelta: 0,
+    redStaminaDelta: 0,
+    blueStaminaDelta: 0,
+    headline: '',
+    commentary: '',
+    intensity: 12,
+    visual: { action: 'idle', outcome: 'landed', intensity: 'light' }
+  }));
 }
 
 function applyPositionChange(session: FightSession, actor: FightCorner): FightSession {
-  const t = fightT(session);
+  const [timed, durationMs] = consumeActionTime(session, session.position === 'ground' ? 'recovery' : session.position === 'clinch' ? 'clinch' : 'movement');
+  const t = fightT(timed);
   const target = otherCorner(actor);
-  const beforeRed = session.red;
-  const beforeBlue = session.blue;
-  const before = session.position;
-  let rngState = session.rngState;
-  const [roll, s1] = rand(session, 0, 100); rngState = s1;
-  const nextPosition: FightPosition = before === 'ground' ? (roll < 55 ? 'distance' : 'clinch') : before === 'clinch' ? (roll < 60 ? 'distance' : 'ground') : 'clinch';
-  let red = spendStamina(session.red, actor === 'red' ? 1.2 : 0.8);
-  let blue = spendStamina(session.blue, actor === 'blue' ? 1.2 : 0.8);
-  if (before === 'ground' && nextPosition !== 'ground') currentStats(session, actor).reversals += 1;
-  return addEvent(withUpdatedCombatants({ ...session, position: nextPosition, rngState }, red, blue), {
+  const beforeRed = timed.red;
+  const beforeBlue = timed.blue;
+  const before = timed.position;
+  let rngState = timed.rngState;
+  const [roll, s1] = rand(timed, 0, 100); rngState = s1;
+  const nextPosition: FightPosition = before === 'ground' ? (roll < 72 ? 'distance' : 'clinch') : before === 'clinch' ? 'distance' : 'clinch';
+  let red = spendStamina(timed.red, actor === 'red' ? 0.1 : 0.05);
+  let blue = spendStamina(timed.blue, actor === 'blue' ? 0.1 : 0.05);
+  if (before === 'ground') currentStats(timed, actor).reversals += 1;
+  return completeActionStep(addEvent(withUpdatedCombatants({ ...timed, position: nextPosition, controller: null, pressure: nextPosition === 'distance' ? null : actor, rngState }, red, blue), {
+    durationMs,
+    importance: 'notable',
     type: 'position-change',
     actor,
     target,
@@ -487,20 +711,26 @@ function applyPositionChange(session: FightSession, actor: FightCorner): FightSe
     blueConditionDelta: blue.condition - beforeBlue.condition,
     redStaminaDelta: red.stamina - beforeRed.stamina,
     blueStaminaDelta: blue.stamina - beforeBlue.stamina,
-    headline: t($ => $.fight.prose.positionHeadline, { name: combatant(session, actor).fighter.lastName }),
-    commentary: t($ => $.fight.prose.positionChange, { name: combatant(session, actor).fighter.lastName, before: positionLabel(before, session.language), after: positionLabel(nextPosition, session.language) }),
-    intensity: 28
-  });
+    headline: t($ => $.fight.prose.positionHeadline, { name: combatant(timed, actor).fighter.lastName }),
+    commentary: t($ => $.fight.prose.positionChange, { name: combatant(timed, actor).fighter.lastName, before: positionLabel(before, timed.language), after: positionLabel(nextPosition, timed.language) }),
+    intensity: 28,
+    visual: {
+      action: before === 'ground' && nextPosition === 'distance' ? 'recovery' : nextPosition === 'clinch' ? 'clinch' : 'movement',
+      outcome: 'landed',
+      intensity: 'light',
+      transition: before === 'ground' && nextPosition === 'distance' ? 'ground-to-distance' : before === 'ground' ? 'ground-to-clinch' : nextPosition === 'distance' ? 'disengage' : 'close-distance'
+    }
+  }));
 }
 
 function checkImmediateFinish(session: FightSession, actor: FightCorner, target: FightCorner): FightSession {
   const t = fightT(session);
   const defender = combatant(session, target);
   if (defender.condition <= 0) {
-    return finishSession(session, actor, 'KO/TKO', t($ => $.fight.prose.refereeStoppage, { name: combatant(session, actor).fighter.lastName }));
+    return queueFinish(session, actor, 'KO/TKO', t($ => $.fight.prose.refereeStoppage, { name: combatant(session, actor).fighter.lastName }));
   }
   if (defender.cutSeverity >= 92) {
-    return finishSession(session, actor, 'Doctor Stoppage', t($ => $.fight.prose.doctorStoppage, { name: defender.fighter.lastName }));
+    return queueFinish(session, actor, 'Doctor Stoppage', t($ => $.fight.prose.doctorStoppage, { name: defender.fighter.lastName }));
   }
   return session;
 }
@@ -560,7 +790,9 @@ function endRound(session: FightSession): FightSession {
     red: judge.red + roundStats.judges[index].redScore,
     blue: judge.blue + roundStats.judges[index].blueScore
   }));
-  const ended = addEvent({ ...session, clock: 0, phase: session.round >= session.matchup.rounds ? 'finished' : 'between-rounds' }, {
+  const ended = addEvent({ ...session, clockMs: 0, phase: 'between-rounds' }, {
+    durationMs: 0,
+    importance: 'key',
     type: 'round-end',
     positionBefore: session.position,
     positionAfter: session.position,
@@ -570,10 +802,10 @@ function endRound(session: FightSession): FightSession {
     blueStaminaDelta: 0,
     headline: t($ => $.fight.prose.roundEndsHeadline, { round: session.round }),
     commentary: t($ => $.fight.prose.roundEnds, { round: session.round, summary: roundStats.summary }),
-    intensity: roundStats.dominanceLevel === 'near_finish' ? 75 : 42
+    intensity: roundStats.dominanceLevel === 'near_finish' ? 75 : 42,
+    visual: { action: 'idle', intensity: roundStats.dominanceLevel === 'near_finish' ? 'heavy' : 'light' }
   });
-  const next = { ...ended, roundStats: [...session.roundStats, roundStats], judgeTotals };
-  return session.round >= session.matchup.rounds ? finishDecision(next) : next;
+  return { ...ended, roundStats: [...session.roundStats, roundStats], judgeTotals };
 }
 
 function recoverBetweenRounds(session: FightSession): FightSession {
@@ -583,8 +815,13 @@ function recoverBetweenRounds(session: FightSession): FightSession {
   const [blueRecovery, s2] = rand({ ...session, rngState }, 7, 13); rngState = s2;
   const red = { ...session.red, stamina: round1(clamp(session.red.stamina + redRecovery + session.red.fighter.attributes.cardio / 18)) };
   const blue = { ...session.blue, stamina: round1(clamp(session.blue.stamina + blueRecovery + session.blue.fighter.attributes.cardio / 18)) };
+  const recoveringCorner = session.position === 'ground' && session.controller ? otherCorner(session.controller) : undefined;
   const recovered = addEvent(withUpdatedCombatants({ ...session, rngState }, red, blue), {
+    durationMs: 0,
+    importance: 'key',
     type: 'recovery',
+    actor: recoveringCorner,
+    target: recoveringCorner ? otherCorner(recoveringCorner) : undefined,
     positionBefore: session.position,
     positionAfter: 'distance',
     redConditionDelta: 0,
@@ -593,14 +830,17 @@ function recoverBetweenRounds(session: FightSession): FightSession {
     blueStaminaDelta: blue.stamina - session.blue.stamina,
     headline: t($ => $.fight.prose.recoveryHeadline),
     commentary: t($ => $.fight.prose.recovery),
-    intensity: 12
+    intensity: 12,
+    visual: { action: 'recovery', intensity: 'light', transition: session.position === 'ground' ? 'ground-to-distance' : 'disengage' }
   });
   return {
     ...recovered,
     phase: 'fighting',
     round: session.round + 1,
-    clock: ROUND_SECONDS,
+    clockMs: ROUND_MS,
     position: 'distance',
+    pressure: null,
+    controller: null,
     currentRoundStats: { red: emptyFighterRoundStats(red.stamina), blue: emptyFighterRoundStats(blue.stamina), keyMoments: [] }
   };
 }
@@ -630,29 +870,51 @@ function shouldSubmit(state: FightCombatantState, opponent: FightCombatantState)
   return clamp((18 + state.fighter.attributes.submissions / 4 - opponent.fighter.attributes.grappling / 5) * styleBias(state.fighter.style, 'submission'), 8, 50);
 }
 
+function weightedFamily(session: FightSession, attacker: FightCombatantState, defender: FightCombatantState): [MicroActionFamily, number] {
+  const stamina = 0.55 + attacker.stamina / 180;
+  const choices: Array<{ action: MicroActionFamily; weight: number }> = session.position === 'ground'
+    ? [
+        { action: 'ground-control', weight: 24 },
+        { action: 'ground-pound', weight: 42 * styleBias(attacker.fighter.style, 'strike') },
+        { action: 'submission', weight: shouldSubmit(attacker, defender) },
+        { action: 'recovery', weight: 18 }
+      ]
+    : session.position === 'clinch'
+      ? [
+          { action: 'strike', weight: 44 * styleBias(attacker.fighter.style, 'strike') },
+          { action: 'takedown', weight: shouldGrapple(attacker, defender) },
+          { action: 'movement', weight: 18 }
+        ]
+      : [
+          { action: 'movement', weight: 28 },
+          { action: 'strike', weight: 62 * styleBias(attacker.fighter.style, 'strike') },
+          { action: 'takedown', weight: shouldGrapple(attacker, defender) * 0.55 }
+        ];
+  const weighted = choices.map(choice => ({ ...choice, weight: Math.max(0.1, choice.weight * stamina * repetitionPenalty(session, choice.action)) }));
+  const total = weighted.reduce((sum, choice) => sum + choice.weight, 0);
+  const [roll, rngState] = rand(session, 0, total);
+  let cursor = 0;
+  for (const choice of weighted) {
+    cursor += choice.weight;
+    if (roll <= cursor) return [choice.action, rngState];
+  }
+  return [weighted.at(-1)!.action, rngState];
+}
+
 function fightTick(session: FightSession): FightSession {
-  let rngState = session.rngState;
-  const [seconds, s1] = randInt(session, 5, 10); rngState = s1;
-  const elapsed = Math.min(seconds, session.clock);
-  const advanced = { ...session, rngState, clock: session.clock - elapsed };
-  let [actor, s2] = chooseActor(advanced);
-  rngState = s2;
-  const acting = { ...advanced, rngState };
+  const [actor, actorState] = chooseActor(session);
+  const acting = { ...session, rngState: actorState };
   const attacker = combatant(acting, actor);
   const defender = combatant(acting, otherCorner(actor));
-  let roll: number;
-  [roll, rngState] = rand(acting, 0, 100);
-  const rolled = { ...acting, rngState };
-  if (rolled.position === 'ground') {
-    const next = roll < shouldSubmit(attacker, defender) ? applySubmission(rolled, actor, elapsed) : roll > 82 ? applyPositionChange(rolled, otherCorner(actor)) : applyStrike(rolled, actor, elapsed);
-    return next.phase === 'finished' || next.clock > 0 ? next : endRound(next);
-  }
-  if (rolled.position === 'clinch') {
-    const next = roll < shouldGrapple(attacker, defender) ? applyTakedown(rolled, actor, elapsed) : roll > 76 ? applyPositionChange(rolled, actor) : applyStrike(rolled, actor, elapsed);
-    return next.phase === 'finished' || next.clock > 0 ? next : endRound(next);
-  }
-  const next = roll < shouldGrapple(attacker, defender) ? applyTakedown(rolled, actor, elapsed) : applyStrike(rolled, actor, elapsed);
-  return next.phase === 'finished' || next.clock > 0 ? next : endRound(next);
+  const [family, rngState] = weightedFamily(acting, attacker, defender);
+  const selected = { ...acting, rngState };
+  if (family === 'movement') return selected.position === 'distance' ? applyMovement(selected, actor) : applyPositionChange(selected, actor);
+  if (family === 'takedown') return applyTakedown(selected, actor);
+  if (family === 'submission') return applySubmission(selected, actor);
+  if (family === 'ground-control') return applyGroundControl(selected, selected.controller ?? actor);
+  if (family === 'ground-pound') return applyStrike(selected, selected.controller ?? actor, 'ground-pound');
+  if (family === 'recovery') return applyPositionChange(selected, otherCorner(selected.controller ?? actor));
+  return applyStrike(selected, actor);
 }
 
 export function createFightSession(matchup: FightMatchup, red: Fighter, blue: Fighter, seed?: number, language: Language = 'en'): FightSession {
@@ -673,15 +935,18 @@ export function createFightSession(matchup: FightMatchup, red: Fighter, blue: Fi
     blue: blueState,
     phase: 'fighting',
     round: 1,
-    clock: ROUND_SECONDS,
+    clockMs: ROUND_MS,
     position: 'distance',
+    pressure: null,
+    controller: null,
+    pendingRoundEnd: false,
+    pendingFinish: null,
     rngState,
     timeline: [],
     roundStats: [],
     currentRoundStats: { red: emptyFighterRoundStats(redState.stamina), blue: emptyFighterRoundStats(blueState.stamina), keyMoments: [] },
     judgeTotals: [1, 2, 3].map(index => ({ judgeId: `Judge ${index}`, red: 0, blue: 0 })),
     scorecards: [],
-    commentary: [],
     winnerId: null,
     loserId: null,
     method: null,
@@ -689,6 +954,8 @@ export function createFightSession(matchup: FightMatchup, red: Fighter, blue: Fi
     finishTime: null
   };
   return addEvent(session, {
+    durationMs: 0,
+    importance: 'key',
     type: 'round-start',
     positionBefore: 'distance',
     positionAfter: 'distance',
@@ -698,31 +965,49 @@ export function createFightSession(matchup: FightMatchup, red: Fighter, blue: Fi
     blueStaminaDelta: 0,
     headline: t($ => $.fight.prose.roundBeginsHeadline, { round: 1 }),
     commentary: t($ => $.fight.prose.roundBegins, { round: 1, red: red.lastName, blue: blue.lastName }),
-    intensity: 20
+    intensity: 20,
+    visual: { action: 'idle', intensity: 'light' }
   });
 }
 
 export function stepFightSession(session: FightSession): FightSession {
   if (session.phase === 'finished') return session;
-  const snapshot = clone(session);
+  const snapshot = cloneFightSessionForStep(session);
+  if (snapshot.pendingFinish) {
+    const { winner, method, commentary } = snapshot.pendingFinish;
+    return finishSession({ ...snapshot, pendingFinish: null }, winner, method, commentary);
+  }
   const stopped = finishPreExistingZeroCondition(snapshot);
   if (stopped.phase === 'finished') return stopped;
-  if (snapshot.phase === 'between-rounds') return recoverBetweenRounds(snapshot);
+  if (snapshot.pendingRoundEnd) return endRound({ ...snapshot, pendingRoundEnd: false });
+  if (snapshot.phase === 'between-rounds') {
+    return snapshot.round >= snapshot.matchup.rounds ? finishDecision(snapshot) : recoverBetweenRounds(snapshot);
+  }
   return fightTick(snapshot);
 }
 
 export function runFightSession(session: FightSession): FightSession {
   let next = session;
-  for (let tick = 0; tick < session.matchup.rounds * 80 && next.phase !== 'finished'; tick++) {
-    next = stepFightSession(next);
-  }
-  if (next.phase !== 'finished') throw new Error(`Fight session did not finish within ${session.matchup.rounds * 80} ticks`);
+  const maxSteps = session.matchup.rounds * MAX_EVENTS_PER_ROUND;
+  for (let step = 0; step < maxSteps && next.phase !== 'finished'; step++) next = stepFightSession(next);
+  if (next.phase !== 'finished') throw new Error(`Fight session did not finish within ${maxSteps} steps`);
   return next;
 }
 
 function resultRandom(state: { value: number }, min: number, max: number): number {
   state.value = nextSeed(state.value);
   return min + state.value / RNG_MOD * (max - min);
+}
+
+function resultHighlights(session: FightSession): string[] {
+  return Array.from({ length: session.matchup.rounds }, (_, index) => index + 1).flatMap(round => {
+    const events = session.timeline.filter(event => event.round === round && event.importance !== 'routine');
+    const selected = [...events.filter(event => event.importance === 'key'), ...events.filter(event => event.importance === 'notable')]
+      .filter((event, index, all) => all.findIndex(candidate => candidate.sequence === event.sequence) === index)
+      .slice(0, 12)
+      .sort((a, b) => a.sequence - b.sequence);
+    return selected.map(event => event.commentary).filter(Boolean);
+  });
 }
 
 export function fightSessionToResult(session: FightSession): FightResult {
@@ -790,7 +1075,7 @@ export function fightSessionToResult(session: FightSession): FightResult {
     method: session.method,
     round: session.finishRound,
     time: session.finishTime,
-    commentary: [...session.commentary],
+    commentary: resultHighlights(session),
     performanceRating,
     scorecards: [...session.scorecards],
     roundStats: clone(roundStats),
@@ -811,17 +1096,21 @@ export function validateFightSession(session: FightSession): string[] {
   if (!['distance', 'clinch', 'ground'].includes(session.position)) errors.push('Invalid position');
   if (!Number.isInteger(session.rngState) || session.rngState < 0 || session.rngState > 0xffffffff) errors.push('Invalid rngState');
   if (session.round < 1 || session.round > session.matchup.rounds) errors.push('Round out of bounds');
-  if (session.clock < 0 || session.clock > ROUND_SECONDS) errors.push('Clock out of bounds');
+  if (!Number.isInteger(session.clockMs) || session.clockMs < 0 || session.clockMs > ROUND_MS) errors.push('Clock out of bounds');
   ([['red', session.red], ['blue', session.blue]] as const).forEach(([corner, state]) => {
     if (!Number.isFinite(state.condition) || state.condition < 0 || state.condition > 100) errors.push(`${corner} condition out of bounds`);
-    if (session.phase !== 'finished' && state.condition <= 0) errors.push(`${corner} active condition must be positive`);
+    if (session.phase !== 'finished' && !session.pendingFinish && state.condition <= 0) errors.push(`${corner} active condition must be positive`);
     if (!Number.isFinite(state.stamina) || state.stamina < 0 || state.stamina > 100) errors.push(`${corner} stamina out of bounds`);
     if (![state.damage, state.headDamage, state.bodyDamage, state.legDamage, state.cutSeverity].every(Number.isFinite) || state.damage < 0 || state.headDamage < 0 || state.bodyDamage < 0 || state.legDamage < 0 || state.cutSeverity < 0 || state.cutSeverity > 100) errors.push(`${corner} damage out of bounds`);
   });
   session.timeline.forEach((event, index) => {
     if (event.sequence !== index + 1) errors.push(`Timeline sequence ${index + 1} is unstable`);
     if (event.round < 1 || event.round > session.matchup.rounds) errors.push(`Timeline event ${event.sequence} round out of bounds`);
-    if (event.clock < 0 || event.clock > ROUND_SECONDS) errors.push(`Timeline event ${event.sequence} clock out of bounds`);
+    if (!Number.isInteger(event.durationMs) || event.durationMs < 0) errors.push(`Timeline event ${event.sequence} duration invalid`);
+    if (event.clockBeforeMs < event.clockAfterMs || event.clockBeforeMs > ROUND_MS || event.clockAfterMs < 0) errors.push(`Timeline event ${event.sequence} clock out of bounds`);
+    if (event.clockBeforeMs - event.clockAfterMs !== event.durationMs) errors.push(`Timeline event ${event.sequence} timing mismatch`);
+    const marker = ['round-start', 'round-end', 'recovery', 'finish'].includes(event.type);
+    if (marker !== (event.durationMs === 0)) errors.push(`Timeline event ${event.sequence} marker duration invalid`);
     if (event.intensity < 0 || event.intensity > 100) errors.push(`Timeline event ${event.sequence} intensity out of bounds`);
   });
   validateStats(session.currentRoundStats.red, `Round ${session.round} red`);

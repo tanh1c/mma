@@ -4,6 +4,7 @@ import '../../i18n';
 import { fixedT, type Language } from '../localization';
 import { stableCareerSeed } from './career';
 import { getPairKey } from './news';
+import { applyPromotionTransaction, refreshPromotionEconomy } from './promotionEconomy';
 import { addSocialFeedItems } from './social';
 
 export interface DramaResponse {
@@ -272,6 +273,7 @@ export function resolveDramaIncident(
   if (!valid.some(response => response.key === responseKey)) return state;
 
   const t = fixedT(language);
+  let transactionState = state;
   const fighters = { ...state.fighters };
   const events = { ...state.events };
   let promotion = { ...state.promotion };
@@ -282,10 +284,30 @@ export function resolveDramaIncident(
   const strongOutcome = stableCareerSeed(incident.id, responseKey, 'outcome') % 100 < 45;
   const fighterDelta = (fighterId: string, changes: Parameters<typeof updateFighter>[2]) => consequences.push(...updateFighter(fighters, fighterId, changes));
   const promotionDelta = (kind: 'money' | 'reputation' | 'fanbase', value: number) => {
+    if (kind === 'money') {
+      const result = applyPromotionTransaction(transactionState, {
+        id: `drama-${incident.id}-${responseKey}`,
+        promotionId: state.playerPromotionId,
+        date: state.currentDate,
+        settlementKey: `drama-${incident.id}`,
+        category: 'drama',
+        amount: value,
+        transactionClass: value > 0 ? 'income' : 'discretionary',
+        sourceId: incident.id,
+        descriptionKey: 'generated.drama.consequence.money',
+        repayLiabilities: value > 0
+      });
+      if (!result.ok) return false;
+      transactionState = result.state;
+      promotion = transactionState.promotion;
+      consequences.push({ kind, value, descriptionKey: 'generated.drama.consequence.money' });
+      return true;
+    }
     const before = promotion[kind];
-    promotion = { ...promotion, [kind]: kind === 'money' || kind === 'fanbase' ? Math.max(0, before + value) : clamp(before + value) };
+    promotion = { ...promotion, [kind]: kind === 'fanbase' ? Math.max(0, before + value) : clamp(before + value) };
     const applied = promotion[kind] - before;
     if (applied) consequences.push({ kind, value: applied, descriptionKey: `generated.drama.consequence.${kind}` });
+    return true;
   };
   const hypeDelta = (value: number) => {
     if (!event || !fight) return;
@@ -309,11 +331,11 @@ export function resolveDramaIncident(
     case 'deescalate': fighterDelta(leadId, { morale: (fighters[leadId]?.morale ?? 50) + 3 }); break;
     case 'fine_both': promotionDelta('money', 10_000); fighterDelta(leadId, { morale: (fighters[leadId]?.morale ?? 50) - 4 }); fighterDelta(opponentId, { morale: (fighters[opponentId]?.morale ?? 50) - 4 }); break;
     case 'use_for_hype': hypeDelta(3); promotionDelta('reputation', strongOutcome ? 1 : -2); break;
-    case 'improve_terms': promotionDelta('money', -10_000); fighterDelta(leadId, { morale: (fighters[leadId]?.morale ?? 50) + 8 }); break;
+    case 'improve_terms': if (!promotionDelta('money', -10_000)) return state; fighterDelta(leadId, { morale: (fighters[leadId]?.morale ?? 50) + 8 }); break;
     case 'hold_line': fighterDelta(leadId, { morale: (fighters[leadId]?.morale ?? 50) - (strongOutcome ? 4 : 10) }); break;
     case 'respect_refusal': fighterDelta(leadId, { morale: (fighters[leadId]?.morale ?? 50) + 4 }); break;
     case 'apply_pressure': fighterDelta(leadId, { morale: (fighters[leadId]?.morale ?? 50) - 10 }); promotionDelta('reputation', strongOutcome ? 0 : -1); break;
-    case 'promise_eliminator': fighterDelta(leadId, { morale: (fighters[leadId]?.morale ?? 50) + 8, titleShotPromised: true }); break;
+    case 'promise_eliminator': fighterDelta(leadId, { morale: (fighters[leadId]?.morale ?? 50) + 8 }); break;
     case 'reject_demand': fighterDelta(leadId, { morale: (fighters[leadId]?.morale ?? 50) - 6 }); break;
     case 'replace_or_cancel': {
       if (event && fight && !fight.tournamentId) {
@@ -329,14 +351,19 @@ export function resolveDramaIncident(
   const title = t($ => $.generated.drama.decisionTitle);
   const body = t($ => $.generated.drama.decisionBody, { fighter: lead ? fullName(lead) : t($ => $.generated.drama.unknownFighter), response: responseLabel(responseKey, language) });
   let nextState: GameState = {
-    ...state,
+    ...transactionState,
     fighters,
     events,
     promotion,
+    promotions: {
+      ...transactionState.promotions,
+      [state.playerPromotionId]: promotion
+    },
     storylines,
     drama: { ...state.drama, incidents: { ...state.drama.incidents, [incidentId]: resolvedIncident }, cooldowns: { ...state.drama.cooldowns, [`${leadId}:${incident.type}`]: state.currentDate } },
     news: [{ id: `drama-news-${incident.id}`, date: state.currentDate, type: 'general', title, content: body }, ...state.news.filter(item => item.id !== `drama-news-${incident.id}`)]
   };
+  nextState = refreshPromotionEconomy(nextState, state.playerPromotionId);
   nextState = addSocialFeedItems(nextState, [{
     id: `drama-social-${incident.id}`,
     stableKey: `drama:${incident.id}:resolved`,

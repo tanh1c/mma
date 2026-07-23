@@ -9,6 +9,8 @@ import {
   ChevronRight,
   CircleDollarSign,
   FileClock,
+  Globe2,
+  Handshake,
   LayoutDashboard,
   Menu,
   Newspaper,
@@ -39,8 +41,11 @@ export const APP_NAV_GROUPS: Array<{ label: string; items: Array<{ label: string
     items: [
       { label: 'Roster', view: 'roster', icon: Users },
       { label: 'Free Agents', view: 'free-agents', icon: UserPlus },
+      { label: 'Contract Market', view: 'contract-market', icon: Handshake },
+      { label: 'Promotion Finances', view: 'promotion-finances', icon: CircleDollarSign },
       { label: 'Rankings', view: 'rankings', icon: Trophy },
-      { label: 'Tournaments', view: 'tournaments', icon: Award }
+      { label: 'Tournaments', view: 'tournaments', icon: Award },
+      { label: 'Leagues', view: 'leagues', icon: Globe2 }
     ]
   },
   {
@@ -66,9 +71,11 @@ type AppShellProps = {
   utilities: ReactNode;
   children: ReactNode;
   freeAgentsLabel: string;
+  locked: boolean;
+  lockProgress: { value: number; max: number };
 };
 
-export function AppShell({ currentView, onNavigate, title, date, money, reputation, onAdvanceWeek, utilities, children }: AppShellProps) {
+export function AppShell({ currentView, onNavigate, title, date, money, reputation, onAdvanceWeek, utilities, children, locked, lockProgress }: AppShellProps) {
   const { t } = useTranslation('translation');
   const language = useSettingsStore(state => state.language);
   const [isOpen, setIsOpen] = useState(false);
@@ -85,8 +92,11 @@ export function AppShell({ currentView, onNavigate, title, date, money, reputati
       case 'event-builder': return t($ => $.navigation.bookEvent);
       case 'roster': return t($ => $.navigation.roster);
       case 'free-agents': return t($ => $.navigation.freeAgents);
+      case 'contract-market': return t($ => $.navigation.contractMarket);
+      case 'promotion-finances': return t($ => $.navigation.promotionFinances);
       case 'rankings': return t($ => $.navigation.rankings);
       case 'tournaments': return t($ => $.navigation.tournaments);
+      case 'leagues': return t($ => $.navigation.leagues);
       case 'news': return t($ => $.navigation.socialHub);
       case 'history': return t($ => $.navigation.historyStats);
       case 'mma-guide': return t($ => $.navigation.mmaGuide);
@@ -142,7 +152,8 @@ export function AppShell({ currentView, onNavigate, title, date, money, reputati
     </div>
   );
 
-  return <div className="flex min-h-svh bg-[#0a0a0a] text-white">
+  return <>
+    <div className="flex min-h-svh bg-[#0a0a0a] text-white" inert={locked || undefined} aria-busy={locked || undefined}>
     <aside className="hidden h-svh w-60 shrink-0 flex-col border-r border-[#2a2c31] bg-[#0d0e10] md:flex">
       {brand}
       <div className="min-h-0 flex-1 p-3">{navigation()}</div>
@@ -170,5 +181,14 @@ export function AppShell({ currentView, onNavigate, title, date, money, reputati
       </header>
       <main className="h-[calc(100svh-4rem)] overflow-y-auto [overflow-wrap:anywhere] custom-scrollbar"><div className="mx-auto w-full max-w-7xl p-4 sm:p-6 lg:p-8">{children}</div></main>
     </div>
-  </div>;
+    </div>
+    {locked && <div className="fixed inset-0 z-[100] grid place-items-center bg-black/70 px-4" role="status" aria-live="polite">
+      <div className="w-full max-w-sm rounded border border-[#2a2c31] bg-[#101114] p-5 text-white">
+        <p className="text-sm font-semibold">{t($ => $.dashboard.observer.simulating)} {lockProgress.value}/{lockProgress.max}</p>
+        <div className="mt-3 h-2 overflow-hidden rounded-full bg-neutral-800" role="progressbar" aria-valuemin={0} aria-valuemax={lockProgress.max} aria-valuenow={lockProgress.value}>
+          <div className="h-full bg-white transition-[width]" style={{ width: `${lockProgress.max ? lockProgress.value / lockProgress.max * 100 : 0}%` }} />
+        </div>
+      </div>
+    </div>}
+  </>;
 }

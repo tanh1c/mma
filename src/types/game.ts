@@ -117,6 +117,7 @@ export interface ContractCounterOffer {
 }
 
 export interface Contract {
+  promotionId?: string;
   fightsRemaining: number;
   payPerFight: number;
   winBonus: number;
@@ -124,6 +125,166 @@ export interface Contract {
   endDate: string;
   lastNegotiationDate?: string;
   counterOffer?: ContractCounterOffer;
+}
+
+export type TransferWindowStatus = 'scheduled' | 'open' | 'resolving' | 'closed';
+export type TransferListingStatus = 'active' | 'withdrawn' | 'sold' | 'expired';
+export type TransferOfferStatus = 'active' | 'withdrawn' | 'accepted' | 'rejected' | 'invalid';
+export type SellerDecisionStatus = 'pending' | 'accepted' | 'rejected';
+export type TransferHistoryOutcome = 'transferred' | 'renewed' | 'signed' | 'rejected' | 'invalid';
+
+export interface MarketContractTerms {
+  fights: number;
+  payPerFight: number;
+  winBonus: number;
+}
+
+export interface TransferWindow {
+  id: string;
+  season: number;
+  openDate: string;
+  closeDate: string;
+  status: TransferWindowStatus;
+  lastAiRunDate?: string;
+  resolvedDate?: string;
+}
+
+export interface TransferListing {
+  id: string;
+  windowId: string;
+  fighterId: string;
+  sellerPromotionId: string;
+  minimumFee: number;
+  status: TransferListingStatus;
+  createdDate: string;
+  updatedDate: string;
+}
+
+export interface TransferOffer {
+  id: string;
+  windowId: string;
+  fighterId: string;
+  buyerPromotionId: string;
+  sellerPromotionId: string | null;
+  transferFee: number;
+  terms: MarketContractTerms;
+  status: TransferOfferStatus;
+  sellerDecision: SellerDecisionStatus;
+  sellerReason?: MarketReason;
+  createdDate: string;
+  updatedDate: string;
+}
+
+export interface PendingTransferSettlement {
+  id: string;
+  windowId: string;
+  offerId: string;
+  fighterId: string;
+  buyerPromotionId: string;
+  sellerPromotionId: string | null;
+  transferFee: number;
+  terms: MarketContractTerms;
+}
+
+export interface TransferHistoryItem {
+  id: string;
+  windowId: string;
+  offerId: string;
+  fighterId: string;
+  buyerPromotionId: string;
+  sellerPromotionId: string | null;
+  transferFee: number;
+  terms: MarketContractTerms;
+  outcome: TransferHistoryOutcome;
+  reason: MarketReason;
+  date: string;
+}
+
+export interface ContractMarketState {
+  windows: Record<string, TransferWindow>;
+  listings: Record<string, TransferListing>;
+  offers: Record<string, TransferOffer>;
+  pendingSettlements: Record<string, PendingTransferSettlement>;
+  history: TransferHistoryItem[];
+}
+
+export type MarketReason =
+  | 'submitted'
+  | 'withdrawn'
+  | 'seller_accepted'
+  | 'seller_rejected'
+  | 'seller_no_response'
+  | 'seller_fee_too_low'
+  | 'better_expected_pay'
+  | 'better_prestige'
+  | 'better_title_opportunity'
+  | 'loyalty'
+  | 'outbid'
+  | 'fighter_missing'
+  | 'promotion_missing'
+  | 'ownership_changed'
+  | 'window_not_open'
+  | 'offer_missing'
+  | 'insufficient_cash'
+  | 'international_competition_active'
+  | 'invalid_terms'
+  | 'no_eligible_offer';
+
+export type MarketMutationResult =
+  | { ok: true; state: GameState; id: string }
+  | { ok: false; state: GameState; reason: MarketReason };
+
+export type PromotionFinancialMode = 'growth' | 'stable' | 'cautious' | 'recovery';
+
+export type PromotionLedgerCategory =
+  | 'event_gate'
+  | 'event_media'
+  | 'event_sponsor'
+  | 'fighter_purse'
+  | 'win_bonus'
+  | 'venue'
+  | 'event_marketing'
+  | 'monthly_sponsor'
+  | 'monthly_media'
+  | 'operating_cost'
+  | 'roster_retainer'
+  | 'liability_payment'
+  | 'brand_investment'
+  | 'transfer_fee'
+  | 'objective_reward'
+  | 'drama';
+
+export interface PromotionLedgerEntry {
+  id: string;
+  promotionId: string;
+  date: string;
+  settlementKey: string;
+  category: PromotionLedgerCategory;
+  amount: number;
+  balanceAfter: number;
+  liabilityDelta: number;
+  sourceId?: string;
+  descriptionKey: string;
+}
+
+export interface PromotionEconomy {
+  promotionId: string;
+  debtLimit: number;
+  recoveryMode: boolean;
+  financialMode: PromotionFinancialMode;
+  monthlyOperatingCost: number;
+  monthlyRosterRetainer: number;
+  monthlySponsorIncome: number;
+  monthlyMediaIncome: number;
+  scheduledBrandInvestment: number;
+  outstandingLiabilities: number;
+  estimatedRunwayMonths: number;
+  contractBudget: number;
+  lastMonthlySettlement: string;
+  settledEventIds: string[];
+  ledgerOpeningBalance: number;
+  legacyFinanceLedgerIds: string[];
+  ledger: PromotionLedgerEntry[];
 }
 
 export type FightCampFocus = 'balanced' | 'striking' | 'wrestling' | 'cardio' | 'recovery';
@@ -196,6 +357,9 @@ export interface Fighter {
   hallOfFame?: HallOfFameInduction;
 }
 
+export type PromotionControl = 'player' | 'ai';
+export type CompetitionScope = 'promotion' | 'international';
+
 export interface Promotion {
   id: string;
   name: string;
@@ -203,6 +367,8 @@ export interface Promotion {
   money: number;
   reputation: number; // 0-100
   fanbase: number;
+  control?: PromotionControl;
+  nextAiEventDate?: string;
 }
 
 export interface NewsItem {
@@ -338,6 +504,8 @@ export interface FightResult {
 
 export interface FightArchiveItem {
   id: string;
+  promotionId?: string | null;
+  scope?: CompetitionScope;
   date: string;
   eventId: string;
   eventName: string;
@@ -370,6 +538,8 @@ export interface FightArchiveItem {
 
 export interface EventArchiveItem {
   id: string;
+  promotionId?: string | null;
+  scope?: CompetitionScope;
   name: string;
   date: string;
   attendance: number;
@@ -389,6 +559,9 @@ export interface EventArchiveItem {
 
 export interface TitleHistoryItem {
   id: string;
+  promotionId?: string | null;
+  scope?: CompetitionScope;
+  beltId?: string;
   weightClass: WeightClass;
   fighterId: string;
   dateWon: string;
@@ -405,6 +578,8 @@ export interface TitleHistoryItem {
 
 export interface Event {
   id: string;
+  promotionId?: string | null;
+  scope?: CompetitionScope;
   name: string;
   date: string; // e.g., YYYY-MM-DD
   venueId: string;
@@ -485,12 +660,16 @@ export interface AutopilotSummary {
 
 export interface BeltInfo {
   id: string;
+  promotionId: string | null;
   name: string;
   shortName: string;
   weightClass: WeightClass;
-  type: 'undisputed';
+  type: 'undisputed' | 'international';
   prestige: number;
 }
+
+export type InternationalCompetitionTier = 'champions_cup' | 'challenge_cup';
+export type InternationalTitles = Record<InternationalCompetitionTier, Record<WeightClass, WeightClassTitleState>>;
 
 export type BeltStatus =
   | 'active'
@@ -581,10 +760,19 @@ export interface CareerEcosystemState {
 
 export interface GameState {
   currentDate: string; // YYYY-MM-DD
+  playerPromotionId: string;
+  promotions: Record<string, Promotion>;
   promotion: Promotion;
   fighters: Record<string, Fighter>;
   events: Record<string, Event>;
   venues: Record<string, Venue>;
+  rankingsByPromotion: Record<string, Record<WeightClass, RankingItem[]>>;
+  titlesByPromotion: Record<string, Record<WeightClass, WeightClassTitleState>>;
+  beltsByPromotion: Record<string, Record<string, BeltInfo>>;
+  worldRankings: Record<WeightClass, RankingItem[]>;
+  internationalTitles: InternationalTitles;
+  internationalBelts: Record<InternationalCompetitionTier, Record<string, BeltInfo>>;
+  internationalCompetitionYears: number[];
   rankings: Record<WeightClass, RankingItem[]>;
   titles: Record<WeightClass, WeightClassTitleState>;
   belts: Record<string, BeltInfo>;
@@ -609,6 +797,8 @@ export interface GameState {
   mediaDeals?: MediaDeal[];
   financeLedger?: FinanceLedgerEntry[];
   tournaments: Record<string, GrandPrixTournament>;
+  contractMarket: ContractMarketState;
+  promotionEconomies: Record<string, PromotionEconomy>;
   seasonPlans?: Record<number, SeasonPlan>;
   careerEcosystem: CareerEcosystemState;
   drama: DramaState;
@@ -687,6 +877,8 @@ export interface TournamentFightSlot {
 
 export interface GrandPrixTournament {
   id: string;
+  promotionId?: string | null;
+  scope?: CompetitionScope;
   name: string;
   shortName: string;
   weightClass: WeightClass;
@@ -714,5 +906,8 @@ export interface GrandPrixTournament {
   quarterfinalCompletedDate?: string | null;
   recommendedSemifinalDate?: string | null;
   usedReserveFighterIds?: string[];
+  internationalTier?: InternationalCompetitionTier;
+  winnerBeltId?: string;
+  qualifyingPromotionIds?: string[];
 }
 

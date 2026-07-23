@@ -3,6 +3,7 @@ import { useGameStore } from '../store/gameStore';
 import { differenceInDays } from 'date-fns';
 import { Trophy, TrendingUp, Users, DollarSign, Calendar, FastForward, Settings, Play } from 'lucide-react';
 import { calculateEventProjections } from '../lib/game/economy';
+import { getPromotionFinancialSnapshot } from '../lib/game/promotionEconomy';
 import { getPromotionInbox } from '../lib/game/inbox';
 import { Button, Panel, PageHeader, Stat, StatusBadge } from '../components/ui';
 import { ChampionshipBelt } from '../components/ChampionshipBelt';
@@ -15,34 +16,19 @@ export default function Dashboard() {
   const { t } = useTranslation('translation');
   const language = useSettingsStore(state => state.language);
   const gameState = useGameStore();
-  const { promotion, currentDate, events, fighters, tournaments = {}, venues, news, storylines, titles, belts, setView, mode, autopilot, setMode, setAutopilot, advanceAutopilot, lastAutopilotSummary, sponsorDeals = [], mediaDeals = [], financeLedger = [], signSponsorDeal, signMediaDeal, renewDeal } = gameState;
+  const { promotion, currentDate, events, fighters, tournaments = {}, venues, news, storylines, titles, belts, setView, mode, autopilot, autopilotRun, setMode, setAutopilot, advanceAutopilot, lastAutopilotSummary, sponsorDeals = [], mediaDeals = [], signSponsorDeal, signMediaDeal, renewDeal } = gameState;
 
-  const [isAdvancing, setIsAdvancing] = useState(false);
-  const [ledgerFilter, setLedgerFilter] = useState<'All' | 'Event' | 'Deals' | 'Costs' | 'Income'>('All');
+  const isAdvancing = autopilotRun.active;
   const [isFinanceOpen, setIsFinanceOpen] = useState(true);
   const [isNewsOpen, setIsNewsOpen] = useState(true);
 
   const activeSponsorIncome = sponsorDeals.filter(d => d.isActive).reduce((sum, d) => sum + d.monthlyIncome, 0);
   const activeMediaIncome = mediaDeals.filter(d => d.isActive).reduce((sum, d) => sum + d.monthlyIncome, 0);
-  const totalMonthlyIncome = activeSponsorIncome + activeMediaIncome;
+  const playerEconomy = gameState.promotionEconomies[gameState.playerPromotionId];
+  const financialSnapshot = getPromotionFinancialSnapshot(gameState, gameState.playerPromotionId);
 
-  const filteredLedger = useMemo(() => {
-     return financeLedger.filter(entry => {
-        if (ledgerFilter === 'Event') return entry.type.startsWith('event') || entry.type === 'contract_payment' || entry.type === 'marketing_cost' || entry.type === 'venue_cost';
-        if (ledgerFilter === 'Deals') return entry.type.includes('monthly');
-        if (ledgerFilter === 'Costs') return entry.amount < 0;
-        if (ledgerFilter === 'Income') return entry.amount > 0;
-        return true;
-     });
-  }, [financeLedger, ledgerFilter]);
-
-  const handleAutoAdvance = async (days: number, simulateEvents: boolean = false) => {
-    setIsAdvancing(true);
-    // Use setTimeout to allow UI to render the loading state
-    setTimeout(() => {
-      advanceAutopilot(days, simulateEvents);
-      setIsAdvancing(false);
-    }, 50);
+  const handleAutoAdvance = (days: number, simulateEvents: boolean = false) => {
+    void advanceAutopilot(days, simulateEvents);
   };
 
   const activeEvents = Object.values(events).filter(e => !e.isCompleted);
@@ -86,13 +72,6 @@ export default function Dashboard() {
     urgent: t($ => $.inbox.severity.urgent),
     opportunity: t($ => $.inbox.severity.opportunity)
   };
-  const ledgerFilters = [
-    { value: 'All', label: t($ => $.dashboard.finance.filters.all) },
-    { value: 'Event', label: t($ => $.dashboard.finance.filters.event) },
-    { value: 'Deals', label: t($ => $.dashboard.finance.filters.deals) },
-    { value: 'Costs', label: t($ => $.dashboard.finance.filters.costs) },
-    { value: 'Income', label: t($ => $.dashboard.finance.filters.income) }
-  ] as const;
   const newsTypeLabels = {
     injury: t($ => $.dashboard.news.types.injury),
     contract: t($ => $.dashboard.news.types.contract),
@@ -106,7 +85,7 @@ export default function Dashboard() {
       <PageHeader
         eyebrow={formatDate(currentDate, language)}
         title={promotion.name || t($ => $.dashboard.fallbackPromotion)}
-        actions={<div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto"><Button variant={mode === 'manager' ? 'primary' : 'quiet'} onClick={() => { setMode('manager'); setAutopilot({ enabled: false }); }} className="min-h-9 px-3 text-xs">{t($ => $.dashboard.managerMode)}</Button><Button variant={mode === 'observer' ? 'primary' : 'quiet'} onClick={() => { setMode('observer'); setAutopilot({ enabled: true }); }} className="min-h-9 px-3 text-xs">{t($ => $.dashboard.observerMode)}</Button></div>}
+        actions={<div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto"><Button variant={mode === 'manager' ? 'primary' : 'quiet'} onClick={() => { setMode('manager'); setAutopilot({ enabled: false }); }} disabled={isAdvancing} className="min-h-9 px-3 text-xs">{t($ => $.dashboard.managerMode)}</Button><Button variant={mode === 'observer' ? 'primary' : 'quiet'} onClick={() => { setMode('observer'); setAutopilot({ enabled: true }); }} disabled={isAdvancing} className="min-h-9 px-3 text-xs">{t($ => $.dashboard.observerMode)}</Button></div>}
       />
 
       <Panel className="grid grid-cols-2 gap-5 sm:grid-cols-4">
@@ -162,8 +141,12 @@ export default function Dashboard() {
               
               <div className="sm:ml-auto flex items-center gap-3 bg-neutral-950 px-4 py-2 rounded border border-purple-900/50">
                 <span className="text-sm font-bold text-neutral-300">{t($ => $.dashboard.observer.watchLive)}:</span>
-                <button 
+                <button
+                  type="button"
                   onClick={() => setAutopilot({ watchEvents: !autopilot.watchEvents })}
+                  disabled={isAdvancing}
+                  aria-label={t($ => $.dashboard.observer.watchLive)}
+                  aria-pressed={autopilot.watchEvents}
                   className={`w-12 h-6 rounded-full transition-colors relative ${autopilot.watchEvents ? 'bg-green-500' : 'bg-neutral-700'}`}
                 >
                   <span className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${autopilot.watchEvents ? 'left-7' : 'left-1'}`} />
@@ -171,10 +154,11 @@ export default function Dashboard() {
               </div>
             </div>
             {isAdvancing && (
-              <div className="mt-4 text-purple-300 text-sm font-bold animate-pulse flex items-center gap-2">
-                <Settings className="animate-spin" size={16} /> {t($ => $.dashboard.observer.simulating)}
+              <div className="mt-4 text-purple-100 text-sm font-bold flex items-center gap-2" aria-live="polite">
+                <Settings className="animate-spin" size={16} /> {t($ => $.dashboard.observer.simulating)} {autopilotRun.daysCompleted}/{autopilotRun.targetDays}
               </div>
             )}
+            {autopilotRun.error && <p className="mt-3 text-sm text-red-300" role="alert">{autopilotRun.error}</p>}
             {!isAdvancing && lastAutopilotSummary && (
               <div className="mt-6 bg-purple-950/50 border border-purple-500/20 rounded p-4 text-sm text-purple-200">
                 <h3 className="font-bold mb-2 uppercase tracking-wider text-purple-400">{t($ => $.dashboard.observer.summary, { days: lastAutopilotSummary.daysSimulated, start: formatDate(lastAutopilotSummary.calendarStartDate, language), end: formatDate(lastAutopilotSummary.calendarEndDate, language) })}</h3>
@@ -543,39 +527,15 @@ export default function Dashboard() {
               </div>
             </div>
             
-            <div className="mt-6 border-t border-neutral-800 pt-4">
-               <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between mb-3">
-                 <h3 className="text-sm font-bold text-neutral-400 uppercase tracking-wider">{t($ => $.dashboard.finance.ledger)}</h3>
-                 <div className="flex flex-wrap gap-2">
-                    {ledgerFilters.map(filter => (
-                       <button
-                         key={filter.value}
-                         onClick={() => setLedgerFilter(filter.value)}
-                         className={`text-[10px] px-2 py-1 rounded font-bold uppercase transition-colors ${ledgerFilter === filter.value ? 'bg-neutral-700 text-white' : 'bg-neutral-900 text-neutral-500 hover:bg-neutral-800 hover:text-neutral-300'}`}
-                       >
-                          {filter.label}
-                       </button>
-                    ))}
-                 </div>
-               </div>
-               <div className="space-y-2 max-h-[300px] overflow-y-auto pr-2">
-                 {filteredLedger.length > 0 ? filteredLedger.slice(0, 50).map(entry => (
-                   <div key={entry.id} className={`flex gap-3 justify-between items-start text-sm py-1.5 border-b border-neutral-800/50 ${entry.isSummary ? 'bg-neutral-950 px-2 py-2 rounded border border-blue-900/30 my-1' : ''}`}>
-                     <div>
-                       <p className={`text-neutral-300 ${entry.isSummary ? 'text-blue-400 font-semibold' : ''}`}>
-                         {entry.isSummary ? '📊 ' : ''}{entry.description}
-                       </p>
-                       <p className="text-xs text-neutral-500 font-mono">{formatDate(entry.date, language)}</p>
-                     </div>
-                     <span className={`shrink-0 font-mono font-bold ${entry.isSummary ? 'text-blue-400' : (entry.amount >= 0 ? 'text-green-400' : 'text-red-400')}`}>
-                       {entry.amount > 0 ? '+' : ''}{formatCurrency(entry.amount, language)}
-                     </span>
-                   </div>
-                 )) : (
-                    <p className="text-sm text-neutral-500 italic py-4 text-center">{t($ => $.dashboard.finance.noLedger)}</p>
-                 )}
-               </div>
-            </div>
+            {playerEconomy && financialSnapshot && <div className="mt-6 border-t border-neutral-800 pt-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                <Stat label={t($ => $.promotionFinances.cash)} value={formatCurrency(promotion.money, language)} />
+                <Stat label={t($ => $.promotionFinances.mode)} value={t($ => $.promotionFinances.modes[playerEconomy.financialMode])} />
+                <Stat label={t($ => $.promotionFinances.runway)} value={t($ => $.promotionFinances.months, { count: playerEconomy.estimatedRunwayMonths })} />
+                <Stat label={t($ => $.promotionFinances.liabilities)} value={formatCurrency(playerEconomy.outstandingLiabilities, language)} detail={`${t($ => $.promotionFinances.headroom)}: ${formatCurrency(financialSnapshot.debtHeadroom, language)}`} />
+              </div>
+              <Button type="button" variant="quiet" className="mt-4 px-0 text-xs" onClick={() => setView('promotion-finances')}>{t($ => $.dashboard.finance.viewFinances)}</Button>
+            </div>}
             </>}
           </div>
         </div>

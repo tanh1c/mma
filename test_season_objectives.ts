@@ -34,8 +34,10 @@ const completed = refreshSeasonObjectives(completionFixture, 2025, 'vi');
 const repeated = refreshSeasonObjectives(completed, 2025, 'vi');
 assert.deepEqual(repeated, completed);
 assert.equal(completed.drama.objectives[2025][0].rewardGranted, true);
-assert.equal(completed.financeLedger.filter(entry => entry.id === 'objective-reward-objective-profit-2025').length, 1);
-assert.equal(completed.financeLedger.find(entry => entry.id === 'objective-reward-objective-profit-2025')?.description, 'Hoàn thành mục tiêu mùa giải: Đạt mục tiêu lợi nhuận');
+const objectiveEntry = completed.promotionEconomies[completed.playerPromotionId].ledger.find(entry => entry.sourceId === 'objective-profit-2025')!;
+assert.equal(objectiveEntry.category, 'objective_reward');
+assert.equal(completed.financeLedger.filter(entry => entry.id === `economy-mirror-${objectiveEntry.id}`).length, 1);
+assert.equal(completed.financeLedger.find(entry => entry.id === `economy-mirror-${objectiveEntry.id}`)?.description, 'Hoàn thành mục tiêu mùa giải: Đạt mục tiêu lợi nhuận');
 
 const reviewed = finalizeSeasonReview(completed, 2025);
 assert.deepEqual(finalizeSeasonReview(reviewed, 2025), reviewed);

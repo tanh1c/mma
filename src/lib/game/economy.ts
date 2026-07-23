@@ -1,5 +1,26 @@
 import { Fighter, FightMatchup, Venue, Promotion, EventResults, FightResult, Storyline } from '../../types/game';
 
+export interface EventFinancialRolls {
+  attendance: number;
+  broadcast: number;
+}
+
+const hashRoll = (key: string): number => {
+  let hash = 2166136261;
+  for (let index = 0; index < key.length; index++) {
+    hash ^= key.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0) / 0x100000000;
+};
+
+export function getDeterministicEventFinancialRolls(eventId: string): EventFinancialRolls {
+  return {
+    attendance: hashRoll(`${eventId}:attendance`),
+    broadcast: hashRoll(`${eventId}:broadcast`)
+  };
+}
+
 export interface EventProjections {
   eventHype: number;
   mainEventStrength: number;
@@ -266,7 +287,8 @@ export function calculateEventFinancials(
   promotion: Promotion,
   storylines: Storyline[] = [],
   titles?: Record<string, import('../../types/game').WeightClassTitleState>,
-  tournaments?: Record<string, import('../../types/game').GrandPrixTournament>
+  tournaments?: Record<string, import('../../types/game').GrandPrixTournament>,
+  rolls?: EventFinancialRolls
 ): { results: EventResults, reputationChange: number } {
   // First, get the projections as a baseline
   const proj = calculateEventProjections(
@@ -282,13 +304,15 @@ export function calculateEventFinancials(
   );
 
   // Random variance for actual attendance
-  const variance = 0.9 + (Math.random() * 0.2); // 0.9x to 1.1x
+  const attendanceRoll = rolls?.attendance ?? Math.random();
+  const variance = 0.9 + attendanceRoll * 0.2;
   let actualAttendance = Math.floor(proj.expectedAttendance * variance);
   actualAttendance = Math.min(actualAttendance, venue.capacity);
   
   const gateRevenue = actualAttendance * ticketPrice;
   const rivalryIntensity = Math.max(0, ...fights.map(fight => storylines.filter(storyline => storyline.type === 'Rivalry' && storyline.isActive && storyline.fighterIds.length === 2 && storyline.fighterIds.includes(fight.redCornerId) && storyline.fighterIds.includes(fight.blueCornerId)).map(storyline => Math.min(3, Math.max(1, storyline.intensity ?? 1))).reduce((max, intensity) => Math.max(max, intensity), 0)));
-  const broadcastRevenue = Math.floor(proj.broadcastRevenue * (0.95 + Math.random() * 0.1) * (1 + rivalryIntensity * 0.02));
+  const broadcastRoll = rolls?.broadcast ?? Math.random();
+  const broadcastRevenue = Math.floor(proj.broadcastRevenue * (0.95 + broadcastRoll * 0.1) * (1 + rivalryIntensity * 0.02));
 
   let fighterBasePay = 0;
   let fighterWinBonuses = 0;

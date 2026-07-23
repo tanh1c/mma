@@ -2,7 +2,8 @@ import { differenceInCalendarDays } from 'date-fns';
 import '../../i18n';
 import type { FightCampFocus, Fighter, FightMatchup, GameState } from '../../types/game';
 import { fixedT, readLanguage, type Language } from '../localization';
-import { getContractEndDate } from './contracts';
+import { getContractEndDate, isContractMarketOpen } from './contracts';
+import { getPlayerPromotionId } from './leagues';
 import { scoreObserverRosterCandidate } from './careerEcosystem';
 import { getFighterOverall } from './fighterRatings';
 import { getPairKey } from './news';
@@ -37,7 +38,7 @@ function resolveCounterOffers(state: GameState, language: Language): GameState {
     if (accepted && !fighter.contract) divisionDepth[fighter.weightClass] = (divisionDepth[fighter.weightClass] ?? 0) + 1;
     fighters[fighter.id] = accepted ? {
       ...fighter,
-      contract: { fightsRemaining: offer.fights, payPerFight: offer.payPerFight, winBonus: offer.winBonus, exclusivity: true, endDate: getContractEndDate(state.currentDate, offer.fights), lastNegotiationDate: state.currentDate },
+      contract: { promotionId: getPlayerPromotionId(state), fightsRemaining: offer.fights, payPerFight: offer.payPerFight, winBonus: offer.winBonus, exclusivity: true, endDate: getContractEndDate(state.currentDate, offer.fights), lastNegotiationDate: state.currentDate },
       counterOffer: undefined
     } : { ...fighter, counterOffer: undefined };
     const newsId = `observer-counter-${fighter.id}-${state.currentDate}`;
@@ -49,7 +50,10 @@ function resolveCounterOffers(state: GameState, language: Language): GameState {
 
 export function runObserverDecisions(state: GameState, language: Language = readLanguage()): GameState {
   if (state.mode !== 'observer' || !state.autopilot.enabled) return state;
-  let nextState = resolveObserverDrama(resolveCounterOffers(state, language), language);
+  let nextState = resolveObserverDrama(
+    isContractMarketOpen(state) ? state : resolveCounterOffers(state, language),
+    language
+  );
   const events = Object.fromEntries(Object.entries(nextState.events).map(([id, event]) => [id, event.isCompleted || event.date < nextState.currentDate ? event : {
     ...event,
     fights: event.fights.map(fight => {

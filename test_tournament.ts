@@ -16,7 +16,7 @@ for (const fighter of cappedLightweights) {
   const index = cappedLightweights.indexOf(fighter);
   cappedRoster.fighters[fighter.id] = {
     ...fighter,
-    contract: index < 13 ? { fightsRemaining: 4, payPerFight: 10_000, winBonus: 10_000, exclusivity: true, endDate: '2027-01-01' } : null,
+    contract: index < 13 ? { promotionId: cappedRoster.playerPromotionId, fightsRemaining: 4, payPerFight: 10_000, winBonus: 10_000, exclusivity: true, endDate: '2027-01-01' } : null,
     injuryStatus: index < 4 ? { id: `capped-injury-${index}`, type: 'Hand Injury', daysRemaining: 30 } : null
   };
 }
@@ -36,7 +36,7 @@ try {
   const candidates = lwFighters.slice(0, 6).map(f => {
     return {
       ...f,
-      contract: f.contract || { fightsRemaining: 3, payPerFight: 10000, winBonus: 10000, exclusivity: true, endDate: '2027-01-01' },
+      contract: { ...(f.contract || { fightsRemaining: 3, payPerFight: 10000, winBonus: 10000, exclusivity: true, endDate: '2027-01-01' }), promotionId: state.playerPromotionId },
       injuryStatus: null,
       medicalSuspension: null,
       fatigue: 0
@@ -199,7 +199,7 @@ try {
     .slice(0, 4) // Only 4 fighters, NO reserves!
     .map(f => ({
       ...f,
-      contract: f.contract || { fightsRemaining: 3, payPerFight: 10000, winBonus: 10000, exclusivity: true, endDate: '2027-01-01' },
+      contract: { ...(f.contract || { fightsRemaining: 3, payPerFight: 10000, winBonus: 10000, exclusivity: true, endDate: '2027-01-01' }), promotionId: stateC.playerPromotionId },
       injuryStatus: null,
       medicalSuspension: null,
       fatigue: 0
@@ -285,7 +285,7 @@ try {
     .slice(0, 4)
     .map(f => ({
       ...f,
-      contract: f.contract || { fightsRemaining: 3, payPerFight: 10000, winBonus: 10000, exclusivity: true, endDate: '2027-01-01' },
+      contract: { ...(f.contract || { fightsRemaining: 3, payPerFight: 10000, winBonus: 10000, exclusivity: true, endDate: '2027-01-01' }), promotionId: drawState.playerPromotionId },
       injuryStatus: null,
       medicalSuspension: null,
       fatigue: 0
@@ -324,7 +324,7 @@ try {
   }
 
   let explicitState = generateInitialWorld();
-  const explicitCandidates = Object.values(explicitState.fighters).filter(f => f.weightClass === 'Lightweight' && !f.isChampion).slice(0, 4).map(f => ({ ...f, contract: f.contract || { fightsRemaining: 3, payPerFight: 10000, winBonus: 10000, exclusivity: true, endDate: '2027-01-01' }, injuryStatus: null, medicalSuspension: null, fatigue: 0 }));
+  const explicitCandidates = Object.values(explicitState.fighters).filter(f => f.weightClass === 'Lightweight' && !f.isChampion).slice(0, 4).map(f => ({ ...f, contract: { ...(f.contract || { fightsRemaining: 3, payPerFight: 10000, winBonus: 10000, exclusivity: true, endDate: '2027-01-01' }), promotionId: explicitState.playerPromotionId }, injuryStatus: null, medicalSuspension: null, fatigue: 0 }));
   explicitCandidates.forEach(fighter => { explicitState.fighters[fighter.id] = fighter; });
   explicitState = createGrandPrixTournament(explicitState, { weightClass: 'Lightweight', name: 'Explicit Winner Grand Prix', titleShotPromised: false, participantIds: explicitCandidates.map(fighter => fighter.id), reserveIds: [] });
   const explicitTourneyId = Object.keys(explicitState.tournaments).find(id => explicitState.tournaments[id].name === 'Explicit Winner Grand Prix')!;
@@ -344,7 +344,7 @@ try {
     .slice(0, 6)
     .map(f => ({
       ...f,
-      contract: f.contract || { fightsRemaining: 3, payPerFight: 10000, winBonus: 10000, exclusivity: true, endDate: '2027-01-01' },
+      contract: { ...(f.contract || { fightsRemaining: 3, payPerFight: 10000, winBonus: 10000, exclusivity: true, endDate: '2027-01-01' }), promotionId: state2.playerPromotionId },
       injuryStatus: null,
       medicalSuspension: null,
       fatigue: 0
@@ -415,7 +415,7 @@ try {
   const candidates8 = lwFighters8.slice(0, 11).map(f => {
     return {
       ...f,
-      contract: f.contract || { fightsRemaining: 4, payPerFight: 10000, winBonus: 10000, exclusivity: true, endDate: '2027-01-01' },
+      contract: { ...(f.contract || { fightsRemaining: 4, payPerFight: 10000, winBonus: 10000, exclusivity: true, endDate: '2027-01-01' }), promotionId: state8.playerPromotionId },
       injuryStatus: null,
       medicalSuspension: null,
       fatigue: 0
@@ -585,7 +585,7 @@ try {
 
   console.log("\n=== RUNNING EMERGENCY RESERVE SIGNING REGRESSION ===");
   let emergencyState = generateInitialWorld(2026);
-  const emergencyCandidates = Object.values(emergencyState.fighters).filter(f => f.weightClass === 'Lightweight' && !f.isChampion).slice(0, 4).map(f => ({ ...f, contract: { fightsRemaining: 1, payPerFight: 5000, winBonus: 5000, exclusivity: true, endDate: '2027-01-01' }, injuryStatus: null, medicalSuspension: null, fatigue: 0 }));
+  const emergencyCandidates = Object.values(emergencyState.fighters).filter(f => f.weightClass === 'Lightweight' && !f.isChampion).slice(0, 4).map(f => ({ ...f, contract: { promotionId: emergencyState.playerPromotionId, fightsRemaining: 1, payPerFight: 5000, winBonus: 5000, exclusivity: true, endDate: '2027-01-01' }, injuryStatus: null, medicalSuspension: null, fatigue: 0 }));
   emergencyCandidates.forEach(f => { emergencyState.fighters[f.id] = f; });
   emergencyState = createGrandPrixTournament(emergencyState, { weightClass: 'Lightweight', name: 'Emergency Reserve Regression GP', titleShotPromised: false, participantIds: emergencyCandidates.map(f => f.id), reserveIds: [] });
   const emergencyTournamentId = Object.keys(emergencyState.tournaments).find(id => emergencyState.tournaments[id].name === 'Emergency Reserve Regression GP')!;
@@ -605,7 +605,7 @@ try {
   console.log("\n=== RUNNING ACTIVE 4-MAN SEMIFINAL RETRY REGRESSION ===");
   let retryState = generateInitialWorld(2027);
   retryState.currentDate = '2026-06-01';
-  const retryCandidates = Object.values(retryState.fighters).filter(f => f.weightClass === 'Lightweight' && !f.isChampion).slice(0, 6).map(f => ({ ...f, contract: { fightsRemaining: 4, payPerFight: 5000, winBonus: 5000, exclusivity: true, endDate: '2027-12-31' }, injuryStatus: null, medicalSuspension: null, fatigue: 0 }));
+  const retryCandidates = Object.values(retryState.fighters).filter(f => f.weightClass === 'Lightweight' && !f.isChampion).slice(0, 6).map(f => ({ ...f, contract: { promotionId: retryState.playerPromotionId, fightsRemaining: 4, payPerFight: 5000, winBonus: 5000, exclusivity: true, endDate: '2027-12-31' }, injuryStatus: null, medicalSuspension: null, fatigue: 0 }));
   retryCandidates.forEach(f => { retryState.fighters[f.id] = f; });
   retryState = createGrandPrixTournament(retryState, { weightClass: 'Lightweight', name: 'Active Semifinal Retry GP', titleShotPromised: false, participantIds: retryCandidates.slice(0, 4).map(f => f.id), reserveIds: retryCandidates.slice(4).map(f => f.id) });
   const retryTournamentId = Object.keys(retryState.tournaments).find(id => retryState.tournaments[id].name === 'Active Semifinal Retry GP')!;

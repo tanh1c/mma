@@ -2,6 +2,7 @@ import type { GameState, SeasonObjective, SeasonObjectiveCategory, SeasonObjecti
 import '../../i18n';
 import { fixedT, type Language } from '../localization';
 import { stableCareerSeed } from './career';
+import { applyPromotionTransaction } from './promotionEconomy';
 
 const snapshot = (state: GameState, year: number): SeasonSnapshot => ({
   year,
@@ -56,7 +57,7 @@ export function getSeasonObjectiveProgress(state: GameState, item: SeasonObjecti
     case 'profitable_grand_prix': return Object.values(state.tournaments).filter(tournament => tournament.completedDate?.startsWith(year) && tournament.fights.some(slot => slot.eventId && (state.eventArchive[slot.eventId]?.profit ?? 0) > 0)).length;
     case 'strong_rivalry': return state.storylines.filter(storyline => storyline.type === 'Rivalry' && (storyline.intensity ?? 1) >= 3 && (storyline.createdDate ?? year).startsWith(year)).length;
     case 'award_candidate': return Object.values(state.yearlyAwards?.[item.year] ?? {}).filter(Boolean).length ? 1 : 0;
-    case 'profit': return Math.max(0, state.promotion.money - start.money - (state.financeLedger ?? []).filter(entry => entry.id.startsWith('objective-reward-') && entry.affectsCash).reduce((total, entry) => total + entry.amount, 0));
+    case 'profit': return Math.max(0, state.promotion.money - start.money - (state.promotionEconomies[state.playerPromotionId]?.ledger ?? []).filter(entry => entry.category === 'objective_reward').reduce((total, entry) => total + entry.amount, 0));
     case 'fanbase_growth': return Math.max(0, state.promotion.fanbase - start.fanbase);
   }
 }
@@ -75,24 +76,35 @@ export function refreshSeasonObjectives(state: GameState, year: number, language
     fanbase_growth: t($ => $.objectives.kinds.fanbaseGrowth)
   };
   const current = initialized.drama.objectives[year] ?? [];
-  let promotion = initialized.promotion;
-  let financeLedger = [...(initialized.financeLedger ?? [])];
+  let next = initialized;
   let changed = initialized !== state;
   const objectives = current.map(item => {
     const progress = getSeasonObjectiveProgress(initialized, item);
     const completed = progress >= item.target;
     let rewardGranted = item.rewardGranted;
     if (completed && !rewardGranted) {
-      rewardGranted = true;
-      const reward = 10_000;
-      promotion = { ...promotion, money: promotion.money + reward };
-      financeLedger = [{ id: `objective-reward-${item.id}`, date: initialized.currentDate, type: 'other', amount: reward, description: t($ => $.generated.objectives.reward, { kind: objectiveLabels[item.kind] }), affectsCash: true, isSummary: false }, ...financeLedger.filter(entry => entry.id !== `objective-reward-${item.id}`)];
+      const reward = applyPromotionTransaction(next, {
+        id: `objective-reward-${item.id}`,
+        promotionId: initialized.playerPromotionId,
+        date: initialized.currentDate,
+        settlementKey: `objective-${item.id}`,
+        category: 'objective_reward',
+        amount: 10_000,
+        transactionClass: 'income',
+        sourceId: item.id,
+        descriptionKey: t($ => $.generated.objectives.reward, { kind: objectiveLabels[item.kind] }),
+        repayLiabilities: true
+      });
+      if (reward.ok) {
+        next = reward.state;
+        rewardGranted = true;
+      }
     }
     if (progress !== item.progress || completed !== item.completed || rewardGranted !== item.rewardGranted) changed = true;
     return { ...item, progress, completed, rewardGranted };
   });
   if (!changed) return state;
-  return { ...initialized, promotion, financeLedger, drama: { ...initialized.drama, objectives: { ...initialized.drama.objectives, [year]: objectives } } };
+  return { ...next, drama: { ...next.drama, objectives: { ...next.drama.objectives, [year]: objectives } } };
 }
 
 export function finalizeSeasonReview(state: GameState, year: number, language: Language = 'en'): GameState {

@@ -9,9 +9,14 @@ import { syncLegacyNewsToSocialFeed } from './social';
 import { getLocalizedFighterName, isLatinFighterName } from '../names';
 import { ensureCareerMetadata } from './career';
 import { ensurePersonalityTraits } from './personality';
+import { syncPlayerPromotionSnapshot } from './leagues';
+import { ensureRivalPromotions } from './rivalPromotions';
+import { initializeInternationalCompetitionState } from './internationalCompetitions';
+import { initializeContractMarketState, scheduleContractWindow } from './contractMarket';
+import { initializePromotionEconomies } from './promotionEconomy';
 
 const SAVE_KEY = 'cage-dynasty-save';
-export const CURRENT_SAVE_VERSION = 12;
+export const CURRENT_SAVE_VERSION = 15;
 
 export function createNewGame(): GameState {
   const state = generateInitialWorld();
@@ -66,10 +71,19 @@ export function importGameFromJSON(jsonString: string): GameState | null {
 function extractSaveState(state: GameState): Partial<GameState> {
   return {
     currentDate: state.currentDate,
+    playerPromotionId: state.playerPromotionId,
+    promotions: state.promotions,
     promotion: state.promotion,
     fighters: state.fighters,
     events: state.events,
     venues: state.venues,
+    rankingsByPromotion: state.rankingsByPromotion,
+    titlesByPromotion: state.titlesByPromotion,
+    beltsByPromotion: state.beltsByPromotion,
+    worldRankings: state.worldRankings,
+    internationalTitles: state.internationalTitles,
+    internationalBelts: state.internationalBelts,
+    internationalCompetitionYears: state.internationalCompetitionYears,
     rankings: state.rankings,
     titles: state.titles,
     belts: state.belts,
@@ -87,13 +101,15 @@ function extractSaveState(state: GameState): Partial<GameState> {
     mediaDeals: state.mediaDeals,
     financeLedger: state.financeLedger,
     tournaments: state.tournaments || {},
+    contractMarket: state.contractMarket,
+    promotionEconomies: state.promotionEconomies,
     seasonPlans: state.seasonPlans || {},
     careerEcosystem: state.careerEcosystem,
     drama: state.drama
   };
 }
 
-function normalizeContract(contract: any, currentDate: string): Contract | null {
+function normalizeContract(contract: any, currentDate: string, promotionId: string): Contract | null {
   if (!contract || typeof contract !== 'object') return null;
   const fightsRemaining = Math.max(0, Number(contract.fightsRemaining) || 0);
   const endDate = typeof contract.endDate === 'string' && !Number.isNaN(Date.parse(contract.endDate))
@@ -102,7 +118,9 @@ function normalizeContract(contract: any, currentDate: string): Contract | null 
   const counterOffer = contract.counterOffer && typeof contract.counterOffer === 'object' && typeof contract.counterOffer.expiresDate === 'string'
     ? contract.counterOffer
     : undefined;
-  return { ...contract, fightsRemaining, endDate, counterOffer };
+  const normalizedContract = { ...contract };
+  delete normalizedContract.counterOffer;
+  return { ...normalizedContract, promotionId: contract.promotionId || promotionId, fightsRemaining, endDate, ...(counterOffer ? { counterOffer } : {}) };
 }
 
 export function validateAndMigrateState(parsed: any): GameState | null {
@@ -112,6 +130,13 @@ export function validateAndMigrateState(parsed: any): GameState | null {
   
   // Create a shallow copy for migration
   let state = { ...parsed };
+  const playerPromotionId = state.playerPromotionId || state.promotion.id;
+  state.playerPromotionId = playerPromotionId;
+  state.promotion = { ...state.promotion, id: playerPromotionId, control: 'player' };
+  state.promotions = {
+    ...(state.promotions || {}),
+    [playerPromotionId]: state.promotion
+  };
 
   // Check for missing properties from earlier versions
   if (state.storylines === undefined) {
@@ -167,7 +192,7 @@ export function validateAndMigrateState(parsed: any): GameState | null {
       f.lastFightDate = null;
     }
 
-    f.contract = normalizeContract(f.contract, state.currentDate);
+    f.contract = normalizeContract(f.contract, state.currentDate, playerPromotionId);
     f.counterOffer = f.counterOffer && typeof f.counterOffer === 'object' && typeof f.counterOffer.expiresDate === 'string' ? f.counterOffer : undefined;
     f = ensurePersonalityTraits(ensureCareerMetadata(f, currentYear));
     state.fighters[id] = f;
@@ -175,6 +200,8 @@ export function validateAndMigrateState(parsed: any): GameState | null {
 
   for (const eventId in state.events || {}) {
     const event = state.events[eventId];
+    if (event.promotionId === undefined) event.promotionId = playerPromotionId;
+    if (event.scope === undefined) event.scope = event.promotionId === null ? 'international' : 'promotion';
     event.fights = (event.fights || []).map((fight: any) => ({
       ...fight,
       campFocus: ['balanced', 'striking', 'wrestling', 'cardio', 'recovery'].includes(fight.campFocus) ? fight.campFocus : 'balanced',
@@ -265,6 +292,33 @@ export function validateAndMigrateState(parsed: any): GameState | null {
     }
   }
   
+  for (const belt of Object.values(state.belts) as any[]) {
+    if (belt.promotionId === undefined) belt.promotionId = playerPromotionId;
+  }
+  for (const fight of Object.values(state.fightArchive || {}) as any[]) {
+    if (fight.promotionId === undefined) fight.promotionId = playerPromotionId;
+    if (fight.scope === undefined) fight.scope = fight.promotionId === null ? 'international' : 'promotion';
+  }
+  for (const event of Object.values(state.eventArchive || {}) as any[]) {
+    if (event.promotionId === undefined) event.promotionId = playerPromotionId;
+    if (event.scope === undefined) event.scope = event.promotionId === null ? 'international' : 'promotion';
+  }
+  for (const item of state.titleHistory as any[]) {
+    if (item.promotionId === undefined) item.promotionId = playerPromotionId;
+    if (item.scope === undefined) item.scope = item.promotionId === null ? 'international' : 'promotion';
+  }
+  for (const tournament of Object.values(state.tournaments || {}) as any[]) {
+    if (tournament.promotionId === undefined) tournament.promotionId = playerPromotionId;
+    if (tournament.scope === undefined) tournament.scope = tournament.promotionId === null ? 'international' : 'promotion';
+  }
+  state.rankingsByPromotion = { ...(state.rankingsByPromotion || {}), [playerPromotionId]: state.rankings };
+  state.titlesByPromotion = { ...(state.titlesByPromotion || {}), [playerPromotionId]: state.titles };
+  state.beltsByPromotion = { ...(state.beltsByPromotion || {}), [playerPromotionId]: state.belts };
+  state.worldRankings ||= state.rankings;
+  Object.assign(state, initializeInternationalCompetitionState(state));
+  state.contractMarket = initializeContractMarketState(state, state.contractMarket);
+  state = scheduleContractWindow(state as GameState, new Date(state.currentDate).getFullYear());
+
   if (!state.seasonPlans) {
     state.seasonPlans = {};
   }
@@ -282,6 +336,8 @@ export function validateAndMigrateState(parsed: any): GameState | null {
     seasonReviews: drama.seasonReviews && typeof drama.seasonReviews === 'object' ? { ...drama.seasonReviews } : {}
   };
 
+  state = ensureRivalPromotions(syncLegacyNewsToSocialFeed(state as GameState));
+  state = initializePromotionEconomies(state);
   state.saveVersion = CURRENT_SAVE_VERSION;
-  return syncLegacyNewsToSocialFeed(syncChampionFlags(state as GameState));
+  return syncPlayerPromotionSnapshot(syncChampionFlags(state));
 }

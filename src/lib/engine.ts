@@ -1,12 +1,13 @@
-import { GameState, FightMatchup, FightResult, Event, WeightClass, YearlyAwardSet, FightArchiveItem, Fighter } from '../types/game';
+import { GameState, FightMatchup, FightResult, Event, WeightClass, YearlyAwardSet, FightArchiveItem, Fighter, TitleHistoryItem } from '../types/game';
 import { simulateFight } from './game/fightSimulator';
-import { calculateEventFinancials } from './game/economy';
+import { calculateEventFinancials, getDeterministicEventFinancialRolls } from './game/economy';
 import { coolRivalries, generateEventNewsAndStorylines, generateWeeklyNewsAndStorylines } from './game/news';
-import { applyTournamentProgression } from './game/tournament';
-import { getContractStatus } from './game/contracts';
+import { applyTournamentProgression, scheduleTournamentRound } from './game/tournament';
+import { getContractStatus, syncChampionFlags } from './game/contracts';
+export { syncChampionFlags } from './game/contracts';
 import { processAnnualCareerLifecycle } from './game/career';
 import { generateAnnualRookieClass } from './game/careerEcosystem';
-import { buildPromotionRankings, getFighterRankContext, updateRankings } from './game/rankings';
+import { buildPromotionRankings, buildWorldRankings, getFighterRankContext, updateRankings } from './game/rankings';
 import { generatePostFightSocial, generateScheduledFightSocial, syncLegacyNewsToSocialFeed } from './game/social';
 import { generateScheduledDrama } from './game/drama';
 import { ensureSeasonObjectives, finalizeSeasonReview, refreshSeasonObjectives } from './game/seasonObjectives';
@@ -14,6 +15,11 @@ import { v4 as uuidv4 } from 'uuid';
 import { format, addDays } from 'date-fns';
 import '../i18n';
 import { fixedT, formatCurrency, formatFightMethod, formatNumber, formatWeightClass, readLanguage, type Language } from './localization';
+import { getPlayerPromotionId, getScopedTitles, syncPlayerPromotionSnapshot } from './game/leagues';
+import { advanceRivalPromotions } from './game/rivalPromotions';
+import { ensureAnnualInternationalCompetitions } from './game/internationalCompetitions';
+import { advanceContractMarket, isActiveInternationalParticipant, isContractProtectedUntilResolution } from './game/contractMarket';
+import { refreshPromotionEconomy, settlePromotionEconomiesThroughDate, settlePromotionEvent } from './game/promotionEconomy';
 
 function randomInt(min: number, max: number): number {
   return Math.floor(Math.random() * (max - min + 1)) + min;
@@ -113,85 +119,67 @@ function generateYearlyAwardsForYear(state: GameState, year: number): YearlyAwar
   return awards;
 }
 
+export function advanceInternationalCompetitions(state: GameState, language: Language = readLanguage()): GameState {
+  let nextState = state;
+  for (const tournament of Object.values(nextState.tournaments).filter(item => item.scope === 'international' && (item.status === 'planned' || item.status === 'active'))) {
+    const current = nextState.tournaments[tournament.id];
+    const round = current.status === 'planned'
+      ? 'quarterfinal'
+      : current.fights.some(slot => slot.round === 'semifinal' && !slot.isCompleted)
+        ? 'semifinal'
+        : 'final';
+    const eventId = `international-event-${current.id}-${round}`;
+    if (!nextState.events[eventId]) {
+      const event: Event = {
+        id: eventId,
+        promotionId: null,
+        scope: 'international',
+        name: `${current.name} ${round}`,
+        date: nextState.currentDate,
+        venueId: Object.keys(nextState.venues)[0],
+        ticketPrice: 0,
+        marketingSpend: 0,
+        fights: [],
+        isCompleted: false
+      };
+      nextState = { ...nextState, events: { ...nextState.events, [eventId]: event } };
+    }
+
+    const event = nextState.events[eventId];
+    if (!event.isCompleted && !event.fights.length) {
+      try {
+        nextState = scheduleTournamentRound(nextState, current.id, round, eventId, language);
+      } catch {
+        const events = { ...nextState.events };
+        delete events[eventId];
+        nextState = { ...nextState, events };
+        continue;
+      }
+    }
+    if (!nextState.events[eventId]?.fights.length) {
+      const events = { ...nextState.events };
+      delete events[eventId];
+      nextState = { ...nextState, events };
+      continue;
+    }
+
+    for (let index = 0; index < nextState.events[eventId].fights.length; index++) {
+      const matchup = nextState.events[eventId].fights[index];
+      if (!matchup.result) nextState = applyFightResult(nextState, eventId, index, simulateFight(matchup, nextState.fighters[matchup.redCornerId], nextState.fighters[matchup.blueCornerId]), language);
+    }
+    nextState = finalizeEventFinancials(nextState, eventId, language);
+  }
+  return nextState;
+}
+
 export function advanceTime(state: GameState, days: number = 7, language: Language = readLanguage()): GameState {
   const t = fixedT(language);
   const nextDate = format(addDays(new Date(state.currentDate), days), 'yyyy-MM-dd');
-  const newState = { ...state, currentDate: nextDate };
-  
+  let newState = settlePromotionEconomiesThroughDate(state, nextDate);
+  newState = advanceContractMarket({ ...newState, currentDate: nextDate }, language);
+
   const oldYear = new Date(state.currentDate).getFullYear();
   const newYear = new Date(newState.currentDate).getFullYear();
-  
-  const oldMonth = new Date(state.currentDate).getMonth();
-  const newMonth = new Date(newState.currentDate).getMonth();
-  
-  if (newMonth !== oldMonth) {
-    // Process monthly income from deals
-    let monthlyIncome = 0;
-    
-    if (newState.sponsorDeals) {
-      newState.sponsorDeals = newState.sponsorDeals.map(deal => {
-        let isNowActive = deal.isActive;
-        if (isNowActive && new Date(newState.currentDate) >= new Date(deal.expiresDate)) {
-            isNowActive = false;
-        }
-        
-        if (isNowActive) {
-          monthlyIncome += deal.monthlyIncome;
-          if (!newState.financeLedger) newState.financeLedger = [];
-          newState.financeLedger.unshift({
-            id: uuidv4(),
-            date: newState.currentDate,
-            type: 'sponsor_monthly',
-            amount: deal.monthlyIncome,
-            description: t($ => $.generated.engine.monthlySponsorIncome, { name: deal.name }),
-            dealId: deal.id,
-            affectsCash: true,
-            isSummary: false
-          });
-        }
-        return { ...deal, isActive: isNowActive };
-      });
-    }
-    
-    if (newState.mediaDeals) {
-      newState.mediaDeals = newState.mediaDeals.map(deal => {
-        let isNowActive = deal.isActive;
-        if (isNowActive && new Date(newState.currentDate) >= new Date(deal.expiresDate)) {
-            isNowActive = false;
-        }
-
-        if (isNowActive) {
-          monthlyIncome += deal.monthlyIncome;
-          if (!newState.financeLedger) newState.financeLedger = [];
-          newState.financeLedger.unshift({
-            id: uuidv4(),
-            date: newState.currentDate,
-            type: 'media_monthly',
-            amount: deal.monthlyIncome,
-            description: t($ => $.generated.engine.monthlyMediaIncome, { name: deal.name }),
-            dealId: deal.id,
-            affectsCash: true,
-            isSummary: false
-          });
-        }
-        return { ...deal, isActive: isNowActive };
-      });
-    }
-    
-    if (monthlyIncome > 0) {
-      newState.promotion = {
-        ...newState.promotion,
-        money: newState.promotion.money + monthlyIncome
-      };
-      // Don't flood news, just silently add money, or maybe one combined news item?
-      // actually, just silently add to avoid news spam
-    }
-    
-    // Keep ledger bounded
-    if (newState.financeLedger && newState.financeLedger.length > 500) {
-      newState.financeLedger = newState.financeLedger.slice(0, 500);
-    }
-  }
 
   if (newYear > oldYear) {
     if (!newState.yearlyAwards) newState.yearlyAwards = {};
@@ -210,7 +198,7 @@ export function advanceTime(state: GameState, days: number = 7, language: Langua
     }
   }
   
-  const newFighters = { ...state.fighters };
+  const newFighters = { ...newState.fighters };
 
   // Progression, aging, healing
   Object.values(newFighters).forEach(fighter => {
@@ -247,7 +235,7 @@ export function advanceTime(state: GameState, days: number = 7, language: Langua
 
     if (f.contract) {
       const contractStatus = getContractStatus(f.contract, nextDate);
-      if (contractStatus === 'expired') {
+      if (contractStatus === 'expired' && !isContractProtectedUntilResolution(newState, f.id, nextDate) && !isActiveInternationalParticipant(newState, f.id)) {
         if (f.isChampion) {
           const alreadyNotified = newState.news.some(item => item.type === 'contract' && item.content.includes(f.lastName) && item.date >= format(addDays(new Date(nextDate), -30), 'yyyy-MM-dd'));
           if (!alreadyNotified) {
@@ -320,8 +308,17 @@ export function advanceTime(state: GameState, days: number = 7, language: Langua
   let objectiveState = ensureSeasonObjectives(newState, oldYear);
   objectiveState = refreshSeasonObjectives(objectiveState, oldYear, language);
   if (newYear > oldYear) objectiveState = ensureSeasonObjectives(finalizeSeasonReview(objectiveState, oldYear, language), newYear);
+  const rivalState = advanceRivalPromotions(objectiveState, language);
+  const internationalState = nextDate >= `${newYear}-07-01`
+    ? advanceInternationalCompetitions(ensureAnnualInternationalCompetitions(rivalState, newYear, language), language)
+    : rivalState;
+  const marketState = advanceContractMarket(internationalState, language);
+  const finalState = generateScheduledFightSocial(syncLegacyNewsToSocialFeed(generateWeeklyNewsAndStorylines(generateScheduledDrama(coolRivalries(marketState, nextDate), nextDate, language), days, language)), nextDate, language);
 
-  return generateScheduledFightSocial(syncLegacyNewsToSocialFeed(generateWeeklyNewsAndStorylines(generateScheduledDrama(coolRivalries(objectiveState, nextDate), nextDate, language), days, language)), nextDate, language);
+  return Object.keys(finalState.promotions).reduce(
+    (next, promotionId) => refreshPromotionEconomy(next, promotionId),
+    finalState
+  );
 }
 
 export function validateTitleFight(
@@ -408,22 +405,23 @@ export function applyFightResult(state: GameState, eventId: string, fightIndex: 
   const t = fixedT(language);
   const event = state.events[eventId];
   if (!event || event.isCompleted) return state;
-  
+  const playerPromotionId = getPlayerPromotionId(state);
+  const isInternational = event.scope === 'international' && event.promotionId === null;
+  const promotionId = isInternational ? playerPromotionId : event.promotionId ?? playerPromotionId;
+  const scopedTitles = getScopedTitles(state, promotionId);
+
   const matchup = event.fights[fightIndex];
   if (!matchup || matchup.result) return state; // Already simulated
 
-  const newState = { 
-    ...state, 
+  const titles = Object.fromEntries(Object.entries(scopedTitles).map(([weightClass, title]) => [weightClass, { ...title }])) as GameState['titles'];
+  const newState = {
+    ...state,
     events: { ...state.events },
     fighters: { ...state.fighters },
     news: [...state.news],
-    titles: { ...state.titles }
+    titles: isInternational ? state.titles : promotionId === playerPromotionId ? titles : state.titles,
+    titlesByPromotion: isInternational ? state.titlesByPromotion : { ...state.titlesByPromotion, [promotionId]: titles }
   };
-  
-  // Deep clone titles
-  for (const wc in newState.titles) {
-    newState.titles[wc as WeightClass] = { ...newState.titles[wc as WeightClass] };
-  }
 
   const newEvent = { ...event, fights: [...event.fights] };
   const updatedMatchup = { ...matchup };
@@ -433,7 +431,7 @@ export function applyFightResult(state: GameState, eventId: string, fightIndex: 
   
   if (!red || !blue) return state;
 
-  const titleValidation = validateTitleFight(updatedMatchup, newState.titles);
+  const titleValidation = validateTitleFight(updatedMatchup, titles);
   if (!titleValidation.valid) {
       const titleReason = titleValidation.reason === 'Invalid weight class for title.' ? t($ => $.generated.engine.invalidWeightClass)
         : titleValidation.reason === 'Unification fight requires both undisputed and interim champions.' ? t($ => $.generated.engine.unificationRequiresChampions)
@@ -556,7 +554,7 @@ export function applyFightResult(state: GameState, eventId: string, fightIndex: 
     const winner = result.winnerId === red.id ? newRed : newBlue;
     const loser = result.winnerId === red.id ? newBlue : newRed;
     
-    const titleState = newState.titles[updatedMatchup.weightClass];
+    const titleState = titles[updatedMatchup.weightClass];
     const previousChampionId = titleState.undisputedChampionId;
     const previousInterimId = titleState.interimChampionId;
     const fightType = updatedMatchup.titleFightType || (titleState.interimChampionId && titleState.undisputedChampionId ? 'unification' : 'undisputed');
@@ -656,7 +654,7 @@ export function applyFightResult(state: GameState, eventId: string, fightIndex: 
     titleState.status = deriveTitleStatus(titleState, newState.currentDate);
   } else if (updatedMatchup.isTitleFight && !result.winnerId) {
      // Draw in a title fight
-     const titleState = newState.titles[updatedMatchup.weightClass];
+     const titleState = titles[updatedMatchup.weightClass];
      const fightType = updatedMatchup.titleFightType || (titleState.interimChampionId && titleState.undisputedChampionId ? 'unification' : 'undisputed');
      
      result.titleChangeInfo = {
@@ -668,11 +666,11 @@ export function applyFightResult(state: GameState, eventId: string, fightIndex: 
   newRed.lastFightDate = newState.currentDate;
   newBlue.lastFightDate = newState.currentDate;
   
-  const titleState = newState.titles[updatedMatchup.weightClass];
+  const titleState = titles[updatedMatchup.weightClass];
   const isRedChamp = newRed.isChampion || newRed.id === titleState?.undisputedChampionId || newRed.id === titleState?.interimChampionId;
   const isBlueChamp = newBlue.isChampion || newBlue.id === titleState?.undisputedChampionId || newBlue.id === titleState?.interimChampionId;
 
-  if (newRed.contract && getContractStatus(newRed.contract, newState.currentDate) === 'expired') {
+  if (newRed.contract && getContractStatus(newRed.contract, newState.currentDate) === 'expired' && !isActiveInternationalParticipant(newState, newRed.id)) {
       if (isRedChamp) {
         newState.news.unshift({
             id: uuidv4(), date: newState.currentDate, type: 'contract',
@@ -684,7 +682,7 @@ export function applyFightResult(state: GameState, eventId: string, fightIndex: 
       }
   }
 
-  if (newBlue.contract && getContractStatus(newBlue.contract, newState.currentDate) === 'expired') {
+  if (newBlue.contract && getContractStatus(newBlue.contract, newState.currentDate) === 'expired' && !isActiveInternationalParticipant(newState, newBlue.id)) {
       if (isBlueChamp) {
         newState.news.unshift({
             id: uuidv4(), date: newState.currentDate, type: 'contract',
@@ -709,22 +707,96 @@ export function applyFightResult(state: GameState, eventId: string, fightIndex: 
     finalState = applyTournamentProgression(finalState, updatedMatchup.tournamentId, updatedMatchup.tournamentFightSlotId, result.winnerId, loserId, language);
   }
 
-  return { ...finalState, rankings: buildPromotionRankings(finalState).newRankings };
+  if (isInternational) return { ...finalState, worldRankings: buildWorldRankings(finalState) };
+  const newRankings = buildPromotionRankings(finalState, promotionId).newRankings;
+  return syncPlayerPromotionSnapshot(promotionId === getPlayerPromotionId(finalState)
+    ? { ...finalState, rankings: newRankings }
+    : { ...finalState, rankingsByPromotion: { ...finalState.rankingsByPromotion, [promotionId]: newRankings } });
+}
+
+function applyTitleHistoryResult(titleHistory: TitleHistoryItem[], fight: FightMatchup, event: Event, promotionId: string, language: Language): TitleHistoryItem[] {
+  if (!fight.isTitleFight || !fight.result?.titleChangeInfo) return titleHistory;
+  const result = fight.result;
+  const change = result.titleChangeInfo;
+  const t = fixedT(language);
+  let next = titleHistory;
+
+  if (change.type === 'new_champion' || change.type === 'vacant_title_won' || change.type === 'interim_won' || change.type === 'unified') {
+    if (change.previousChampionId) {
+      next = next.map(reign => reign.scope === 'promotion' && reign.promotionId === promotionId && reign.weightClass === fight.weightClass && reign.fighterId === change.previousChampionId && reign.status === 'active'
+        ? { ...reign, status: change.type === 'unified' && reign.beltType === 'interim' ? 'cleared' : 'lost', dateLost: event.date, lostToFighterId: result.winnerId || null, lossEventId: event.id, note: change.type === 'unified' && reign.beltType === 'interim' ? t($ => $.generated.engine.clearedByUnification) : reign.note }
+        : reign);
+    }
+    if (result.winnerId && change.type !== 'unified') {
+      next = [...next, { id: uuidv4(), promotionId, scope: 'promotion', weightClass: fight.weightClass, fighterId: result.winnerId, dateWon: event.date, dateLost: null, defenses: 0, wonFromFighterId: change.previousChampionId || null, status: 'active', beltType: change.type === 'interim_won' ? 'interim' : 'undisputed', winEventId: event.id }];
+    } else if (result.winnerId) {
+      const hasUndisputedReign = next.some(reign => reign.scope === 'promotion' && reign.promotionId === promotionId && reign.weightClass === fight.weightClass && reign.fighterId === result.winnerId && reign.status === 'active' && reign.beltType !== 'interim');
+      if (hasUndisputedReign) {
+        next = next.map(reign => reign.scope === 'promotion' && reign.promotionId === promotionId && reign.weightClass === fight.weightClass && reign.fighterId === result.winnerId && reign.status === 'active' && reign.beltType !== 'interim' ? { ...reign, defenses: reign.defenses + 1 } : reign);
+      } else {
+        next = next.map(reign => reign.scope === 'promotion' && reign.promotionId === promotionId && reign.weightClass === fight.weightClass && reign.fighterId === result.winnerId && reign.status === 'active' && reign.beltType === 'interim' ? { ...reign, status: 'unified', dateLost: event.date, note: t($ => $.generated.engine.unifiedIntoUndisputed) } : reign);
+        next = [...next, { id: uuidv4(), promotionId, scope: 'promotion', weightClass: fight.weightClass, fighterId: result.winnerId, dateWon: event.date, dateLost: null, defenses: 0, wonFromFighterId: change.previousChampionId || null, status: 'active', beltType: 'undisputed', winEventId: event.id }];
+      }
+    }
+  } else if ((change.type === 'title_defense' || change.type === 'interim_defense') && result.winnerId) {
+    next = next.map(reign => reign.scope === 'promotion' && reign.promotionId === promotionId && reign.weightClass === fight.weightClass && reign.fighterId === result.winnerId && reign.status === 'active' ? { ...reign, defenses: reign.defenses + 1 } : reign);
+  }
+
+  return next;
 }
 
 export function finalizeEventFinancials(state: GameState, eventId: string, language: Language = readLanguage()): GameState {
   const t = fixedT(language);
   const event = state.events[eventId];
   if (!event || event.isCompleted) return state;
+  const playerPromotionId = getPlayerPromotionId(state);
+  const eventPromotionId = event.promotionId === undefined ? playerPromotionId : event.promotionId;
+  const promotionId = eventPromotionId ?? playerPromotionId;
+  const scope = event.scope ?? 'promotion';
+  const scopedTitles = getScopedTitles(state, promotionId);
 
-  // Guard: Ensure all fights have results
-  if (event.fights.some(f => !f.result)) {
+  if (event.fights.some(fight => !fight.result)) {
     console.warn(`Cannot finalize event ${eventId}: Not all fights have results.`);
     return state;
   }
 
-  const newState = { 
-    ...state, 
+  if (scope === 'international') {
+    const completed = { ...event, isCompleted: true, results: { attendance: 0, gateRevenue: 0, broadcastRevenue: 0, fighterBasePay: 0, fighterWinBonuses: 0, venueCost: 0, marketingCost: 0, totalRevenue: 0, totalCost: 0, profit: 0, fanReaction: 0 } };
+    const fightArchive = { ...state.fightArchive };
+    const tournaments = { ...state.tournaments };
+    let titleHistory = [...state.titleHistory];
+    for (const fight of event.fights) {
+      if (!fight.result) continue;
+      const archiveId = `archive_${eventId}_${fight.redCornerId}_${fight.blueCornerId}`;
+      fightArchive[archiveId] = {
+        id: archiveId, promotionId: eventPromotionId, scope, date: event.date, eventId, eventName: event.name,
+        weightClass: fight.weightClass, redFighterId: fight.redCornerId, blueFighterId: fight.blueCornerId,
+        winnerId: fight.result.winnerId, method: fight.result.method, round: fight.result.round, time: fight.result.time,
+        isTitleFight: fight.isTitleFight, titleFightType: fight.titleFightType, tournamentId: fight.tournamentId,
+        tournamentRound: fight.tournamentRound, performanceRating: fight.result.performanceRating || 50,
+        scorecards: fight.result.scorecards, roundStats: fight.result.roundStats, commentary: fight.result.commentary,
+        injuries: fight.result.injuries, medicalSuspensions: fight.result.medicalSuspensions, titleChangeInfo: fight.result.titleChangeInfo
+      };
+      if (fight.tournamentId && fight.tournamentFightSlotId && tournaments[fight.tournamentId]) {
+        tournaments[fight.tournamentId] = {
+          ...tournaments[fight.tournamentId],
+          fights: tournaments[fight.tournamentId].fights.map(slot => slot.id === fight.tournamentFightSlotId ? { ...slot, fightArchiveId: archiveId } : slot)
+        };
+      }
+      titleHistory = applyTitleHistoryResult(titleHistory, fight, event, promotionId, language);
+    }
+    return {
+      ...state,
+      events: { ...state.events, [eventId]: completed },
+      fightArchive,
+      tournaments,
+      titleHistory,
+      eventArchive: { ...state.eventArchive, [eventId]: { id: eventId, promotionId: eventPromotionId, scope, name: event.name, date: event.date, attendance: 0, revenue: 0, cost: 0, profit: 0, fanReaction: 0, fightIds: event.fights.map(fight => `archive_${eventId}_${fight.redCornerId}_${fight.blueCornerId}`) } }
+    };
+  }
+
+  let newState = {
+    ...state,
     events: { ...state.events },
     promotion: { ...state.promotion },
     news: [...state.news]
@@ -757,10 +829,11 @@ export function finalizeEventFinancials(state: GameState, eventId: string, langu
     venue,
     newEvent.ticketPrice,
     newEvent.marketingSpend,
-    newState.promotion,
+    newState.promotions[promotionId],
     newState.storylines,
-    newState.titles,
-    newState.tournaments
+    scopedTitles,
+    newState.tournaments,
+    promotionId === playerPromotionId ? undefined : getDeterministicEventFinancialRolls(eventId)
   );
 
   let gpFinalBonus = 0;
@@ -779,7 +852,7 @@ export function finalizeEventFinancials(state: GameState, eventId: string, langu
   let dealBonusRevenue = 0;
   const numTitleFights = newEvent.fights.filter(f => f.isTitleFight).length;
   
-  if (newState.sponsorDeals) {
+  if (promotionId === playerPromotionId && newState.sponsorDeals) {
     newState.sponsorDeals.forEach(deal => {
       if (deal.isActive) {
         if (deal.bonusPerEvent) dealBonusRevenue += deal.bonusPerEvent;
@@ -790,7 +863,7 @@ export function finalizeEventFinancials(state: GameState, eventId: string, langu
     });
   }
   
-  if (newState.mediaDeals) {
+  if (promotionId === playerPromotionId && newState.mediaDeals) {
     newState.mediaDeals.forEach(deal => {
       if (deal.isActive) {
         if (deal.bonusPerEvent) dealBonusRevenue += deal.bonusPerEvent;
@@ -812,108 +885,23 @@ export function finalizeEventFinancials(state: GameState, eventId: string, langu
   results.totalRevenue += dealBonusRevenue;
   results.profit += dealBonusRevenue;
   
-  if (!newState.financeLedger) newState.financeLedger = [];
-  
-  newState.financeLedger.unshift({
-     id: uuidv4(),
-     date: newState.currentDate,
-     type: 'event_revenue',
-     amount: results.gateRevenue + results.broadcastRevenue - dealBonusRevenue - gpFinalBonus,
-     description: t($ => $.generated.engine.gateBroadcast, { event: newEvent.name }),
-     eventId: newEvent.id,
-     affectsCash: true,
-     isSummary: false
-  });
-
-  if (dealBonusRevenue > 0) {
-     const desc = extraCommercialBonus > 0
-       ? t($ => $.generated.engine.dealBonusesBoost, { event: newEvent.name })
-       : t($ => $.generated.engine.dealBonuses, { event: newEvent.name });
-     newState.financeLedger.unshift({
-        id: uuidv4(),
-        date: newState.currentDate,
-        type: 'sponsor_event_bonus', // generic label for this
-        amount: dealBonusRevenue,
-        description: desc,
-        eventId: newEvent.id,
-        affectsCash: true,
-        isSummary: false
-     });
-  }
-
-  if (gpFinalBonus > 0) {
-     newState.financeLedger.unshift({
-        id: uuidv4(),
-        date: newState.currentDate,
-        type: 'sponsor_event_bonus',
-        amount: gpFinalBonus,
-        description: hasEightManFinal
-          ? t($ => $.generated.engine.eightManCommercialBonus, { event: newEvent.name })
-          : t($ => $.generated.engine.fourManCommercialBonus, { event: newEvent.name }),
-        eventId: newEvent.id,
-        affectsCash: true,
-        isSummary: false
-     });
-  }
-  
-  newState.financeLedger.unshift({
-     id: uuidv4(),
-     date: newState.currentDate,
-     type: 'venue_cost',
-     amount: -results.venueCost,
-     description: t($ => $.generated.engine.venueRental, { venue: venue.name }),
-     eventId: newEvent.id,
-     affectsCash: true,
-     isSummary: false
-  });
-  
-  newState.financeLedger.unshift({
-     id: uuidv4(),
-     date: newState.currentDate,
-     type: 'marketing_cost',
-     amount: -results.marketingCost,
-     description: t($ => $.generated.engine.marketing, { event: newEvent.name }),
-     eventId: newEvent.id,
-     affectsCash: true,
-     isSummary: false
-  });
-  
-  newState.financeLedger.unshift({
-     id: uuidv4(),
-     date: newState.currentDate,
-     type: 'contract_payment',
-     amount: -(results.fighterBasePay + results.fighterWinBonuses),
-     description: t($ => $.generated.engine.fighterPurses, { event: newEvent.name }),
-     eventId: newEvent.id,
-     affectsCash: true,
-     isSummary: false
-  });
-
-  newState.financeLedger.unshift({
-     id: uuidv4(),
-     date: newState.currentDate,
-     type: results.profit >= 0 ? 'event_profit' : 'event_cost',
-     amount: results.profit,
-     description: t($ => $.generated.engine.netEvent, { event: newEvent.name }),
-     eventId: newEvent.id,
-     affectsCash: false,
-     isSummary: true
-  });
-
   newEvent.results = { ...results, titleChanges };
   newEvent.isCompleted = true;
   newState.events[eventId] = newEvent;
-  
+  newState = settlePromotionEvent(newState, eventId, results, dealBonusRevenue + gpFinalBonus);
+
+  const scopedPromotion = newState.promotions[promotionId];
   let fanbaseChange = 0;
   if (results.fanReaction >= 60) fanbaseChange = Math.floor(results.attendance * 0.05);
-  else if (results.fanReaction < 40) fanbaseChange = -Math.floor(newState.promotion.fanbase * 0.02);
-
-  newState.promotion = {
-    ...newState.promotion,
-    money: newState.promotion.money + results.profit,
-    reputation: Math.max(0, Math.min(100, newState.promotion.reputation + reputationChange)),
-    fanbase: Math.max(1000, newState.promotion.fanbase + fanbaseChange)
+  else if (results.fanReaction < 40) fanbaseChange = -Math.floor(scopedPromotion.fanbase * 0.02);
+  const updatedPromotion = {
+    ...scopedPromotion,
+    reputation: Math.max(0, Math.min(100, scopedPromotion.reputation + reputationChange)),
+    fanbase: Math.max(1000, scopedPromotion.fanbase + fanbaseChange)
   };
+  newState.promotions = { ...newState.promotions, [promotionId]: updatedPromotion };
+  if (promotionId === playerPromotionId) newState.promotion = updatedPromotion;
+  newState = refreshPromotionEconomy(newState, promotionId);
   
   newState.news.unshift({
     id: uuidv4(),
@@ -926,6 +914,8 @@ export function finalizeEventFinancials(state: GameState, eventId: string, langu
   // Archive event
   const eventArchiveItem: import('../types/game').EventArchiveItem = {
     id: newEvent.id,
+    promotionId,
+    scope,
     name: newEvent.name,
     date: newEvent.date,
     attendance: results.attendance,
@@ -953,6 +943,8 @@ export function finalizeEventFinancials(state: GameState, eventId: string, langu
     if (f.result) {
       newState.fightArchive[fightArchiveId] = {
         id: fightArchiveId,
+        promotionId: newEvent.promotionId ?? state.playerPromotionId,
+        scope: newEvent.scope ?? 'promotion',
         date: newEvent.date,
         eventId: newEvent.id,
         eventName: newEvent.name,
@@ -976,8 +968,8 @@ export function finalizeEventFinancials(state: GameState, eventId: string, langu
         titleChangeInfo: f.result.titleChangeInfo,
         redRecordAfter: `${newState.fighters[f.redCornerId]?.record.wins || 0}-${newState.fighters[f.redCornerId]?.record.losses || 0}-${newState.fighters[f.redCornerId]?.record.draws || 0}`,
         blueRecordAfter: `${newState.fighters[f.blueCornerId]?.record.wins || 0}-${newState.fighters[f.blueCornerId]?.record.losses || 0}-${newState.fighters[f.blueCornerId]?.record.draws || 0}`,
-        redRankAtFight: getFighterRankContext(state, f.redCornerId)?.label,
-        blueRankAtFight: getFighterRankContext(state, f.blueCornerId)?.label
+        redRankAtFight: getFighterRankContext(state, f.redCornerId, promotionId)?.label,
+        blueRankAtFight: getFighterRankContext(state, f.blueCornerId, promotionId)?.label
       };
 
       if (f.tournamentId && f.tournamentFightSlotId && newState.tournaments?.[f.tournamentId]) {
@@ -994,90 +986,7 @@ export function finalizeEventFinancials(state: GameState, eventId: string, langu
         };
       }
 
-      if (f.isTitleFight && f.result.titleChangeInfo) {
-        const tci = f.result.titleChangeInfo;
-        
-        if (tci.type === 'new_champion' || tci.type === 'vacant_title_won' || tci.type === 'interim_won' || tci.type === 'unified') {
-          // Update previous champion's dateLost immutably
-          if (tci.previousChampionId) {
-            newState.titleHistory = newState.titleHistory.map(th => {
-              if (th.weightClass === f.weightClass && 
-                  th.fighterId === tci.previousChampionId &&
-                  th.status === 'active') {
-                
-                const isCleared = tci.type === 'unified' && th.beltType === 'interim';
-                return {
-                  ...th,
-                  status: isCleared ? 'cleared' : 'lost',
-                  dateLost: newEvent.date,
-                  lostToFighterId: f.result?.winnerId || null,
-                  lossEventId: newEvent.id,
-                  note: isCleared ? t($ => $.generated.engine.clearedByUnification) : th.note
-                };
-              }
-              return th;
-            });
-          }
-          
-          if (f.result.winnerId && tci.type !== 'unified') {
-            const isInterim = tci.type === 'interim_won';
-            newState.titleHistory = [...newState.titleHistory, {
-              id: uuidv4(),
-              weightClass: f.weightClass,
-              fighterId: f.result.winnerId,
-              dateWon: newEvent.date,
-              dateLost: null,
-              defenses: 0,
-              wonFromFighterId: tci.previousChampionId || null,
-              status: 'active',
-              beltType: isInterim ? 'interim' : 'undisputed',
-              winEventId: newEvent.id
-            }];
-          } else if (f.result.winnerId && tci.type === 'unified') {
-            const hasUndisputedReign = newState.titleHistory.some(th => th.weightClass === f.weightClass && th.fighterId === f.result!.winnerId && th.status === 'active' && th.beltType !== 'interim');
-            
-            if (!hasUndisputedReign) {
-              // Case B: Interim beats Undisputed
-              newState.titleHistory = newState.titleHistory.map(th => {
-                if (th.weightClass === f.weightClass && th.fighterId === f.result!.winnerId && th.status === 'active' && th.beltType === 'interim') {
-                  return { ...th, status: 'unified', dateLost: newEvent.date, note: t($ => $.generated.engine.unifiedIntoUndisputed) };
-                }
-                return th;
-              });
-              
-              newState.titleHistory = [...newState.titleHistory, {
-                id: uuidv4(),
-                weightClass: f.weightClass,
-                fighterId: f.result.winnerId,
-                dateWon: newEvent.date,
-                dateLost: null,
-                defenses: 0,
-                wonFromFighterId: tci.previousChampionId || null,
-                status: 'active',
-                beltType: 'undisputed',
-                winEventId: newEvent.id
-              }];
-            } else {
-              // Case A: Undisputed beats Interim (defense)
-              newState.titleHistory = newState.titleHistory.map(th => {
-                if (th.weightClass === f.weightClass && th.fighterId === f.result!.winnerId && th.status === 'active' && th.beltType !== 'interim') {
-                  return { ...th, defenses: th.defenses + 1 };
-                }
-                return th;
-              });
-            }
-          }
-        } else if ((tci.type === 'title_defense' || tci.type === 'interim_defense') && f.result.winnerId) {
-          newState.titleHistory = newState.titleHistory.map(th => {
-            if (th.weightClass === f.weightClass && 
-                th.fighterId === f.result?.winnerId &&
-                th.status === 'active') {
-              return { ...th, defenses: th.defenses + 1 };
-            }
-            return th;
-          });
-        }
-      }
+      newState.titleHistory = applyTitleHistoryResult(newState.titleHistory, f, newEvent, promotionId, language);
     }
   });
 
@@ -1097,75 +1006,4 @@ export function quickSimulateEvent(state: GameState, eventId: string, language: 
   }
 
   return updateRankings(finalizeEventFinancials(tempState, eventId, language), eventId);
-}
-
-export function syncChampionFlags(state: GameState): GameState {
-  const newFighters = { ...state.fighters };
-  const newTitles = { ...state.titles };
-  let newTitleHistory = [...(state.titleHistory || [])];
-  
-  // Clear all flags first
-  Object.values(newFighters).forEach(f => {
-    if (f.isChampion) {
-       newFighters[f.id] = { ...f, isChampion: false, titleDefenses: 0 };
-    }
-  });
-
-  // Re-apply flags based on truth state
-  for (const wc in newTitles) {
-    let titleState = newTitles[wc as WeightClass];
-    let vacatedSomething = false;
-    
-    if (titleState && titleState.undisputedChampionId) {
-      const champId = titleState.undisputedChampionId;
-      const champ = newFighters[champId];
-      // If champion is missing or not signed to promotion, vacate title
-      if (!champ || !champ.contract) {
-        titleState = { ...titleState, undisputedChampionId: null, undisputedDefenses: 0 };
-        vacatedSomething = true;
-        // Update history
-        newTitleHistory = newTitleHistory.map(th => {
-          if (th.fighterId === champId && th.weightClass === wc && th.status === 'active' && th.beltType !== 'interim') {
-             return { ...th, status: 'vacated', dateLost: state.currentDate, lostToFighterId: null };
-          }
-          return th;
-        });
-      } else {
-        newFighters[champId] = { 
-          ...champ, 
-          isChampion: true, 
-          titleDefenses: titleState.undisputedDefenses 
-        };
-      }
-    }
-    
-    if (titleState && titleState.interimChampionId) {
-      const champId = titleState.interimChampionId;
-      const champ = newFighters[champId];
-      if (!champ || !champ.contract) {
-        titleState = { ...titleState, interimChampionId: null, interimDefenses: 0 };
-        vacatedSomething = true;
-        // Update history
-        newTitleHistory = newTitleHistory.map(th => {
-          if (th.fighterId === champId && th.weightClass === wc && th.status === 'active' && th.beltType === 'interim') {
-             return { ...th, status: 'vacated', dateLost: state.currentDate, lostToFighterId: null };
-          }
-          return th;
-        });
-      } else {
-        newFighters[champId] = { 
-          ...champ, 
-          isChampion: true,
-          titleDefenses: titleState.interimDefenses || 0
-        };
-      }
-    }
-    
-    if (vacatedSomething) {
-      titleState.status = deriveTitleStatus(titleState, state.currentDate);
-    }
-    newTitles[wc as WeightClass] = titleState;
-  }
-  
-  return { ...state, fighters: newFighters, titles: newTitles, titleHistory: newTitleHistory };
 }

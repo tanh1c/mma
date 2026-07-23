@@ -10,6 +10,8 @@ const FREE_AGENTS_NAV_LABEL = 'Sign Fighters';
 
 const Roster = React.lazy(() => import('./pages/Roster'));
 const FreeAgents = React.lazy(() => import('./pages/FreeAgents'));
+const ContractMarket = React.lazy(() => import('./pages/ContractMarket'));
+const PromotionFinances = React.lazy(() => import('./pages/PromotionFinances'));
 const Rankings = React.lazy(() => import('./pages/Rankings'));
 const News = React.lazy(() => import('./pages/News'));
 const FighterDetail = React.lazy(() => import('./pages/FighterDetail'));
@@ -19,6 +21,7 @@ const DebugSim = React.lazy(() => import('./pages/DebugSim'));
 const HistoryStats = React.lazy(() => import('./pages/HistoryStats'));
 const FightDetail = React.lazy(() => import('./pages/FightDetail').then(module => ({ default: module.FightDetail })));
 const Tournaments = React.lazy(() => import('./pages/Tournaments'));
+const Leagues = React.lazy(() => import('./pages/Leagues'));
 const CalendarPage = React.lazy(() => import('./pages/Calendar'));
 const MmaGuide = React.lazy(() => import('./pages/MmaGuide'));
 const Inbox = React.lazy(() => import('./pages/Inbox'));
@@ -26,7 +29,7 @@ const SettingsPage = React.lazy(() => import('./pages/Settings'));
 
 function App() {
   const { t } = useTranslation('translation');
-  const { currentView, setView, promotion, currentDate, fighters, events, advanceDays, newGame, saveGame, loadGame, exportGame, importGame } = useGameStore();
+  const { currentView, setView, promotion, currentDate, fighters, events, autopilotRun, advanceDays, newGame, saveGame, loadGame, exportGame, importGame } = useGameStore();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [search, setSearch] = useState('');
   const query = search.trim().toLowerCase();
@@ -62,6 +65,8 @@ function App() {
                case 'inbox': return <Inbox />;
                case 'roster': return <Roster />;
                case 'free-agents': return <FreeAgents />;
+               case 'contract-market': return <ContractMarket />;
+               case 'promotion-finances': return <PromotionFinances />;
                case 'fighter-detail': return <FighterDetail />;
                case 'event-builder': return <EventBuilder />;
                case 'simulation': return <EventSimulation />;
@@ -70,6 +75,7 @@ function App() {
                case 'history': return <HistoryStats />;
                case 'fight-detail': return <FightDetail />;
                case 'tournaments': return <Tournaments />;
+               case 'leagues': return <Leagues />;
                case 'debug': return <DebugSim />;
                case 'calendar': return <CalendarPage />;
                case 'mma-guide': return <MmaGuide />;
@@ -89,6 +95,8 @@ function App() {
     money={promotion.money}
     reputation={promotion.reputation}
     freeAgentsLabel={FREE_AGENTS_NAV_LABEL}
+    locked={autopilotRun.active}
+    lockProgress={{ value: autopilotRun.daysCompleted, max: autopilotRun.targetDays }}
     onAdvanceWeek={() => advanceDays(7)}
     utilities={<div className="space-y-2">
       <div className="relative"><input value={search} onChange={event => setSearch(event.target.value)} placeholder={t($ => $.search.placeholder)} aria-label={t($ => $.search.label)} className="h-10 w-full rounded border border-neutral-800 bg-neutral-950 px-3 text-xs text-white outline-none focus:border-neutral-500" />{searchResults.length > 0 && <div className="absolute bottom-11 z-20 w-full overflow-hidden rounded border border-neutral-700 bg-[#101114] shadow-xl">{searchResults.map(result => <button key={`${result.type}-${result.id}`} type="button" data-navigation-action onClick={() => { setView(result.type === 'fighter' ? 'fighter-detail' : 'event-builder', result.type === 'fighter' ? { fighterId: result.id } : { eventId: result.id }); setSearch(''); }} className="block w-full border-b border-neutral-800 px-3 py-2 text-left text-xs text-neutral-300 last:border-0 hover:bg-white/5 hover:text-white"><span className="mr-2 font-mono text-[9px] uppercase text-neutral-500">{result.type === 'fighter' ? t($ => $.search.fighter) : t($ => $.search.event)}</span>{result.label}</button>)}</div>}</div>

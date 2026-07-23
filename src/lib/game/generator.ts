@@ -1,18 +1,23 @@
 import { v4 as uuidv4 } from 'uuid';
+import { addDays, format } from 'date-fns';
 import {
   Fighter, FighterAttributes, FighterStyle, WeightClass, GameState, Venue, Promotion, RankingItem
 } from '../../types/game';
 import { getLocalizedFighterName, nicknames, nationalities } from '../names';
 import { WEIGHT_CLASSES, FIGHTER_STYLES, GAME_CONSTANTS } from './constants';
 import { PRNG } from './rng';
-import { initializeRankingScores, buildPromotionRankings } from './rankings';
+import { initializeRankingScores, buildPromotionRankings, buildWorldRankings } from './rankings';
 import { syncLegacyNewsToSocialFeed } from './social';
 import { getBeltBranding } from '../branding';
-import { getContractEndDate } from './contracts';
+import { getContractEndDate, getContractExpectation } from './contracts';
 import { deriveCareerPhase, derivePrimeEndAge } from './career';
 import { getFighterOverall, getPhysicalProfile } from './fighterRatings';
 import { ensurePersonalityTraits } from './personality';
 import { ensureSeasonObjectives } from './seasonObjectives';
+import { RIVAL_PROMOTION_TEMPLATES, syncPlayerPromotionSnapshot } from './leagues';
+import { initializeInternationalCompetitionState } from './internationalCompetitions';
+import { AI_MARKET_STARTING_CASH, initializeContractMarketState, scheduleContractWindow } from './contractMarket';
+import { initializePromotionEconomies } from './promotionEconomy';
 
 type FighterArchetype = 'Champion' | 'Contender' | 'Prospect' | 'Veteran' | 'Journeyman' | 'Can';
 
@@ -210,10 +215,60 @@ const initialVenues: Venue[] = [
   { id: uuidv4(), name: 'Grand Stadium', city: 'Tokyo', capacity: 35000, cost: 500000 },
 ];
 
+export function seedRivalPromotions(state: GameState): GameState {
+  let nextState = { ...state, fighters: { ...state.fighters }, promotions: { ...state.promotions }, rankingsByPromotion: { ...state.rankingsByPromotion }, titlesByPromotion: { ...state.titlesByPromotion }, beltsByPromotion: { ...state.beltsByPromotion }, titleHistory: [...state.titleHistory] };
+  RIVAL_PROMOTION_TEMPLATES.forEach((template, index) => {
+    if (nextState.promotions[template.id]) return;
+    nextState.promotions[template.id] = { ...template, money: AI_MARKET_STARTING_CASH, control: 'ai', nextAiEventDate: format(addDays(new Date(state.currentDate), 28 + index * 14), 'yyyy-MM-dd') };
+    const titles = structuredClone(state.titles);
+    const belts: GameState['belts'] = {};
+    for (const weightClass of WEIGHT_CLASSES) {
+      const roster = Object.values(nextState.fighters)
+        .filter(fighter => fighter.weightClass === weightClass && !fighter.contract && fighter.careerPhase !== 'retired')
+        .sort((a, b) => getFighterOverall(b) - getFighterOverall(a) || a.id.localeCompare(b.id))
+        .slice(0, 8);
+      for (const fighter of roster) {
+        const expectation = getContractExpectation(fighter, nextState.promotions[template.id]);
+        nextState.fighters[fighter.id] = {
+          ...fighter,
+          contract: {
+            promotionId: template.id,
+            fightsRemaining: expectation.fights,
+            payPerFight: expectation.basePay,
+            winBonus: expectation.winBonus,
+            exclusivity: true,
+            endDate: getContractEndDate(state.currentDate, expectation.fights)
+          }
+        };
+      }
+      titles[weightClass] = { weightClass, undisputedChampionId: roster[0]?.id ?? null, undisputedDefenses: 0, status: roster[0] ? 'active' : 'vacant' };
+      if (roster[0]) {
+        nextState.titleHistory.push({ id: `th_${template.id}_${weightClass.toLowerCase()}_${state.currentDate}`, promotionId: template.id, scope: 'promotion', weightClass, fighterId: roster[0].id, dateWon: state.currentDate, dateLost: null, defenses: 0, wonFromFighterId: null, status: 'active', beltType: 'undisputed' });
+      }
+      const beltId = `belt_${template.id}_${weightClass.toLowerCase()}`;
+      belts[beltId] = { id: beltId, promotionId: template.id, ...getBeltBranding(weightClass), weightClass, type: 'undisputed', prestige: 55 };
+    }
+    nextState.titlesByPromotion[template.id] = titles;
+    nextState.beltsByPromotion[template.id] = belts;
+    nextState.rankingsByPromotion[template.id] = structuredClone(state.rankings);
+    nextState.rankingsByPromotion[template.id] = buildPromotionRankings(nextState, template.id).newRankings;
+  });
+  return { ...nextState, worldRankings: buildWorldRankings(nextState) };
+}
+
 export function generateInitialWorld(seed?: number): GameState {
   const rng = new PRNG(seed || Math.floor(Math.random() * 1000000));
   
   const currentDate = '2025-01-01';
+  const promotion: Promotion = {
+    id: uuidv4(),
+    name: 'Cage Dynasty',
+    shortName: 'CD',
+    money: 250000,
+    reputation: 20,
+    fanbase: 1000,
+    control: 'player'
+  };
   const fighters: Record<string, Fighter> = {};
   const rankings: Record<WeightClass, RankingItem[]> = {
     'Bantamweight': [],
@@ -239,6 +294,7 @@ export function generateInitialWorld(seed?: number): GameState {
     const branding = getBeltBranding(wc as WeightClass);
     belts[beltId] = {
       id: beltId,
+      promotionId: promotion.id,
       ...branding,
       weightClass: wc as WeightClass,
       type: 'undisputed',
@@ -295,6 +351,8 @@ export function generateInitialWorld(seed?: number): GameState {
         shouldSign = true;
         titleHistory.push({
           id: `th_${f.id}_${currentDate}`,
+          promotionId: promotion.id,
+          scope: 'promotion',
           weightClass: wc as WeightClass,
           fighterId: f.id,
           dateWon: currentDate,
@@ -324,6 +382,7 @@ export function generateInitialWorld(seed?: number): GameState {
         
         const fightsRemaining = rng.randomInt(2, 5);
         fighters[f.id].contract = {
+          promotionId: promotion.id,
           fightsRemaining,
           payPerFight: Math.floor(basePay * popMultiplier),
           winBonus: Math.floor(basePay * popMultiplier),
@@ -338,21 +397,19 @@ export function generateInitialWorld(seed?: number): GameState {
   const venues: Record<string, Venue> = {};
   initialVenues.forEach(v => venues[v.id] = v);
 
-  const promotion: Promotion = {
-    id: uuidv4(),
-    name: 'Cage Dynasty',
-    shortName: 'CD',
-    money: 250000,
-    reputation: 20,
-    fanbase: 1000
-  };
-
   let initialState: GameState = {
     currentDate,
+    ...initializeInternationalCompetitionState(),
+    playerPromotionId: promotion.id,
+    promotions: { [promotion.id]: promotion },
     promotion,
     fighters,
     events: {},
     venues,
+    rankingsByPromotion: { [promotion.id]: rankings },
+    titlesByPromotion: { [promotion.id]: titles },
+    beltsByPromotion: { [promotion.id]: belts },
+    worldRankings: rankings,
     rankings,
     titles,
     belts,
@@ -402,6 +459,8 @@ export function generateInitialWorld(seed?: number): GameState {
     ],
     financeLedger: [],
     tournaments: {},
+    contractMarket: initializeContractMarketState({ currentDate }),
+    promotionEconomies: {},
     seasonPlans: {},
     careerEcosystem: { rookieClassYears: [], emergencyProspectDates: {} },
     drama: {
@@ -424,6 +483,10 @@ export function generateInitialWorld(seed?: number): GameState {
   }
   
   initialState.rankings = newRankings;
+  initialState.worldRankings = newRankings;
+  initialState = seedRivalPromotions(initialState);
+  initialState = initializePromotionEconomies(initialState);
+  initialState = scheduleContractWindow(initialState, new Date(currentDate).getFullYear());
 
-  return syncLegacyNewsToSocialFeed(ensureSeasonObjectives(initialState, 2025));
+  return syncPlayerPromotionSnapshot(syncLegacyNewsToSocialFeed(ensureSeasonObjectives(initialState, 2025)));
 }

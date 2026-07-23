@@ -1,6 +1,6 @@
 import { addDays, differenceInCalendarDays } from 'date-fns';
 import '../../i18n';
-import { Contract, ContractCounterOffer, Fighter, Promotion } from '../../types/game';
+import { Contract, ContractCounterOffer, Fighter, GameState, Promotion } from '../../types/game';
 import { fixedT, readLanguage, type Language } from '../localization';
 import { getFighterOverall, isProspect } from './fighterRatings';
 
@@ -21,6 +21,93 @@ export function getContractStatus(contract: Contract, currentDate: string): Cont
   if (contract.fightsRemaining <= 0 || contract.endDate < currentDate) return 'expired';
   const daysRemaining = differenceInCalendarDays(new Date(contract.endDate), new Date(currentDate));
   return contract.fightsRemaining <= 1 || daysRemaining <= CONTRACT_EXPIRING_DAYS ? 'expiring' : 'active';
+}
+
+export function isContractMarketOpen(state: Pick<GameState, 'contractMarket'>): boolean {
+  return Object.values(state.contractMarket.windows).some(window => window.status === 'open');
+}
+
+export function syncChampionFlags(state: GameState, promotionId?: string): GameState {
+  const playerPromotionId = state.playerPromotionId || state.promotion.id;
+  const titlesByPromotion = {
+    ...state.titlesByPromotion,
+    [playerPromotionId]: state.titles
+  };
+  const selectedPromotionIds = promotionId ? [promotionId] : Object.keys(titlesByPromotion);
+  const fighters = Object.fromEntries(Object.values(state.fighters).map(fighter => [fighter.id, { ...fighter, isChampion: false, titleDefenses: 0 }]));
+  const nextTitlesByPromotion = { ...titlesByPromotion };
+  let titleHistory = [...(state.titleHistory || [])];
+
+  for (const selectedPromotionId of selectedPromotionIds) {
+    const promotionTitles = structuredClone(titlesByPromotion[selectedPromotionId] || {}) as GameState['titles'];
+    for (const weightClass of Object.keys(promotionTitles)) {
+      const title = promotionTitles[weightClass as keyof GameState['titles']];
+      let vacated = false;
+      for (const beltType of ['undisputed', 'interim'] as const) {
+        const championKey = beltType === 'undisputed' ? 'undisputedChampionId' : 'interimChampionId';
+        const defensesKey = beltType === 'undisputed' ? 'undisputedDefenses' : 'interimDefenses';
+        const championId = title[championKey];
+        if (!championId) continue;
+        const champion = fighters[championId];
+        if (!champion || champion.contract?.promotionId !== selectedPromotionId) {
+          title[championKey] = null;
+          title[defensesKey] = 0;
+          vacated = true;
+          titleHistory = titleHistory.map(item => item.promotionId === selectedPromotionId && item.scope === 'promotion' && item.fighterId === championId && item.weightClass === weightClass && item.status === 'active' && (beltType === 'interim' ? item.beltType === 'interim' : item.beltType !== 'interim')
+            ? { ...item, status: 'vacated', dateLost: state.currentDate, lostToFighterId: null }
+            : item);
+        }
+      }
+      if (vacated) title.status = title.undisputedChampionId
+        ? title.interimChampionId ? 'unification_needed' : 'active'
+        : title.interimChampionId ? 'interim_active' : 'vacant';
+    }
+    nextTitlesByPromotion[selectedPromotionId] = promotionTitles;
+  }
+
+  for (const promotionTitles of Object.values(nextTitlesByPromotion)) {
+    for (const title of Object.values(promotionTitles)) {
+      if (title.undisputedChampionId) {
+        const champion = fighters[title.undisputedChampionId];
+        if (champion) fighters[champion.id] = { ...champion, isChampion: true, titleDefenses: Math.max(champion.titleDefenses || 0, title.undisputedDefenses) };
+      }
+      if (title.interimChampionId) {
+        const champion = fighters[title.interimChampionId];
+        if (champion) fighters[champion.id] = { ...champion, isChampion: true, titleDefenses: Math.max(champion.titleDefenses || 0, title.interimDefenses || 0) };
+      }
+    }
+  }
+
+  const internationalTitles = structuredClone(state.internationalTitles);
+  for (const tierTitles of Object.values(internationalTitles)) {
+    for (const [weightClass, title] of Object.entries(tierTitles)) {
+      const championId = title.undisputedChampionId;
+      if (!championId) continue;
+      const champion = fighters[championId];
+      if (!champion || champion.careerPhase === 'retired' || !champion.contract?.promotionId) {
+        title.undisputedChampionId = null;
+        title.undisputedDefenses = 0;
+        title.status = 'vacant';
+        titleHistory = titleHistory.map(item => item.scope === 'international' && item.promotionId === null && item.weightClass === weightClass && item.fighterId === championId && item.status === 'active'
+          ? { ...item, status: 'vacated', dateLost: state.currentDate, lostToFighterId: null }
+          : item);
+      } else {
+        fighters[championId] = { ...champion, isChampion: true, titleDefenses: Math.max(champion.titleDefenses || 0, title.undisputedDefenses) };
+      }
+    }
+  }
+
+  return {
+    ...state,
+    fighters,
+    titles: nextTitlesByPromotion[playerPromotionId],
+    titlesByPromotion: nextTitlesByPromotion,
+    internationalTitles,
+    titleHistory,
+    promotions: { ...state.promotions, [playerPromotionId]: state.promotion },
+    rankingsByPromotion: { ...state.rankingsByPromotion, [playerPromotionId]: state.rankings },
+    beltsByPromotion: { ...state.beltsByPromotion, [playerPromotionId]: state.belts }
+  };
 }
 
 export function createCounterOffer(basePay: number, winBonus: number, fights: number, interest: number, currentDate: string): ContractCounterOffer {

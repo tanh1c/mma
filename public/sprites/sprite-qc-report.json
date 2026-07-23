@@ -1,0 +1,578 @@
+{
+  "bundle": "mma-fighter-complete",
+  "totalAnimations": 51,
+  "passedAnimations": 51,
+  "failedAnimations": [],
+  "totalFrames": 334,
+  "outputFrameSize": [
+    256,
+    256
+  ],
+  "transparentOutput": true,
+  "acceptedSourceEdgeTouchAnimations": [
+    "fighter-clinch-entry-attacker",
+    "fighter-clinch-entry-defender",
+    "fighter-ko",
+    "fighter-sprawl-attacker",
+    "fighter-sprawl-defender",
+    "fighter-stand-up-from-ground",
+    "fighter-submission-attempt-defender",
+    "fighter-submission-finish-defender",
+    "fighter-tko-cover"
+  ],
+  "acceptanceRule": "Source-cell edge contact accepted only when output has no edge touch, no empty frame, and no clamped paste.",
+  "animations": {
+    "effect-block": {
+      "passed": true,
+      "emptyFrames": [],
+      "outputEdgeTouchFrames": [],
+      "pasteClampedFrames": [],
+      "acceptedSourceEdgeTouchFrames": [],
+      "bodyScaleCv": 0.5767,
+      "anchorYStd": 0.0462
+    },
+    "effect-dust": {
+      "passed": true,
+      "emptyFrames": [],
+      "outputEdgeTouchFrames": [],
+      "pasteClampedFrames": [],
+      "acceptedSourceEdgeTouchFrames": [],
+      "bodyScaleCv": 0.5119,
+      "anchorYStd": 0.0805
+    },
+    "effect-heavy-hit": {
+      "passed": true,
+      "emptyFrames": [],
+      "outputEdgeTouchFrames": [],
+      "pasteClampedFrames": [],
+      "acceptedSourceEdgeTouchFrames": [],
+      "bodyScaleCv": 0.4875,
+      "anchorYStd": 0.0324
+    },
+    "effect-kick-impact": {
+      "passed": true,
+      "emptyFrames": [],
+      "outputEdgeTouchFrames": [],
+      "pasteClampedFrames": [],
+      "acceptedSourceEdgeTouchFrames": [],
+      "bodyScaleCv": 0.5514,
+      "anchorYStd": 0.1241
+    },
+    "effect-knockdown": {
+      "passed": true,
+      "emptyFrames": [],
+      "outputEdgeTouchFrames": [],
+      "pasteClampedFrames": [],
+      "acceptedSourceEdgeTouchFrames": [],
+      "bodyScaleCv": 0.4134,
+      "anchorYStd": 0.0874
+    },
+    "effect-ko": {
+      "passed": true,
+      "emptyFrames": [],
+      "outputEdgeTouchFrames": [],
+      "pasteClampedFrames": [],
+      "acceptedSourceEdgeTouchFrames": [],
+      "bodyScaleCv": 0.5043,
+      "anchorYStd": 0.0163
+    },
+    "effect-light-hit": {
+      "passed": true,
+      "emptyFrames": [],
+      "outputEdgeTouchFrames": [],
+      "pasteClampedFrames": [],
+      "acceptedSourceEdgeTouchFrames": [],
+      "bodyScaleCv": 0.6922,
+      "anchorYStd": 0.045
+    },
+    "effect-sweat": {
+      "passed": true,
+      "emptyFrames": [],
+      "outputEdgeTouchFrames": [],
+      "pasteClampedFrames": [],
+      "acceptedSourceEdgeTouchFrames": [],
+      "bodyScaleCv": 0.4082,
+      "anchorYStd": 0.0433
+    },
+    "fighter-block-high": {
+      "passed": true,
+      "emptyFrames": [],
+      "outputEdgeTouchFrames": [],
+      "pasteClampedFrames": [],
+      "acceptedSourceEdgeTouchFrames": [],
+      "bodyScaleCv": 0.0148,
+      "anchorYStd": 0.0077
+    },
+    "fighter-block-low": {
+      "passed": true,
+      "emptyFrames": [],
+      "outputEdgeTouchFrames": [],
+      "pasteClampedFrames": [],
+      "acceptedSourceEdgeTouchFrames": [],
+      "bodyScaleCv": 0.0177,
+      "anchorYStd": 0.0055
+    },
+    "fighter-body-hook": {
+      "passed": true,
+      "emptyFrames": [],
+      "outputEdgeTouchFrames": [],
+      "pasteClampedFrames": [],
+      "acceptedSourceEdgeTouchFrames": [],
+      "bodyScaleCv": 0.0209,
+      "anchorYStd": 0.011
+    },
+    "fighter-body-kick": {
+      "passed": true,
+      "emptyFrames": [],
+      "outputEdgeTouchFrames": [],
+      "pasteClampedFrames": [],
+      "acceptedSourceEdgeTouchFrames": [],
+      "bodyScaleCv": 0.0383,
+      "anchorYStd": 0.0009
+    },
+    "fighter-clinch-entry-attacker": {
+      "passed": true,
+      "emptyFrames": [],
+      "outputEdgeTouchFrames": [],
+      "pasteClampedFrames": [],
+      "acceptedSourceEdgeTouchFrames": [
+        [
+          0,
+          3
+        ]
+      ],
+      "bodyScaleCv": 0.0536,
+      "anchorYStd": 0.0305
+    },
+    "fighter-clinch-entry-defender": {
+      "passed": true,
+      "emptyFrames": [],
+      "outputEdgeTouchFrames": [],
+      "pasteClampedFrames": [],
+      "acceptedSourceEdgeTouchFrames": [
+        [
+          0,
+          2
+        ],
+        [
+          1,
+          0
+        ]
+      ],
+      "bodyScaleCv": 0.0226,
+      "anchorYStd": 0.0382
+    },
+    "fighter-clinch-idle-attacker": {
+      "passed": true,
+      "emptyFrames": [],
+      "outputEdgeTouchFrames": [],
+      "pasteClampedFrames": [],
+      "acceptedSourceEdgeTouchFrames": [],
+      "bodyScaleCv": 0.0126,
+      "anchorYStd": 0.018
+    },
+    "fighter-clinch-idle-defender": {
+      "passed": true,
+      "emptyFrames": [],
+      "outputEdgeTouchFrames": [],
+      "pasteClampedFrames": [],
+      "acceptedSourceEdgeTouchFrames": [],
+      "bodyScaleCv": 0.0029,
+      "anchorYStd": 0.0087
+    },
+    "fighter-cross": {
+      "passed": true,
+      "emptyFrames": [],
+      "outputEdgeTouchFrames": [],
+      "pasteClampedFrames": [],
+      "acceptedSourceEdgeTouchFrames": [],
+      "bodyScaleCv": 0.0097,
+      "anchorYStd": 0.0022
+    },
+    "fighter-defeat": {
+      "passed": true,
+      "emptyFrames": [],
+      "outputEdgeTouchFrames": [],
+      "pasteClampedFrames": [],
+      "acceptedSourceEdgeTouchFrames": [],
+      "bodyScaleCv": 0.0256,
+      "anchorYStd": 0.0242
+    },
+    "fighter-dodge": {
+      "passed": true,
+      "emptyFrames": [],
+      "outputEdgeTouchFrames": [],
+      "pasteClampedFrames": [],
+      "acceptedSourceEdgeTouchFrames": [],
+      "bodyScaleCv": 0.0303,
+      "anchorYStd": 0.0022
+    },
+    "fighter-elbow-strike": {
+      "passed": true,
+      "emptyFrames": [],
+      "outputEdgeTouchFrames": [],
+      "pasteClampedFrames": [],
+      "acceptedSourceEdgeTouchFrames": [],
+      "bodyScaleCv": 0.0223,
+      "anchorYStd": 0.0066
+    },
+    "fighter-get-up": {
+      "passed": true,
+      "emptyFrames": [],
+      "outputEdgeTouchFrames": [],
+      "pasteClampedFrames": [],
+      "acceptedSourceEdgeTouchFrames": [],
+      "bodyScaleCv": 0.049,
+      "anchorYStd": 0.0491
+    },
+    "fighter-ground-position-bottom": {
+      "passed": true,
+      "emptyFrames": [],
+      "outputEdgeTouchFrames": [],
+      "pasteClampedFrames": [],
+      "acceptedSourceEdgeTouchFrames": [],
+      "bodyScaleCv": 0.0284,
+      "anchorYStd": 0.0956
+    },
+    "fighter-ground-position-top": {
+      "passed": true,
+      "emptyFrames": [],
+      "outputEdgeTouchFrames": [],
+      "pasteClampedFrames": [],
+      "acceptedSourceEdgeTouchFrames": [],
+      "bodyScaleCv": 0.0265,
+      "anchorYStd": 0.1095
+    },
+    "fighter-ground-and-pound-attacker": {
+      "passed": true,
+      "emptyFrames": [],
+      "outputEdgeTouchFrames": [],
+      "pasteClampedFrames": [],
+      "acceptedSourceEdgeTouchFrames": [],
+      "bodyScaleCv": 0.0403,
+      "anchorYStd": 0.0493
+    },
+    "fighter-ground-and-pound-defender": {
+      "passed": true,
+      "emptyFrames": [],
+      "outputEdgeTouchFrames": [],
+      "pasteClampedFrames": [],
+      "acceptedSourceEdgeTouchFrames": [],
+      "bodyScaleCv": 0.0234,
+      "anchorYStd": 0.1078
+    },
+    "fighter-high-kick": {
+      "passed": true,
+      "emptyFrames": [],
+      "outputEdgeTouchFrames": [],
+      "pasteClampedFrames": [],
+      "acceptedSourceEdgeTouchFrames": [],
+      "bodyScaleCv": 0.0244,
+      "anchorYStd": 0.0149
+    },
+    "fighter-hook": {
+      "passed": true,
+      "emptyFrames": [],
+      "outputEdgeTouchFrames": [],
+      "pasteClampedFrames": [],
+      "acceptedSourceEdgeTouchFrames": [],
+      "bodyScaleCv": 0.0242,
+      "anchorYStd": 0.0055
+    },
+    "fighter-hurt": {
+      "passed": true,
+      "emptyFrames": [],
+      "outputEdgeTouchFrames": [],
+      "pasteClampedFrames": [],
+      "acceptedSourceEdgeTouchFrames": [],
+      "bodyScaleCv": 0.022,
+      "anchorYStd": 0.0045
+    },
+    "fighter-idle": {
+      "passed": true,
+      "emptyFrames": [],
+      "outputEdgeTouchFrames": [],
+      "pasteClampedFrames": [],
+      "acceptedSourceEdgeTouchFrames": [],
+      "bodyScaleCv": 0.015,
+      "anchorYStd": 0.009
+    },
+    "fighter-jab": {
+      "passed": true,
+      "emptyFrames": [],
+      "outputEdgeTouchFrames": [],
+      "pasteClampedFrames": [],
+      "acceptedSourceEdgeTouchFrames": [],
+      "bodyScaleCv": 0.015,
+      "anchorYStd": 0.0076
+    },
+    "fighter-knee-strike": {
+      "passed": true,
+      "emptyFrames": [],
+      "outputEdgeTouchFrames": [],
+      "pasteClampedFrames": [],
+      "acceptedSourceEdgeTouchFrames": [],
+      "bodyScaleCv": 0.0329,
+      "anchorYStd": 0.0209
+    },
+    "fighter-knockdown": {
+      "passed": true,
+      "emptyFrames": [],
+      "outputEdgeTouchFrames": [],
+      "pasteClampedFrames": [],
+      "acceptedSourceEdgeTouchFrames": [],
+      "bodyScaleCv": 0.1401,
+      "anchorYStd": 0.131
+    },
+    "fighter-ko": {
+      "passed": true,
+      "emptyFrames": [],
+      "outputEdgeTouchFrames": [],
+      "pasteClampedFrames": [],
+      "acceptedSourceEdgeTouchFrames": [
+        [
+          0,
+          3
+        ],
+        [
+          1,
+          2
+        ]
+      ],
+      "bodyScaleCv": 0.1815,
+      "anchorYStd": 0.0848
+    },
+    "fighter-low-kick": {
+      "passed": true,
+      "emptyFrames": [],
+      "outputEdgeTouchFrames": [],
+      "pasteClampedFrames": [],
+      "acceptedSourceEdgeTouchFrames": [],
+      "bodyScaleCv": 0.0162,
+      "anchorYStd": 0.0049
+    },
+    "fighter-sprawl-attacker": {
+      "passed": true,
+      "emptyFrames": [],
+      "outputEdgeTouchFrames": [],
+      "pasteClampedFrames": [],
+      "acceptedSourceEdgeTouchFrames": [
+        [
+          0,
+          1
+        ],
+        [
+          0,
+          2
+        ],
+        [
+          0,
+          3
+        ],
+        [
+          1,
+          3
+        ]
+      ],
+      "bodyScaleCv": 0.1012,
+      "anchorYStd": 0.1103
+    },
+    "fighter-sprawl-defender": {
+      "passed": true,
+      "emptyFrames": [],
+      "outputEdgeTouchFrames": [],
+      "pasteClampedFrames": [],
+      "acceptedSourceEdgeTouchFrames": [
+        [
+          0,
+          2
+        ],
+        [
+          0,
+          3
+        ],
+        [
+          1,
+          1
+        ]
+      ],
+      "bodyScaleCv": 0.1443,
+      "anchorYStd": 0.1014
+    },
+    "fighter-stand-up-from-ground": {
+      "passed": true,
+      "emptyFrames": [],
+      "outputEdgeTouchFrames": [],
+      "pasteClampedFrames": [],
+      "acceptedSourceEdgeTouchFrames": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          1
+        ],
+        [
+          1,
+          3
+        ]
+      ],
+      "bodyScaleCv": 0.0767,
+      "anchorYStd": 0.0805
+    },
+    "fighter-stunned": {
+      "passed": true,
+      "emptyFrames": [],
+      "outputEdgeTouchFrames": [],
+      "pasteClampedFrames": [],
+      "acceptedSourceEdgeTouchFrames": [],
+      "bodyScaleCv": 0.0101,
+      "anchorYStd": 0.0008
+    },
+    "fighter-submission-attempt-attacker": {
+      "passed": true,
+      "emptyFrames": [],
+      "outputEdgeTouchFrames": [],
+      "pasteClampedFrames": [],
+      "acceptedSourceEdgeTouchFrames": [],
+      "bodyScaleCv": 0.0472,
+      "anchorYStd": 0.095
+    },
+    "fighter-submission-attempt-defender": {
+      "passed": true,
+      "emptyFrames": [],
+      "outputEdgeTouchFrames": [],
+      "pasteClampedFrames": [],
+      "acceptedSourceEdgeTouchFrames": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          1
+        ]
+      ],
+      "bodyScaleCv": 0.0585,
+      "anchorYStd": 0.1664
+    },
+    "fighter-submission-finish-attacker": {
+      "passed": true,
+      "emptyFrames": [],
+      "outputEdgeTouchFrames": [],
+      "pasteClampedFrames": [],
+      "acceptedSourceEdgeTouchFrames": [],
+      "bodyScaleCv": 0.0982,
+      "anchorYStd": 0.096
+    },
+    "fighter-submission-finish-defender": {
+      "passed": true,
+      "emptyFrames": [],
+      "outputEdgeTouchFrames": [],
+      "pasteClampedFrames": [],
+      "acceptedSourceEdgeTouchFrames": [
+        [
+          0,
+          3
+        ],
+        [
+          1,
+          3
+        ]
+      ],
+      "bodyScaleCv": 0.1138,
+      "anchorYStd": 0.1037
+    },
+    "fighter-takedown-attacker": {
+      "passed": true,
+      "emptyFrames": [],
+      "outputEdgeTouchFrames": [],
+      "pasteClampedFrames": [],
+      "acceptedSourceEdgeTouchFrames": [],
+      "bodyScaleCv": 0.0766,
+      "anchorYStd": 0.058
+    },
+    "fighter-takedown-defender": {
+      "passed": true,
+      "emptyFrames": [],
+      "outputEdgeTouchFrames": [],
+      "pasteClampedFrames": [],
+      "acceptedSourceEdgeTouchFrames": [],
+      "bodyScaleCv": 0.067,
+      "anchorYStd": 0.1117
+    },
+    "fighter-takedown-defense-attacker": {
+      "passed": true,
+      "emptyFrames": [],
+      "outputEdgeTouchFrames": [],
+      "pasteClampedFrames": [],
+      "acceptedSourceEdgeTouchFrames": [],
+      "bodyScaleCv": 0.061,
+      "anchorYStd": 0.0666
+    },
+    "fighter-takedown-defense-defender": {
+      "passed": true,
+      "emptyFrames": [],
+      "outputEdgeTouchFrames": [],
+      "pasteClampedFrames": [],
+      "acceptedSourceEdgeTouchFrames": [],
+      "bodyScaleCv": 0.0307,
+      "anchorYStd": 0.0238
+    },
+    "fighter-tap-out": {
+      "passed": true,
+      "emptyFrames": [],
+      "outputEdgeTouchFrames": [],
+      "pasteClampedFrames": [],
+      "acceptedSourceEdgeTouchFrames": [],
+      "bodyScaleCv": 0.0695,
+      "anchorYStd": 0.0935
+    },
+    "fighter-tko-cover": {
+      "passed": true,
+      "emptyFrames": [],
+      "outputEdgeTouchFrames": [],
+      "pasteClampedFrames": [],
+      "acceptedSourceEdgeTouchFrames": [
+        [
+          0,
+          3
+        ],
+        [
+          1,
+          2
+        ]
+      ],
+      "bodyScaleCv": 0.1308,
+      "anchorYStd": 0.0816
+    },
+    "fighter-victory": {
+      "passed": true,
+      "emptyFrames": [],
+      "outputEdgeTouchFrames": [],
+      "pasteClampedFrames": [],
+      "acceptedSourceEdgeTouchFrames": [],
+      "bodyScaleCv": 0.0244,
+      "anchorYStd": 0.0125
+    },
+    "fighter-walk-backward": {
+      "passed": true,
+      "emptyFrames": [],
+      "outputEdgeTouchFrames": [],
+      "pasteClampedFrames": [],
+      "acceptedSourceEdgeTouchFrames": [],
+      "bodyScaleCv": 0.0042,
+      "anchorYStd": 0.0474
+    },
+    "fighter-walk-forward": {
+      "passed": true,
+      "emptyFrames": [],
+      "outputEdgeTouchFrames": [],
+      "pasteClampedFrames": [],
+      "acceptedSourceEdgeTouchFrames": [],
+      "bodyScaleCv": 0.0106,
+      "anchorYStd": 0.0265
+    }
+  }
+}

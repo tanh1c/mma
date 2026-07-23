@@ -498,15 +498,10 @@ export default function DebugSim() {
     }
   };
 
-  const runAutoSim = (days: number) => {
-    const initialFights = Object.keys(store.fightArchive || {}).length;
-    store.advanceAutopilot(days, true);
-    
-    // We have to setTimeout to let state update, or just use getState
-    setTimeout(() => {
-       const reportData = calculateReport(useGameStore.getState(), initialFights);
-       setReport(reportData);
-    }, 100);
+  const runAutoSim = async (days: number) => {
+    const initialFights = Object.keys(useGameStore.getState().fightArchive || {}).length;
+    await useGameStore.getState().advanceAutopilot(days, true);
+    setReport(calculateReport(useGameStore.getState(), initialFights));
   };
 
   return (

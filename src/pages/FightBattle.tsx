@@ -1,16 +1,22 @@
-import { useEffect } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useGameStore } from '../store/gameStore';
 import { Button, DataSurface, PageHeader, Panel, StatusBadge } from '../components/ui';
 import { CountryFlag } from '../components/CountryFlag';
 import { FighterAvatar } from '../components/FighterAvatar';
+import { FightSpriteStage } from '../components/FightSpriteStage';
 import { FighterRankBadge } from '../components/FighterRankBadge';
 import type { FightCorner, FightPosition, FightSession, FightTimelineEvent } from '../lib/game/liveFight';
+import { advanceFightPlayback, fightPlaybackProgress, interpolateFightDisplay } from '../lib/game/fightPlayback';
 import { useTranslation } from 'react-i18next';
 import { useSettingsStore } from '../store/settingsStore';
 import { formatFightMethod, formatTitleFightType, formatWeightClass } from '../lib/localization';
 
 export default function FightBattle() {
   const { t } = useTranslation('translation');
+  const [spriteReady, setSpriteReady] = useState(false);
+  const [spriteFailed, setSpriteFailed] = useState(false);
+  const markSpriteReady = useCallback(() => setSpriteReady(true), []);
+  const markSpriteFailed = useCallback(() => setSpriteFailed(true), []);
   const language = useSettingsStore(state => state.language);
   const {
     selectedEventId,
@@ -20,6 +26,8 @@ export default function FightBattle() {
     activeEventSimulation,
     startLiveFight,
     advanceLiveFight,
+    checkpointLiveFightPlayback,
+    continueLiveFightRound,
     setLiveFightPlayback,
     toggleLiveFightPause,
     skipLiveFight,
@@ -33,12 +41,84 @@ export default function FightBattle() {
   const session = activeEventSimulation?.session;
   const status = activeEventSimulation?.status;
   const playbackSpeed = activeEventSimulation?.playbackSpeed ?? 1;
+  const playbackSnapshot = activeEventSimulation?.playbackSnapshot;
+  const eventElapsedMs = activeEventSimulation?.eventElapsedMs ?? 0;
+  const latestEvent = session?.timeline.at(-1);
+  const [localElapsedMs, setLocalElapsedMs] = useState(eventElapsedMs);
+  const elapsedRef = useRef(eventElapsedMs);
+  const frameRef = useRef<number | null>(null);
+  const lastWallRef = useRef<number | null>(null);
+  const overflowFightMsRef = useRef(0);
+  const completedSequenceRef = useRef<number | null>(null);
 
   useEffect(() => {
-    if (status !== 'running') return;
-    const timer = setTimeout(advanceLiveFight, 1400 / playbackSpeed);
-    return () => clearTimeout(timer);
-  }, [status, playbackSpeed, session?.timeline.length, advanceLiveFight]);
+    const elapsed = eventElapsedMs + overflowFightMsRef.current;
+    overflowFightMsRef.current = 0;
+    elapsedRef.current = elapsed;
+    setLocalElapsedMs(elapsed);
+    completedSequenceRef.current = null;
+  }, [latestEvent?.sequence, eventElapsedMs]);
+
+  const checkpointAtWallTime = useCallback((wallTime: number) => {
+    if (!session || !latestEvent || status !== 'running') return;
+    const previous = lastWallRef.current ?? wallTime;
+    const { elapsedFightMs, overflowFightMs } = advanceFightPlayback(elapsedRef.current, wallTime - previous, playbackSpeed, latestEvent.durationMs);
+    lastWallRef.current = wallTime;
+    overflowFightMsRef.current = overflowFightMs;
+    elapsedRef.current = elapsedFightMs;
+    setLocalElapsedMs(elapsedFightMs);
+    checkpointLiveFightPlayback(latestEvent.sequence, elapsedFightMs);
+  }, [session, latestEvent, status, playbackSpeed, checkpointLiveFightPlayback]);
+
+  const handleTogglePause = useCallback(() => {
+    checkpointAtWallTime(performance.now());
+    toggleLiveFightPause();
+  }, [checkpointAtWallTime, toggleLiveFightPause]);
+
+  const handleSetPlayback = useCallback((speed: 1 | 2 | 4) => {
+    checkpointAtWallTime(performance.now());
+    setLiveFightPlayback(speed);
+  }, [checkpointAtWallTime, setLiveFightPlayback]);
+
+  useEffect(() => {
+    if (status !== 'running') lastWallRef.current = null;
+  }, [status]);
+
+  useEffect(() => {
+    const durationMs = latestEvent?.durationMs ?? 0;
+    if (status !== 'running' || !session || !latestEvent) return;
+    if (durationMs === 0) {
+      overflowFightMsRef.current = elapsedRef.current;
+      if (completedSequenceRef.current !== latestEvent.sequence) {
+        completedSequenceRef.current = latestEvent.sequence;
+        advanceLiveFight();
+      }
+      return;
+    }
+    const sequence = latestEvent.sequence;
+    const frame = (now: number) => {
+      const previous = lastWallRef.current ?? now;
+      lastWallRef.current = now;
+      const { elapsedFightMs, overflowFightMs } = advanceFightPlayback(elapsedRef.current, now - previous, playbackSpeed, durationMs);
+      elapsedRef.current = elapsedFightMs;
+      setLocalElapsedMs(elapsedFightMs);
+      if (elapsedFightMs >= durationMs) {
+        overflowFightMsRef.current = overflowFightMs;
+        if (completedSequenceRef.current !== latestEvent.sequence) {
+          completedSequenceRef.current = latestEvent.sequence;
+          advanceLiveFight();
+        }
+        return;
+      }
+      frameRef.current = requestAnimationFrame(frame);
+    };
+    frameRef.current = requestAnimationFrame(frame);
+    return () => {
+      checkpointLiveFightPlayback(sequence, elapsedRef.current);
+      if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
+      frameRef.current = null;
+    };
+  }, [status, playbackSpeed, latestEvent?.sequence, latestEvent?.durationMs, session, advanceLiveFight, checkpointLiveFightPlayback]);
 
   useEffect(() => {
     if (isAllFightsDone && event && !event.isCompleted) finalizeCurrentEvent();
@@ -50,8 +130,18 @@ export default function FightBattle() {
   if (!red || !blue) return null;
 
   const label = activeFightIndex === 0 ? t($ => $.fight.common.mainEvent) : activeFightIndex === 1 ? t($ => $.fight.common.coMainEvent) : t($ => $.fight.common.bout, { number: event.fights.length - activeFightIndex });
-  const latestEvent = session?.timeline.at(-1);
-  const clock = session ? `${Math.floor(session.clock / 60)}:${String(session.clock % 60).padStart(2, '0')}` : '5:00';
+  const eventProgress = fightPlaybackProgress(localElapsedMs, latestEvent?.durationMs ?? 0);
+  const display = session && latestEvent && playbackSnapshot?.sequence === latestEvent.sequence
+    ? interpolateFightDisplay(playbackSnapshot, latestEvent, eventProgress)
+    : session
+      ? { clockMs: session.clockMs, redCondition: session.red.condition, blueCondition: session.blue.condition, redStamina: session.red.stamina, blueStamina: session.blue.stamina }
+      : { clockMs: 300_000, redCondition: 100, blueCondition: 100, redStamina: 100, blueStamina: 100 };
+  const displayClockSeconds = Math.ceil(display.clockMs / 1_000);
+  const clock = `${Math.floor(displayClockSeconds / 60)}:${String(displayClockSeconds % 60).padStart(2, '0')}`;
+  const currentRoundStats = session && playbackSnapshot ? eventProgress < 1 ? playbackSnapshot.currentRoundStats : session.currentRoundStats : session?.currentRoundStats;
+  const highlightEvents = session ? session.timeline.filter(event => event.importance !== 'routine') : [];
+  const liveHeadline = highlightEvents.slice().reverse().find(event => event.headline)?.headline ?? t($ => $.fight.battle.ready);
+  const completedRound = session?.roundStats.at(-1);
   const finished = status === 'finished' && session?.phase === 'finished';
   const positionLabels: Record<FightPosition, string> = {
     distance: t($ => $.fight.position.distance),
@@ -75,22 +165,39 @@ export default function FightBattle() {
           <p className="mt-1 font-mono text-3xl tabular-nums text-white">{clock}</p>
         </div>
 
-        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 px-3 py-7 sm:gap-6 sm:px-8">
-          <Combatant corner="red" session={session} latestEvent={latestEvent} />
-          <div className="min-w-12 text-center sm:min-w-28">
+        <div className="grid min-w-0 grid-cols-2 gap-3 px-3 pt-5 sm:gap-8 sm:px-8">
+          <Combatant corner="red" session={session} latestEvent={latestEvent} condition={display.redCondition} stamina={display.redStamina} showAvatar={!spriteReady || spriteFailed} />
+          <Combatant corner="blue" session={session} latestEvent={latestEvent} condition={display.blueCondition} stamina={display.blueStamina} showAvatar={!spriteReady || spriteFailed} />
+        </div>
+
+        <div className="min-w-0 px-3 pb-6 pt-4 sm:px-8">
+          {!spriteFailed && <FightSpriteStage session={session} latestEvent={latestEvent} eventElapsedMs={localElapsedMs} onReady={markSpriteReady} onAssetError={markSpriteFailed} />}
+          <div className="mx-auto mt-3 min-w-0 max-w-xl text-center">
             <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-neutral-600">{t($ => $.fight.common.versus)}</span>
-            <p className="mt-2 max-w-28 text-xs font-medium text-white sm:text-sm" aria-live="polite">{latestEvent?.headline ?? t($ => $.fight.battle.ready)}</p>
+            <p className="mt-1 text-xs font-medium text-white sm:text-sm" aria-live="polite">{liveHeadline}</p>
           </div>
-          <Combatant corner="blue" session={session} latestEvent={latestEvent} />
         </div>
 
         <div className="border-t border-[#2a2c31] px-3 py-4">
           <div className="flex flex-wrap justify-center gap-2">
-            <Button variant="secondary" onClick={toggleLiveFightPause} disabled={finished}>{status === 'paused' ? t($ => $.fight.battle.resume) : t($ => $.fight.battle.pause)}</Button>
-            {([1, 2, 4] as const).map(speed => <Button key={speed} variant={playbackSpeed === speed ? 'primary' : 'secondary'} onClick={() => setLiveFightPlayback(speed)} disabled={finished}>x{speed}</Button>)}
+            <Button variant="secondary" onClick={handleTogglePause} disabled={finished || status === 'between-rounds'}>{status === 'paused' ? t($ => $.fight.battle.resume) : t($ => $.fight.battle.pause)}</Button>
+            {([1, 2, 4] as const).map(speed => <Button key={speed} variant={playbackSpeed === speed ? 'primary' : 'secondary'} onClick={() => handleSetPlayback(speed)} disabled={finished}>x{speed}</Button>)}
             <Button variant="quiet" onClick={skipLiveFight} disabled={finished}>{t($ => $.fight.battle.skip)}</Button>
           </div>
         </div>
+
+        {status === 'between-rounds' && session.round < session.matchup.rounds && <div className="absolute inset-0 flex items-center justify-center bg-black/85 p-4">
+          <Panel className="max-w-md text-center">
+            <p className="font-mono text-[11px] uppercase tracking-[0.16em] text-neutral-500">{t($ => $.fight.battle.betweenRounds, { round: session.round })}</p>
+            {completedRound && <>
+              <p className="mt-3 text-sm text-neutral-300">{completedRound.summary}</p>
+              <div className="mt-4 text-left"><RoundStatsView red={completedRound.red} blue={completedRound.blue} /></div>
+            </>}
+            <Button variant="primary" onClick={continueLiveFightRound} className="mt-6 px-8">
+              {t($ => $.fight.battle.continueRound, { round: session.round + 1 })}
+            </Button>
+          </Panel>
+        </div>}
 
         {finished && <div className="absolute inset-0 flex items-center justify-center bg-black/85 p-4">
           <Panel className="max-w-md text-center">
@@ -107,19 +214,19 @@ export default function FightBattle() {
         <DataSurface className="min-w-0 p-5">
           <h2 className="font-mono text-[11px] uppercase tracking-[0.16em] text-neutral-500">{t($ => $.fight.battle.commentary)}</h2>
           <div className="mt-4 max-h-72 space-y-2 overflow-y-auto custom-scrollbar">
-            {session.timeline.slice(-12).reverse().map(item => <div key={item.sequence} className="border-b border-[#2a2c31] pb-2 last:border-0">
+            {highlightEvents.slice(-12).reverse().map(item => <div key={item.sequence} className="border-b border-[#2a2c31] pb-2 last:border-0">
               <p className="text-sm text-neutral-200">{item.commentary}</p>
-              <p className="mt-1 font-mono text-[10px] text-neutral-600">R{item.round} · {formatClock(item.clock)} · {item.positionAfter}</p>
+              <p className="mt-1 font-mono text-[10px] text-neutral-600">R{item.round} · {formatFightClockMs(item.clockAfterMs)} · {item.positionAfter}</p>
             </div>)}
           </div>
         </DataSurface>
 
         <section className="min-w-0 space-y-4">
           <h2 className="font-mono text-[11px] uppercase tracking-[0.16em] text-neutral-500">{t($ => $.fight.battle.roundStatistics)}</h2>
-          <Panel className="p-4">
+          {currentRoundStats && <Panel className="p-4">
             <div className="mb-3 flex items-center justify-between gap-2"><span className="text-sm text-white">{t($ => $.fight.common.round, { number: session.round })}</span><span className="text-xs text-neutral-500">{t($ => $.fight.common.live)}</span></div>
-            <RoundStatsView red={session.currentRoundStats.red} blue={session.currentRoundStats.blue} />
-          </Panel>
+            <RoundStatsView red={currentRoundStats.red} blue={currentRoundStats.blue} />
+          </Panel>}
           {session.roundStats.slice(-2).reverse().map(round => <Panel key={round.round} className="p-4">
             <div className="mb-3 flex items-center justify-between gap-2"><span className="text-sm text-white">{t($ => $.fight.common.round, { number: round.round })}</span><span className="text-right text-xs text-neutral-500">{round.summary}</span></div>
             <RoundStatsView red={round.red} blue={round.blue} />
@@ -130,7 +237,7 @@ export default function FightBattle() {
   </div>;
 }
 
-function Combatant({ corner, session, latestEvent }: { corner: FightCorner; session: FightSession; latestEvent?: FightTimelineEvent }) {
+function Combatant({ corner, session, latestEvent, condition, stamina, showAvatar }: { corner: FightCorner; session: FightSession; latestEvent?: FightTimelineEvent; condition: number; stamina: number; showAvatar: boolean }) {
   const { t } = useTranslation('translation');
   const state = corner === 'red' ? session.red : session.blue;
   const fighter = state.fighter;
@@ -139,15 +246,15 @@ function Combatant({ corner, session, latestEvent }: { corner: FightCorner; sess
   const align = corner === 'red' ? 'items-start text-left' : 'items-end text-right';
   const animation = eventAnimation(latestEvent, corner);
   return <div className={`flex min-w-0 flex-col ${align}`}>
-    <div className={`relative ${animation}`}>
+    {showAvatar && <div className={`relative ${animation}`}>
       <FighterAvatar id={fighter.id} name={`${fighter.firstName} ${fighter.lastName}`} nationality={fighter.nationality} className={`h-20 w-20 border-2 ${color} sm:h-32 sm:w-32 ${corner === 'blue' ? '-scale-x-100' : ''}`} />
-    </div>
+    </div>}
     <p className="mt-3 font-mono text-[9px] uppercase tracking-[0.15em] text-neutral-500">{label}</p>
     <div className={`mt-1 flex max-w-full flex-wrap gap-1 ${corner === 'blue' ? 'justify-end' : ''}`}><FighterRankBadge fighterId={fighter.id} /><span className="truncate text-sm font-medium text-white sm:text-lg">{fighter.lastName}</span></div>
     <p className="mt-1 truncate font-mono text-[10px] text-neutral-500"><CountryFlag nationality={fighter.nationality} className="mr-1" />{fighter.record.wins}-{fighter.record.losses}-{fighter.record.draws}</p>
     <div className="mt-3 w-full max-w-56 space-y-2">
-      <ResourceMeter label={t($ => $.fight.battle.meterLabel, { corner: label, resource: t($ => $.fight.battle.condition) })} shortLabel={t($ => $.fight.battle.condition)} value={state.condition} tone={corner === 'red' ? 'red' : 'blue'} />
-      <ResourceMeter label={t($ => $.fight.battle.meterLabel, { corner: label, resource: t($ => $.fight.battle.stamina) })} shortLabel={t($ => $.fight.battle.stamina)} value={state.stamina} tone="stamina" />
+      <ResourceMeter label={t($ => $.fight.battle.meterLabel, { corner: label, resource: t($ => $.fight.battle.condition) })} shortLabel={t($ => $.fight.battle.condition)} value={condition} tone={corner === 'red' ? 'red' : 'blue'} />
+      <ResourceMeter label={t($ => $.fight.battle.meterLabel, { corner: label, resource: t($ => $.fight.battle.stamina) })} shortLabel={t($ => $.fight.battle.stamina)} value={stamina} tone="stamina" />
     </div>
   </div>;
 }
@@ -187,6 +294,10 @@ function RoundStatsView({ red, blue }: { red: FightSession['currentRoundStats'][
 
 function RoundStat({ red, label, blue }: { red: string; label: string; blue: string }) {
   return <div className="flex border-b border-[#2a2c31] pb-1 last:border-0"><span className="w-1/3 font-mono text-red-300">{red}</span><span className="w-1/3 text-center text-neutral-500">{label}</span><span className="w-1/3 text-right font-mono text-blue-300">{blue}</span></div>;
+}
+
+function formatFightClockMs(clockMs: number) {
+  return formatClock(Math.ceil(clockMs / 1_000));
 }
 
 function formatClock(seconds: number) {

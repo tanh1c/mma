@@ -1,25 +1,28 @@
 import { differenceInCalendarDays } from 'date-fns';
 import type { Fighter, GameState, RankingItem, WeightClass } from '../../types/game';
+import { getPlayerPromotionId, getScopedRankings, getScopedTitles, isFighterInPromotion, syncPlayerPromotionSnapshot } from './leagues';
 
 const ELO_K_FACTOR = 32;
 const INACTIVITY_PENALTY_START = 274;
 const INACTIVITY_RANKING_LIMIT = 548;
 const MAX_INACTIVITY_PENALTY = 200;
+const WEIGHT_CLASSES: WeightClass[] = ['Bantamweight', 'Featherweight', 'Lightweight', 'Welterweight', 'Middleweight', 'Heavyweight'];
 
 export type RankLabel = 'C' | 'IC' | 'UR' | `#${number}`;
 export type RankingActivityStatus = 'active' | 'inactive' | 'unranked-inactive';
 
-type RankingState = Pick<GameState, 'fighters' | 'rankings' | 'titles'>;
+type RankingState = Pick<GameState, 'fighters' | 'playerPromotionId' | 'promotion' | 'rankings' | 'rankingsByPromotion' | 'titles' | 'titlesByPromotion'>;
 
-export function getFighterRankContext(state: RankingState, fighterId: string): { label: RankLabel; description: string; sortValue: number } | null {
+export function getFighterRankContext(state: RankingState, fighterId: string, promotionId?: string): { label: RankLabel; description: string; sortValue: number } | null {
   const fighter = state.fighters[fighterId];
   if (!fighter) return null;
-  const title = state.titles[fighter.weightClass];
+  const selectedPromotionId = promotionId ?? getPlayerPromotionId(state);
+  const title = getScopedTitles(state, selectedPromotionId)[fighter.weightClass];
   if (title?.undisputedChampionId === fighterId) return { label: 'C', description: 'Undisputed Champion', sortValue: 0 };
   if (title?.interimChampionId === fighterId) return { label: 'IC', description: 'Interim Champion', sortValue: 1 };
   const champions = new Set([title?.undisputedChampionId, title?.interimChampionId].filter(Boolean));
-  const contenderIndex = (state.rankings[fighter.weightClass] || []).filter(item => !champions.has(item.fighterId)).findIndex(item => item.fighterId === fighterId);
-  if (fighter.contract && contenderIndex >= 0 && contenderIndex < 15) {
+  const contenderIndex = (getScopedRankings(state, selectedPromotionId)[fighter.weightClass] || []).filter(item => !champions.has(item.fighterId)).findIndex(item => item.fighterId === fighterId);
+  if (isFighterInPromotion(fighter, selectedPromotionId) && contenderIndex >= 0 && contenderIndex < 15) {
     const label = `#${contenderIndex + 1}` as RankLabel;
     return { label, description: `${fighter.weightClass} contender ${label}`, sortValue: contenderIndex + 2 };
   }
@@ -106,11 +109,15 @@ export function initializeRankingScores(state: GameState): GameState {
 
 export function buildPromotionRankings(
   state: GameState,
+  promotionId?: string,
   affectedWeightClasses?: WeightClass[]
 ): {
   newRankings: Record<WeightClass, RankingItem[]>;
   rankingChanges: Record<string, { oldRank: number; newRank: number }>;
 } {
+  const selectedPromotionId = promotionId ?? getPlayerPromotionId(state);
+  const currentRankings = getScopedRankings(state, selectedPromotionId);
+  const currentTitles = getScopedTitles(state, selectedPromotionId);
   const newRankings: Record<string, RankingItem[]> = {};
   const rankingChanges: Record<string, { oldRank: number; newRank: number }> = {};
   const recentFightRecords = buildRecentFightRecords(state);
@@ -119,30 +126,21 @@ export function buildPromotionRankings(
     effectiveRankingScore(state, fighter, recentFightRecords.get(fighter.id) ?? { wins: 0, losses: 0 })
   ]));
 
-  const weightClasses: WeightClass[] = [
-    'Bantamweight', 'Featherweight', 'Lightweight', 
-    'Welterweight', 'Middleweight', 'Heavyweight'
-  ];
-
-  weightClasses.forEach(wc => {
-    // If we passed affected classes and this isn't one, just copy existing
+  WEIGHT_CLASSES.forEach(wc => {
     if (affectedWeightClasses && !affectedWeightClasses.includes(wc)) {
-       newRankings[wc] = state.rankings[wc] ? [...state.rankings[wc]] : [];
-       return;
+      newRankings[wc] = currentRankings[wc] ? [...currentRankings[wc]] : [];
+      return;
     }
 
     const oldRankingMap = new Map<string, number>();
-    if (state.rankings && state.rankings[wc]) {
-      state.rankings[wc].forEach(r => {
-        oldRankingMap.set(r.fighterId, r.rank);
-      });
+    if (currentRankings[wc]) {
+      currentRankings[wc].forEach(r => oldRankingMap.set(r.fighterId, r.rank));
     }
 
-    const titleState = state.titles[wc];
-
+    const titleState = currentTitles[wc];
     const fightersInWc = Object.values(state.fighters)
       .filter(f => {
-        if (f.weightClass !== wc || !f.contract || f.careerPhase === 'retired') return false;
+        if (f.weightClass !== wc || !isFighterInPromotion(f, selectedPromotionId)) return false;
         const isChampion = titleState.undisputedChampionId === f.id || titleState.interimChampionId === f.id;
         return isChampion || getRankingActivityStatus(f, state.currentDate) !== 'unranked-inactive';
       })
@@ -155,111 +153,84 @@ export function buildPromotionRankings(
       });
 
     const newRank: RankingItem[] = [];
-    fightersInWc.slice(0, 16).forEach((f, index) => {
-      const oldRank = oldRankingMap.get(f.id);
-      let trend = 0;
-      if (oldRank !== undefined) {
-        trend = oldRank - index;
-        if (trend !== 0) {
-          rankingChanges[f.id] = { oldRank, newRank: index };
-        }
-      } else {
-        trend = 999;
-        rankingChanges[f.id] = { oldRank: 999, newRank: index };
-      }
-
-      newRank.push({ fighterId: f.id, rank: index, trend });
+    fightersInWc.slice(0, 16).forEach((fighter, index) => {
+      const oldRank = oldRankingMap.get(fighter.id);
+      const trend = oldRank === undefined ? 999 : oldRank - index;
+      if (oldRank === undefined || trend !== 0) rankingChanges[fighter.id] = { oldRank: oldRank ?? 999, newRank: index };
+      newRank.push({ fighterId: fighter.id, rank: index, trend });
     });
 
-    // Capture fighters who dropped out of rankings
-    if (state.rankings && state.rankings[wc]) {
-      state.rankings[wc].forEach(r => {
-        if (!newRank.find(nr => nr.fighterId === r.fighterId)) {
-          // They fell out of the top 16 or were released
-          rankingChanges[r.fighterId] = { oldRank: r.rank, newRank: 999 };
-        }
-      });
+    for (const ranking of currentRankings[wc] || []) {
+      if (!newRank.some(item => item.fighterId === ranking.fighterId)) rankingChanges[ranking.fighterId] = { oldRank: ranking.rank, newRank: 999 };
     }
-
     newRankings[wc] = newRank;
   });
 
-  return { 
-    newRankings: newRankings as Record<WeightClass, RankingItem[]>, 
-    rankingChanges 
-  };
+  return { newRankings: newRankings as Record<WeightClass, RankingItem[]>, rankingChanges };
 }
 
-export function updateRankings(state: GameState, eventId?: string): GameState {
+export function buildWorldRankings(state: GameState): Record<WeightClass, RankingItem[]> {
+  return Object.fromEntries(WEIGHT_CLASSES.map(weightClass => [
+    weightClass,
+    Object.values(state.fighters)
+      .filter(fighter => fighter.weightClass === weightClass && fighter.contract && fighter.careerPhase !== 'retired' && getRankingActivityStatus(fighter, state.currentDate) !== 'unranked-inactive')
+      .sort((a, b) => getEffectiveRankingScore(state, b) - getEffectiveRankingScore(state, a) || a.id.localeCompare(b.id))
+      .slice(0, 50)
+      .map((fighter, rank) => ({ fighterId: fighter.id, rank, trend: 0 }))
+  ])) as Record<WeightClass, RankingItem[]>;
+}
+
+export function updateRankings(state: GameState, eventId?: string, promotionId?: string): GameState {
   let newState = initializeRankingScores(state);
+  const selectedPromotionId = promotionId ?? (eventId ? newState.events[eventId]?.promotionId ?? undefined : undefined) ?? getPlayerPromotionId(newState);
   const fighters = { ...newState.fighters };
   Object.values(fighters).forEach(fighter => {
     if (fighter.contract) return;
-    const previous = getFighterRankContext({ ...newState, fighters: { ...fighters, [fighter.id]: { ...fighter, contract: {} as Fighter['contract'] } } }, fighter.id);
+    const rankedFighter = { ...fighter, contract: { promotionId: selectedPromotionId } as Fighter['contract'] };
+    const previous = getFighterRankContext({ ...newState, fighters: { ...fighters, [fighter.id]: rankedFighter } }, fighter.id, selectedPromotionId);
     if (previous && previous.label !== 'UR') fighters[fighter.id] = { ...fighter, lastPromotionRank: previous.label };
   });
   newState = { ...newState, fighters };
-  
-  let affectedWeightClasses: WeightClass[] | undefined = undefined;
 
+  let affectedWeightClasses: WeightClass[] | undefined;
   if (eventId && newState.events[eventId]) {
     const event = newState.events[eventId];
     if (event.isCompleted && event.results) {
       affectedWeightClasses = [];
-      
       event.fights.forEach(fight => {
         if (!fight.result) return;
-        
-        if (!affectedWeightClasses!.includes(fight.weightClass)) {
-           affectedWeightClasses!.push(fight.weightClass);
-        }
-        
+        if (!affectedWeightClasses!.includes(fight.weightClass)) affectedWeightClasses!.push(fight.weightClass);
         const red = newState.fighters[fight.redCornerId];
         const blue = newState.fighters[fight.blueCornerId];
-        
         if (!red || !blue) return;
 
         const redElo = red.rankingScore || 1000;
         const blueElo = blue.rankingScore || 1000;
-
         const expectedRed = 1 / (1 + Math.pow(10, (blueElo - redElo) / 400));
         const expectedBlue = 1 / (1 + Math.pow(10, (redElo - blueElo) / 400));
-
-        let redActual = 0.5;
-        let blueActual = 0.5;
-
-        if (fight.result.winnerId === red.id) {
-          redActual = 1;
-          blueActual = 0;
-        } else if (fight.result.winnerId === blue.id) {
-          redActual = 0;
-          blueActual = 1;
-        }
-
+        const redActual = fight.result.winnerId === red.id ? 1 : fight.result.winnerId === blue.id ? 0 : 0.5;
+        const blueActual = 1 - redActual;
         const multiplier = getMethodMultiplier(fight.result.method);
-        
-        const redDelta = Math.round(ELO_K_FACTOR * multiplier * (redActual - expectedRed));
-        const blueDelta = Math.round(ELO_K_FACTOR * multiplier * (blueActual - expectedBlue));
-
-        newState.fighters[red.id] = { ...red, rankingScore: redElo + redDelta };
-        newState.fighters[blue.id] = { ...blue, rankingScore: blueElo + blueDelta };
+        newState.fighters[red.id] = { ...red, rankingScore: redElo + Math.round(ELO_K_FACTOR * multiplier * (redActual - expectedRed)) };
+        newState.fighters[blue.id] = { ...blue, rankingScore: blueElo + Math.round(ELO_K_FACTOR * multiplier * (blueActual - expectedBlue)) };
       });
     }
   }
 
-  const { newRankings, rankingChanges } = buildPromotionRankings(newState, affectedWeightClasses);
+  const { newRankings, rankingChanges } = buildPromotionRankings(newState, selectedPromotionId, affectedWeightClasses);
+  if (selectedPromotionId === getPlayerPromotionId(newState)) {
+    newState.rankings = newRankings;
+  } else {
+    newState.rankingsByPromotion = { ...newState.rankingsByPromotion, [selectedPromotionId]: newRankings };
+  }
+  newState.worldRankings = buildWorldRankings(newState);
 
-  newState.rankings = newRankings;
-  
-  if (eventId && newState.events[eventId] && newState.events[eventId].results) {
+  if (eventId && newState.events[eventId]?.results) {
     newState.events[eventId] = {
       ...newState.events[eventId],
-      results: {
-        ...newState.events[eventId].results!,
-        rankingChanges
-      }
+      results: { ...newState.events[eventId].results!, rankingChanges }
     };
   }
-  
-  return newState;
+
+  return syncPlayerPromotionSnapshot(newState);
 }

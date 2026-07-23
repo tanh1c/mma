@@ -1,14 +1,30 @@
 import { addDays, differenceInCalendarDays, format } from "date-fns";
 import { create } from 'zustand';
-import { GameState, Fighter, Event, PromoterIdentity } from '../types/game';
+import { GameState, Fighter, Event, PromoterIdentity, type MarketContractTerms, type MarketReason } from '../types/game';
 import { readLanguage } from '../lib/localization';
 import { generateInitialWorld } from '../lib/game/generator';
 import { advanceTime, applyFightResult, finalizeEventFinancials } from '../lib/engine';
 import { createFightSession, fightSessionToResult, runFightSession, stepFightSession, type FightSession } from '../lib/game/liveFight';
+import { createFightPlaybackSnapshot, type FightPlaybackSnapshot } from '../lib/game/fightPlayback';
 import { updateRankings } from '../lib/game/rankings';
 import { v4 as uuidv4 } from 'uuid';
 import { createNewGame, saveGameLocally, loadGameLocally, exportGameToJSON, importGameFromJSON, CURRENT_SAVE_VERSION } from '../lib/game/save';
 import { getContractEndDate } from '../lib/game/contracts';
+import { getPlayerPromotionId, syncPlayerPromotionSnapshot } from '../lib/game/leagues';
+import {
+  isContractMarketOpen,
+  listFighter,
+  respondToIncomingOffer,
+  upsertTransferOffer,
+  withdrawListing,
+  withdrawTransferOffer
+} from '../lib/game/contractMarket';
+import {
+  canPromotionAffordContractCommitment,
+  investInPromotionBrand,
+  refreshPromotionEconomy,
+  type PromotionEconomyReason
+} from '../lib/game/promotionEconomy';
 
 import { autoBookEventsAndContracts, maintainDeals, repairEventAvailability, repairFutureEventAvailability, repairPastScheduledEvents, simulateDueEvents } from '../lib/game/autobooker';
 import { generateSeasonPlan, syncCalendarSlots } from '../lib/game/season';
@@ -23,11 +39,34 @@ export interface ActiveSimulation {
   eventId: string | null;
   activeFightIndex: number;
   session: FightSession | null;
-  status: 'idle' | 'running' | 'paused' | 'finished' | 'completed';
+  status: 'idle' | 'running' | 'paused' | 'between-rounds' | 'finished' | 'completed';
   playbackSpeed: 1 | 2 | 4;
+  playbackSnapshot: FightPlaybackSnapshot | null;
+  eventElapsedMs: number;
+  roundGateToken: number | null;
 }
 
-export type GameView = 'dashboard' | 'inbox' | 'roster' | 'free-agents' | 'event-builder' | 'simulation' | 'rankings' | 'news' | 'fighter-detail' | 'debug' | 'history' | 'fight-detail' | 'tournaments' | 'calendar' | 'mma-guide' | 'settings';
+export type GameView = 'dashboard' | 'inbox' | 'roster' | 'free-agents' | 'contract-market' | 'promotion-finances' | 'event-builder' | 'simulation' | 'rankings' | 'news' | 'fighter-detail' | 'debug' | 'history' | 'fight-detail' | 'tournaments' | 'leagues' | 'calendar' | 'mma-guide' | 'settings';
+
+export type AutopilotRun = {
+  active: boolean;
+  targetDays: number;
+  daysCompleted: number;
+  batchSize: number;
+  stoppedEarly: boolean;
+  error: string | null;
+};
+
+const AUTOPILOT_BATCH_DAYS = 7;
+const yieldToEventLoop = () => new Promise<void>(resolve => setTimeout(resolve, 0));
+const idleAutopilotRun = (): AutopilotRun => ({
+  active: false,
+  targetDays: 0,
+  daysCompleted: 0,
+  batchSize: AUTOPILOT_BATCH_DAYS,
+  stoppedEarly: false,
+  error: null
+});
 
 type ViewData = {
   fighterId?: string;
@@ -52,6 +91,7 @@ interface GameStore extends GameState {
   selectedFightArchiveId: string | null;
   viewHistory: ViewCheckpoint[];
   activeEventSimulation: ActiveSimulation | null;
+  autopilotRun: AutopilotRun;
 
   // Actions
   setView: (view: GameView, data?: ViewData, options?: { replace?: boolean }) => void;
@@ -62,20 +102,27 @@ interface GameStore extends GameState {
   saveGame: () => void;
   loadGame: () => void;
   advanceDays: (days: number) => void;
-  advanceAutopilot: (targetDays: number, simulateEvents: boolean) => void;
+  advanceAutopilot: (targetDays: number, simulateEvents: boolean) => Promise<void>;
   signFighter: (fighterId: string, pay: number, winBonus: number, fights: number) => void;
   renewFighter: (fighterId: string, pay: number, winBonus: number, fights: number) => void;
+  listMarketFighter: (fighterId: string, minimumFee: number) => MarketReason | null;
+  withdrawMarketListing: (listingId: string) => MarketReason | null;
+  submitMarketOffer: (fighterId: string, transferFee: number, terms: MarketContractTerms) => MarketReason | null;
+  withdrawMarketOffer: (offerId: string) => MarketReason | null;
+  respondToMarketOffer: (offerId: string, accepted: boolean) => MarketReason | null;
   setCounterOffer: (fighterId: string, counterOffer: GameState['fighters'][string]['counterOffer']) => void;
   releaseFighter: (fighterId: string) => void;
   editFighter: (fighterId: string, input: FighterEditInput) => FighterEditResult;
   signSponsorDeal: (templateId: string) => void;
   signMediaDeal: (templateId: string) => void;
   renewDeal: (dealId: string, type: 'sponsor'|'media') => void;
-  createEvent: (event: Omit<Event, 'id' | 'isCompleted'>) => void;
-  updateEvent: (eventId: string, event: Omit<Event, 'id' | 'isCompleted'>) => void;
+  createEvent: (event: Omit<Event, 'id' | 'isCompleted' | 'promotionId' | 'scope'>) => void;
+  updateEvent: (eventId: string, event: Partial<Omit<Event, 'id' | 'isCompleted' | 'promotionId' | 'scope'>>) => void;
   startEventSimulation: (eventId: string) => void;
   startLiveFight: () => void;
   advanceLiveFight: () => void;
+  checkpointLiveFightPlayback: (sequence: number, elapsedFightMs: number) => void;
+  continueLiveFightRound: () => void;
   setLiveFightPlayback: (speed: 1 | 2 | 4) => void;
   toggleLiveFightPause: () => void;
   skipLiveFight: () => void;
@@ -92,8 +139,16 @@ interface GameStore extends GameState {
   cancelCalendarSlot: (slotId: string) => void;
   applyPromotionSocialAction: (fightId: string, action: 'announce' | 'hype') => void;
   resolveDramaIncident: (incidentId: string, responseKey: string) => void;
+  investInBrand: (amount: number) => PromotionEconomyReason | null;
   setPromoterIdentity: (identity: PromoterIdentity) => void;
 }
+
+const liveFightStatus = (session: FightSession): ActiveSimulation['status'] =>
+  session.phase === 'finished'
+    ? 'finished'
+    : session.phase === 'between-rounds' && session.round < session.matchup.rounds
+      ? 'between-rounds'
+      : 'running';
 
 export const useGameStore = create<GameStore>((set, get) => ({
   ...createNewGame(),
@@ -104,6 +159,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   selectedFightArchiveId: null,
   viewHistory: [],
   activeEventSimulation: null,
+  autopilotRun: idleAutopilotRun(),
 
   setView: (view, data, options) => set((state) => {
     const selectedFighterId = data?.fighterId || null;
@@ -172,7 +228,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
       selectedCalendarSlotId: null,
       selectedFightArchiveId: null,
       viewHistory: [],
-      activeEventSimulation: null
+      activeEventSimulation: null,
+      autopilotRun: idleAutopilotRun()
     });
   },
 
@@ -196,7 +253,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
         selectedCalendarSlotId: null,
         selectedFightArchiveId: null,
         viewHistory: [],
-        activeEventSimulation: null
+        activeEventSimulation: null,
+        autopilotRun: idleAutopilotRun()
       });
       alert('Game loaded!');
     } else {
@@ -219,7 +277,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
         selectedCalendarSlotId: null,
         selectedFightArchiveId: null,
         viewHistory: [],
-        activeEventSimulation: null
+        activeEventSimulation: null,
+        autopilotRun: idleAutopilotRun()
       });
       alert('Game imported successfully!');
     } else {
@@ -236,9 +295,25 @@ export const useGameStore = create<GameStore>((set, get) => ({
     });
   },
 
-  advanceAutopilot: (targetDays, simulateEvents) => {
-    set((state) => {
-      const language = readLanguage();
+  advanceAutopilot: async (targetDays, simulateEvents) => {
+    if (get().autopilotRun.active) return;
+
+    const state = get();
+    const language = readLanguage();
+    set({
+      autopilotRun: {
+        active: true,
+        targetDays,
+        daysCompleted: 0,
+        batchSize: AUTOPILOT_BATCH_DAYS,
+        stoppedEarly: false,
+        error: null
+      }
+    });
+
+    await yieldToEventLoop();
+
+    try {
       let newState = { ...state };
 
       const startMoney = state.promotion.money;
@@ -272,34 +347,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       };
       
       for (let i = 0; i < targetDays; i++) {
-        let gameState: GameState = {
-          currentDate: newState.currentDate,
-          promotion: newState.promotion,
-          fighters: newState.fighters,
-          events: newState.events,
-          venues: newState.venues,
-          rankings: newState.rankings,
-          titles: newState.titles,
-          belts: newState.belts,
-          news: newState.news,
-          socialFeed: newState.socialFeed,
-          storylines: newState.storylines,
-          saveVersion: newState.saveVersion,
-          mode: newState.mode,
-          autopilot: newState.autopilot,
-          lastAutopilotSummary: newState.lastAutopilotSummary,
-          fightArchive: newState.fightArchive,
-          eventArchive: newState.eventArchive,
-          titleHistory: newState.titleHistory,
-          yearlyAwards: newState.yearlyAwards,
-          sponsorDeals: newState.sponsorDeals,
-          mediaDeals: newState.mediaDeals,
-          financeLedger: newState.financeLedger,
-          tournaments: newState.tournaments || {},
-          seasonPlans: newState.seasonPlans || {},
-          careerEcosystem: newState.careerEcosystem,
-          drama: newState.drama
-        };
+        let gameState: GameState = { ...newState };
         
         gameState = syncCalendarSlots(gameState);
         gameState = repairPastScheduledEvents(gameState, language);
@@ -326,7 +374,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
               activeFightIndex: startIndex,
               session: null,
               status: 'idle',
-              playbackSpeed: 1
+              playbackSpeed: 1,
+              playbackSnapshot: null,
+              eventElapsedMs: 0,
+              roundGateToken: null
             };
           }
           stoppedEarly = true;
@@ -367,14 +418,22 @@ export const useGameStore = create<GameStore>((set, get) => ({
               activeFightIndex: startIndex,
               session: null,
               status: 'idle',
-              playbackSpeed: 1
+              playbackSpeed: 1,
+              playbackSnapshot: null,
+              eventElapsedMs: 0,
+              roundGateToken: null
             };
           }
           stoppedEarly = true;
           break;
         }
+
+        if (daysSimulated % AUTOPILOT_BATCH_DAYS === 0 && daysSimulated < targetDays) {
+          set({ ...newState, autopilotRun: { ...get().autopilotRun, daysCompleted: daysSimulated } });
+          await yieldToEventLoop();
+        }
       }
-      
+
       const rankUpdate = updateRankings(newState);
       Object.assign(newState, rankUpdate);
       
@@ -467,18 +526,43 @@ export const useGameStore = create<GameStore>((set, get) => ({
         };
       }
       
-      return newState;
-    });
+      set({
+        ...newState,
+        autopilotRun: {
+          ...get().autopilotRun,
+          daysCompleted: daysSimulated,
+          stoppedEarly
+        }
+      });
+    } catch (error) {
+      set(state => ({
+        autopilotRun: {
+          ...state.autopilotRun,
+          error: error instanceof Error ? error.message : String(error)
+        }
+      }));
+      throw error;
+    } finally {
+      set(state => ({ autopilotRun: { ...state.autopilotRun, active: false } }));
+    }
   },
 
   signFighter: (fighterId, pay, winBonus, fights) => {
     set((state) => {
       const f = state.fighters[fighterId];
-      if (!f) return state;
-      
+      const playerPromotionId = getPlayerPromotionId(state);
+      const commitment = fights * (pay + winBonus * 0.5);
+      if (
+        isContractMarketOpen(state) ||
+        !f ||
+        f.contract?.promotionId && f.contract.promotionId !== playerPromotionId ||
+        canPromotionAffordContractCommitment(state, playerPromotionId, commitment)
+      ) return state;
+
       const updated = {
         ...f,
         contract: {
+          promotionId: playerPromotionId,
           fightsRemaining: fights,
           payPerFight: pay,
           winBonus,
@@ -501,15 +585,22 @@ export const useGameStore = create<GameStore>((set, get) => ({
         }, ...state.news].slice(0, 50)
       };
       
-      return updateRankings(newState);
+      return refreshPromotionEconomy(updateRankings(newState), playerPromotionId);
     });
   },
-  
+
   renewFighter: (fighterId, pay, winBonus, fights) => {
     set((state) => {
       const f = state.fighters[fighterId];
-      if (!f || !f.contract) return state;
-      
+      const playerPromotionId = getPlayerPromotionId(state);
+      const commitment = fights * (pay + winBonus * 0.5);
+      if (
+        isContractMarketOpen(state) ||
+        !f?.contract ||
+        f.contract.promotionId !== playerPromotionId ||
+        canPromotionAffordContractCommitment(state, playerPromotionId, commitment)
+      ) return state;
+
       const updated = {
         ...f,
         contract: {
@@ -536,10 +627,51 @@ export const useGameStore = create<GameStore>((set, get) => ({
         }, ...state.news].slice(0, 50)
       };
       
-      return newState;
+      return refreshPromotionEconomy(syncPlayerPromotionSnapshot(updateRankings(newState)), playerPromotionId);
     });
   },
-  
+
+  listMarketFighter: (fighterId, minimumFee) => {
+    const result = listFighter(get(), getPlayerPromotionId(get()), fighterId, minimumFee);
+    if (result.ok === false) return result.reason;
+    set(result.state);
+    return null;
+  },
+
+  withdrawMarketListing: (listingId) => {
+    const result = withdrawListing(get(), getPlayerPromotionId(get()), listingId);
+    if (result.ok === false) return result.reason;
+    set(result.state);
+    return null;
+  },
+
+  submitMarketOffer: (fighterId, transferFee, terms) => {
+    const state = get();
+    const result = upsertTransferOffer(state, {
+      buyerPromotionId: getPlayerPromotionId(state),
+      fighterId,
+      transferFee,
+      terms
+    });
+    if (result.ok === false) return result.reason;
+    set(result.state);
+    return null;
+  },
+
+  withdrawMarketOffer: (offerId) => {
+    const result = withdrawTransferOffer(get(), getPlayerPromotionId(get()), offerId);
+    if (result.ok === false) return result.reason;
+    set(result.state);
+    return null;
+  },
+
+  respondToMarketOffer: (offerId, accepted) => {
+    const result = respondToIncomingOffer(get(), getPlayerPromotionId(get()), offerId, accepted);
+    if (result.ok === false) return result.reason;
+    set(result.state);
+    return null;
+  },
+
   setCounterOffer: (fighterId, counterOffer) => set((state) => {
     const fighter = state.fighters[fighterId];
     if (!fighter) return state;
@@ -555,7 +687,12 @@ export const useGameStore = create<GameStore>((set, get) => ({
   releaseFighter: (fighterId) => {
     set((state) => {
       const f = state.fighters[fighterId];
-      if (!f) return state;
+      const playerPromotionId = getPlayerPromotionId(state);
+      if (
+        isContractMarketOpen(state) ||
+        !f ||
+        f.contract?.promotionId !== playerPromotionId
+      ) return state;
       
       const updated = { ...f, contract: null, isChampion: false };
       
@@ -581,7 +718,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
         
         // Fix title history on vacate/release
         newTitleHistory = state.titleHistory.map(th => {
-          if (th.fighterId === fighterId && th.weightClass === f.weightClass && th.status === 'active') {
+          if (th.scope === 'promotion' && th.promotionId === playerPromotionId && th.fighterId === fighterId && th.weightClass === f.weightClass && th.status === 'active') {
             return { ...th, status: 'vacated', dateLost: state.currentDate, lostToFighterId: null };
           }
           return th;
@@ -602,7 +739,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
         }, ...state.news].slice(0, 50)
       };
       
-      return updateRankings(newState);
+      return refreshPromotionEconomy(syncPlayerPromotionSnapshot(updateRankings(newState)), playerPromotionId);
     });
   },
 
@@ -632,7 +769,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
            isActive: true
        });
 
-       return { ...state, sponsorDeals: currentSponsors };
+       const nextState = { ...state, sponsorDeals: currentSponsors };
+       return refreshPromotionEconomy(nextState, getPlayerPromotionId(nextState));
     });
   },
 
@@ -662,7 +800,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
            isActive: true
        });
 
-       return { ...state, mediaDeals: currentMedia };
+       const nextState = { ...state, mediaDeals: currentMedia };
+       return refreshPromotionEconomy(nextState, getPlayerPromotionId(nextState));
     });
   },
 
@@ -676,7 +815,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
              if (d.isActive) return { ...d, isActive: false };
              return d;
           });
-          return { ...state, sponsorDeals: updated };
+          const nextState = { ...state, sponsorDeals: updated };
+          return refreshPromotionEconomy(nextState, getPlayerPromotionId(nextState));
        }
        if (type === 'media' && state.mediaDeals) {
           const updated = state.mediaDeals.map(d => {
@@ -684,7 +824,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
              if (d.isActive) return { ...d, isActive: false };
              return d;
           });
-          return { ...state, mediaDeals: updated };
+          const nextState = { ...state, mediaDeals: updated };
+          return refreshPromotionEconomy(nextState, getPlayerPromotionId(nextState));
        }
        return state;
     });
@@ -693,7 +834,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   createEvent: (eventData) => {
     set((state) => {
       const id = uuidv4();
-      const newEvt: Event = { ...eventData, id, isCompleted: false };
+      const newEvt: Event = { ...eventData, id, isCompleted: false, promotionId: getPlayerPromotionId(state), scope: 'promotion' };
       
       let nextState = {
         ...state,
@@ -828,7 +969,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
         activeFightIndex: startIndex,
         session: null,
         status: 'idle',
-        playbackSpeed: 1
+        playbackSpeed: 1,
+        playbackSnapshot: null,
+        eventElapsedMs: 0,
+        roundGateToken: null
       };
 
       return {
@@ -849,11 +993,17 @@ export const useGameStore = create<GameStore>((set, get) => ({
     const red = state.fighters[matchup.redCornerId];
     const blue = state.fighters[matchup.blueCornerId];
     if (!red || !blue) return state;
+    const before = createFightSession(matchup, red, blue, undefined, readLanguage());
+    const session = stepFightSession(before);
+    const latestEvent = session.timeline.at(-1)!;
     return {
       activeEventSimulation: {
         ...sim,
-        session: createFightSession(matchup, red, blue, undefined, readLanguage()),
-        status: 'running'
+        session,
+        status: liveFightStatus(session),
+        playbackSnapshot: createFightPlaybackSnapshot(before, latestEvent.sequence),
+        eventElapsedMs: 0,
+        roundGateToken: session.phase === 'between-rounds' && session.round < session.matchup.rounds ? session.round : null
       }
     };
   }),
@@ -861,8 +1011,44 @@ export const useGameStore = create<GameStore>((set, get) => ({
   advanceLiveFight: () => set((state) => {
     const sim = state.activeEventSimulation;
     if (!sim?.session || sim.status !== 'running') return state;
-    const session = stepFightSession(sim.session);
-    return { activeEventSimulation: { ...sim, session, status: session.phase === 'finished' ? 'finished' : 'running' } };
+    const before = sim.session;
+    const session = stepFightSession(before);
+    const latestEvent = session.timeline.at(-1)!;
+    return {
+      activeEventSimulation: {
+        ...sim,
+        session,
+        status: liveFightStatus(session),
+        playbackSnapshot: createFightPlaybackSnapshot(before, latestEvent.sequence),
+        eventElapsedMs: 0,
+        roundGateToken: session.phase === 'between-rounds' && session.round < session.matchup.rounds ? session.round : null
+      }
+    };
+  }),
+
+  checkpointLiveFightPlayback: (sequence, eventElapsedMs) => set((state) => {
+    const sim = state.activeEventSimulation;
+    if (!sim?.session || !sim.playbackSnapshot || sequence !== sim.playbackSnapshot.sequence || sequence !== sim.session.timeline.at(-1)?.sequence) return state;
+    const durationMs = sim.session.timeline.at(-1)?.durationMs ?? 0;
+    return { activeEventSimulation: { ...sim, eventElapsedMs: Math.min(durationMs, Math.max(0, eventElapsedMs)) } };
+  }),
+
+  continueLiveFightRound: () => set((state) => {
+    const sim = state.activeEventSimulation;
+    if (!sim?.session || sim.status !== 'between-rounds' || sim.roundGateToken !== sim.session.round) return state;
+    const before = sim.session;
+    const session = stepFightSession(before);
+    const latestEvent = session.timeline.at(-1)!;
+    return {
+      activeEventSimulation: {
+        ...sim,
+        session,
+        status: 'running',
+        playbackSnapshot: createFightPlaybackSnapshot(before, latestEvent.sequence),
+        eventElapsedMs: 0,
+        roundGateToken: null
+      }
+    };
   }),
 
   setLiveFightPlayback: (playbackSpeed) => set((state) => {
@@ -878,8 +1064,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
   skipLiveFight: () => set((state) => {
     const sim = state.activeEventSimulation;
-    if (!sim?.session || sim.status === 'finished' || sim.status === 'completed') return state;
-    return { activeEventSimulation: { ...sim, session: runFightSession(sim.session), status: 'finished' } };
+    if (!sim?.session || sim.status === 'completed') return state;
+    return { activeEventSimulation: { ...sim, session: runFightSession(sim.session), status: 'finished', playbackSnapshot: null, eventElapsedMs: 0, roundGateToken: null } };
   }),
 
   confirmPendingFightAndAdvance: () => {
@@ -897,7 +1083,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
           ...sim,
           activeFightIndex: nextIndex,
           session: null,
-          status: nextIndex < 0 ? 'completed' : 'idle'
+          status: nextIndex < 0 ? 'completed' : 'idle',
+          playbackSnapshot: null,
+          eventElapsedMs: 0,
+          roundGateToken: null
         }
       };
     });
@@ -1028,6 +1217,14 @@ export const useGameStore = create<GameStore>((set, get) => ({
   applyPromotionSocialAction: (fightId, action) => set(state => applySocialAction(state, fightId, action)),
 
   resolveDramaIncident: (incidentId, responseKey) => set(state => applyDramaResponse(state, incidentId, responseKey, 'manager', undefined, readLanguage())),
+
+  investInBrand: amount => {
+    const state = get();
+    const result = investInPromotionBrand(state, state.playerPromotionId, amount);
+    if (result.ok === false) return result.reason;
+    set(result.state);
+    return null;
+  },
 
   setPromoterIdentity: (identity) => set(state => ({ drama: { ...state.drama, promoterIdentity: identity } })),
 
