@@ -11,7 +11,7 @@ import type { Event } from './src/types/game';
 
 const first = generateInitialWorld(701);
 
-assert.equal(CURRENT_SAVE_VERSION, 15);
+assert.equal(CURRENT_SAVE_VERSION, 16);
 
 for (const fighter of Object.values(first.fighters)) {
   assert.ok(fighter.personalityTraits.length >= 1 && fighter.personalityTraits.length <= 2);
@@ -29,7 +29,7 @@ const migrated = validateAndMigrateState(legacy)!;
 const migratedAgain = validateAndMigrateState(structuredClone(migrated))!;
 
 assert.deepEqual(migratedAgain, migrated);
-assert.equal(migrated.saveVersion, 15);
+assert.equal(migrated.saveVersion, 16);
 assert.equal(migrated.drama.promoterIdentity, 'meritocracy');
 assert.deepEqual(migrated.drama.incidents, {});
 assert.deepEqual(migrated.drama.triggerKeys, []);

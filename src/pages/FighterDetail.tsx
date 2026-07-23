@@ -16,6 +16,7 @@ import { useSettingsStore } from '../store/settingsStore';
 import { getFighterSocialFeed, getFighterStorylines } from '../lib/game/social';
 import { ChampionshipBelt, type BeltType } from '../components/ChampionshipBelt';
 import { FighterRankBadge } from '../components/FighterRankBadge';
+import { FighterStatistics } from '../components/FighterStatistics';
 import { Select } from '../components/Select';
 import { useTranslation } from 'react-i18next';
 import { formatContractInterest, formatCurrency, formatDate, formatFightMethod, formatFighterStyle, formatReadiness, formatWeightClass } from '../lib/localization';
@@ -26,6 +27,7 @@ const tabs = [
   { id: 'storylines' },
   { id: 'contract' },
   { id: 'fights' },
+  { id: 'statistics' },
   { id: 'timeline' }
 ] as const;
 
@@ -129,6 +131,7 @@ export default function FighterDetail() {
     storylines: t($ => $.fighterDetail.tabs.storylines),
     contract: t($ => $.fighterDetail.tabs.contract),
     fights: t($ => $.fighterDetail.tabs.fights),
+    statistics: t($ => $.fighterDetail.tabs.statistics),
     timeline: t($ => $.fighterDetail.tabs.timeline)
   };
   const statusLabel = f.careerPhase === 'retired' ? t($ => $.fighterDetail.career.retired) : f.injuryStatus ? formatReadiness('injured', language) : f.medicalSuspension ? formatReadiness('suspended', language) : f.fatigue > 50 ? formatReadiness('fatigued', language) : formatReadiness('ready', language);
@@ -397,6 +400,8 @@ export default function FighterDetail() {
           return <tr key={fight.id} tabIndex={0} role="button" aria-label={t($ => $.fighterDetail.viewFight, { opponent: opponentName, date: formatDate(fight.date, language) })} onClick={() => openFight(fight.id)} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openFight(fight.id); } }} className="cursor-pointer transition-colors hover:bg-white/[0.02] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-white"><td className="py-3 font-mono text-xs text-neutral-500">{formatDate(fight.date, language)}</td><td className="py-3 text-neutral-300">{fight.eventName}</td><td className="py-3 text-white">{t($ => $.fighterDetail.versus, { name: opponentName })}{fight.isTitleFight && <span className="ml-2 text-amber-300">{t($ => $.fight.common.title)}</span>}</td><td className={`py-3 font-medium ${result === 'win' ? 'text-emerald-300' : result === 'loss' ? 'text-red-300' : 'text-neutral-400'}`}>{resultLabel}</td><td className="py-3 text-neutral-400">{formatFightMethod(fight.method, language)}</td><td className="py-3 font-mono text-xs text-neutral-400">{fight.round} ({fight.time})</td></tr>;
         })}</tbody></table></div> : <div className="space-y-3 text-center"><p className="py-6 text-sm text-neutral-500">{t($ => $.fighterDetail.noFights)}</p>{f.history.length > 0 && <div className="text-left"><h3 className="mb-2 font-mono text-[10px] uppercase tracking-[0.14em] text-neutral-500">{t($ => $.fighterDetail.legacyHistory)}</h3>{f.history.map((entry, index) => <p key={index} className="border-t border-[#2a2c31] py-2 text-sm text-neutral-300">{entry}</p>)}</div>}</div>}
       </Panel>}
+
+      {activeTab === 'statistics' && <FighterStatistics fighterId={f.id} />}
 
       {activeTab === 'timeline' && <Panel>
         <h2 className="mb-4 text-lg font-medium tracking-tight text-white">{t($ => $.fighterDetail.careerTimeline)}</h2>

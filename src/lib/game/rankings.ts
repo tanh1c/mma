@@ -180,7 +180,87 @@ export function buildWorldRankings(state: GameState): Record<WeightClass, Rankin
   ])) as Record<WeightClass, RankingItem[]>;
 }
 
+function rankingPositions(items: RankingItem[] = []): Map<string, number> {
+  return new Map(items.map(item => [item.fighterId, item.rank + 1]));
+}
+
+export function recordRankingHistory(before: GameState, after: GameState): GameState {
+  if (after.currentDate < after.statisticsTrackingStartedAt) return after;
+  const changes = new Map(after.fighterRankingHistory.map(item => [item.id, item]));
+  let changed = false;
+
+  const recordScope = (
+    scope: 'promotion' | 'world',
+    promotionId: string | undefined,
+    weightClass: WeightClass,
+    beforeItems: RankingItem[],
+    afterItems: RankingItem[]
+  ) => {
+    const previous = rankingPositions(beforeItems);
+    const current = rankingPositions(afterItems);
+    for (const fighterId of new Set([...previous.keys(), ...current.keys()])) {
+      const previousRank = previous.get(fighterId);
+      const rank = current.get(fighterId);
+      if (previousRank === rank) continue;
+      const dailyKey = [after.currentDate, scope, promotionId ?? 'world', weightClass, fighterId].join(':');
+      const id = `ranking-${dailyKey}`;
+      const existing = changes.get(id);
+      const firstRank = existing?.previousRank ?? previousRank;
+      if (firstRank === rank) {
+        if (existing) {
+          changes.delete(id);
+          changed = true;
+        }
+        continue;
+      }
+      const next = {
+        id,
+        date: after.currentDate,
+        fighterId,
+        scope,
+        ...(promotionId ? { promotionId } : {}),
+        weightClass,
+        previousRank: firstRank,
+        rank
+      };
+      if (!existing || existing.rank !== rank || existing.previousRank !== firstRank) {
+        changes.set(id, next);
+        changed = true;
+      }
+    }
+  };
+
+  const promotionIds = new Set([
+    ...Object.keys(before.rankingsByPromotion),
+    ...Object.keys(after.rankingsByPromotion),
+    before.playerPromotionId,
+    after.playerPromotionId
+  ]);
+  for (const promotionId of promotionIds) {
+    const beforeRankings = promotionId === before.playerPromotionId ? before.rankings : before.rankingsByPromotion[promotionId];
+    const afterRankings = promotionId === after.playerPromotionId ? after.rankings : after.rankingsByPromotion[promotionId];
+    for (const weightClass of WEIGHT_CLASSES) {
+      recordScope('promotion', promotionId, weightClass, beforeRankings?.[weightClass] ?? [], afterRankings?.[weightClass] ?? []);
+    }
+  }
+  for (const weightClass of WEIGHT_CLASSES) {
+    recordScope('world', undefined, weightClass, before.worldRankings[weightClass] ?? [], after.worldRankings[weightClass] ?? []);
+  }
+
+  if (!changed) return after;
+  return {
+    ...after,
+    fighterRankingHistory: [...changes.values()].sort((a, b) =>
+      a.date.localeCompare(b.date)
+      || a.scope.localeCompare(b.scope)
+      || (a.promotionId ?? '').localeCompare(b.promotionId ?? '')
+      || a.weightClass.localeCompare(b.weightClass)
+      || a.fighterId.localeCompare(b.fighterId))
+  };
+}
+
 export function updateRankings(state: GameState, eventId?: string, promotionId?: string): GameState {
+  const before = state;
   let newState = initializeRankingScores(state);
   const selectedPromotionId = promotionId ?? (eventId ? newState.events[eventId]?.promotionId ?? undefined : undefined) ?? getPlayerPromotionId(newState);
   const fighters = { ...newState.fighters };
@@ -232,5 +312,5 @@ export function updateRankings(state: GameState, eventId?: string, promotionId?:
     };
   }
 
-  return syncPlayerPromotionSnapshot(newState);
+  return recordRankingHistory(before, syncPlayerPromotionSnapshot(newState));
 }

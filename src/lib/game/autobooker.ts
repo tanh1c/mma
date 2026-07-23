@@ -8,10 +8,10 @@ import { scheduleTournamentRound, getPendingTitleShotDebts, isFighterBookedUpcom
 import { quickSimulateEvent } from '../engine';
 import { getEventName } from '../branding';
 import { getContractEndDate, isContractMarketOpen } from './contracts';
-import { getPlayerPromotionId } from './leagues';
+import { getPlayerPromotionId, syncPlayerPromotionSnapshot } from './leagues';
 import { ensureEmergencyProspectPool, scoreObserverRosterCandidate, shouldObserverRenewFighter } from './careerEcosystem';
 import { getFighterOverall } from './fighterRatings';
-import { buildPromotionRankings } from './rankings';
+import { buildPromotionRankings, recordRankingHistory } from './rankings';
 import { hasPendingIncidentForEvent } from './drama';
 import { refreshPromotionEconomy } from './promotionEconomy';
 
@@ -1097,7 +1097,7 @@ function maintainRoster(state: GameState, language: Language): GameState {
   });
 
   return refreshPromotionEconomy(
-    { ...newState, rankings: buildPromotionRankings(newState).newRankings },
+    recordRankingHistory(state, syncPlayerPromotionSnapshot({ ...newState, rankings: buildPromotionRankings(newState).newRankings })),
     getPlayerPromotionId(newState)
   );
 }

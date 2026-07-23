@@ -16,7 +16,7 @@ import { initializeContractMarketState, scheduleContractWindow } from './contrac
 import { initializePromotionEconomies } from './promotionEconomy';
 
 const SAVE_KEY = 'cage-dynasty-save';
-export const CURRENT_SAVE_VERSION = 15;
+export const CURRENT_SAVE_VERSION = 16;
 
 export function createNewGame(): GameState {
   const state = generateInitialWorld();
@@ -96,6 +96,8 @@ function extractSaveState(state: GameState): Partial<GameState> {
     fightArchive: state.fightArchive,
     eventArchive: state.eventArchive,
     titleHistory: state.titleHistory,
+    statisticsTrackingStartedAt: state.statisticsTrackingStartedAt,
+    fighterRankingHistory: state.fighterRankingHistory,
     yearlyAwards: state.yearlyAwards,
     sponsorDeals: state.sponsorDeals,
     mediaDeals: state.mediaDeals,
@@ -219,6 +221,10 @@ export function validateAndMigrateState(parsed: any): GameState | null {
   if (!state.fightArchive) state.fightArchive = {};
   if (!state.eventArchive) state.eventArchive = {};
   if (!state.titleHistory) state.titleHistory = [];
+  if (typeof state.statisticsTrackingStartedAt !== 'string' || Number.isNaN(Date.parse(state.statisticsTrackingStartedAt))) {
+    state.statisticsTrackingStartedAt = state.currentDate;
+  }
+  if (!Array.isArray(state.fighterRankingHistory)) state.fighterRankingHistory = [];
   if (!state.yearlyAwards) state.yearlyAwards = {};
   if (!state.sponsorDeals) state.sponsorDeals = [];
   if (!state.mediaDeals) state.mediaDeals = [];

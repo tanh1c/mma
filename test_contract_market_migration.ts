@@ -23,8 +23,8 @@ const contractsBefore = Object.fromEntries(
 );
 
 const migrated = validateAndMigrateState(legacy)!;
-assert.equal(CURRENT_SAVE_VERSION, 15);
-assert.equal(migrated.saveVersion, 15);
+assert.equal(CURRENT_SAVE_VERSION, 16);
+assert.equal(migrated.saveVersion, 16);
 assert.deepEqual(
   Object.fromEntries(
     Object.values(migrated.fighters).map(fighter => [

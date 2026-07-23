@@ -46,7 +46,7 @@ export interface ActiveSimulation {
   roundGateToken: number | null;
 }
 
-export type GameView = 'dashboard' | 'inbox' | 'roster' | 'free-agents' | 'contract-market' | 'promotion-finances' | 'event-builder' | 'simulation' | 'rankings' | 'news' | 'fighter-detail' | 'debug' | 'history' | 'fight-detail' | 'tournaments' | 'leagues' | 'calendar' | 'mma-guide' | 'settings';
+export type GameView = 'dashboard' | 'inbox' | 'roster' | 'free-agents' | 'contract-market' | 'promotion-finances' | 'event-builder' | 'simulation' | 'rankings' | 'news' | 'fighter-detail' | 'debug' | 'history' | 'stats-board' | 'fight-detail' | 'tournaments' | 'leagues' | 'calendar' | 'mma-guide' | 'settings';
 
 export type AutopilotRun = {
   active: boolean;

@@ -1,4 +1,4 @@
-import { Fighter, FightMatchup, Venue, Promotion, EventResults, FightResult, Storyline } from '../../types/game';
+import { Event, Fighter, FighterFightCompensation, FightMatchup, Venue, Promotion, EventResults, FightResult, GameState, Storyline } from '../../types/game';
 
 export interface EventFinancialRolls {
   attendance: number;
@@ -19,6 +19,31 @@ export function getDeterministicEventFinancialRolls(eventId: string): EventFinan
     attendance: hashRoll(`${eventId}:attendance`),
     broadcast: hashRoll(`${eventId}:broadcast`)
   };
+}
+
+function buildFightCompensation(
+  fighters: GameState['fighters'],
+  scope: Event['scope'],
+  fight: FightMatchup,
+  result: Pick<FightResult, 'winnerId'>
+): FighterFightCompensation[] {
+  return [fight.redCornerId, fight.blueCornerId].map(fighterId => {
+    const fighter = fighters[fighterId];
+    const promotionIdAtFight = fighter?.contract?.promotionId ?? null;
+    if (scope === 'international') return { fighterId, promotionIdAtFight, basePurse: 0, winBonus: 0, total: 0 };
+    const basePurse = fighter?.contract?.payPerFight ?? 0;
+    const winBonus = result.winnerId === fighterId ? fighter?.contract?.winBonus ?? 0 : 0;
+    return { fighterId, promotionIdAtFight, basePurse, winBonus, total: basePurse + winBonus };
+  });
+}
+
+export function getFightCompensation(
+  state: GameState,
+  event: Event,
+  fight: FightMatchup,
+  result: Pick<FightResult, 'winnerId'>
+): FighterFightCompensation[] {
+  return buildFightCompensation(state.fighters, event.scope, fight, result);
 }
 
 export interface EventProjections {
@@ -288,7 +313,8 @@ export function calculateEventFinancials(
   storylines: Storyline[] = [],
   titles?: Record<string, import('../../types/game').WeightClassTitleState>,
   tournaments?: Record<string, import('../../types/game').GrandPrixTournament>,
-  rolls?: EventFinancialRolls
+  rolls?: EventFinancialRolls,
+  event?: Pick<Event, 'scope'>
 ): { results: EventResults, reputationChange: number } {
   // First, get the projections as a baseline
   const proj = calculateEventProjections(
@@ -319,20 +345,10 @@ export function calculateEventFinancials(
   let totalAction = 0;
 
   fights.forEach(m => {
-    const r = fighters[m.redCornerId];
-    const b = fighters[m.blueCornerId];
-    if (r?.contract) {
-      fighterBasePay += r.contract.payPerFight;
-      if (m.result?.winnerId === r.id) fighterWinBonuses += r.contract.winBonus;
-    }
-    if (b?.contract) {
-      fighterBasePay += b.contract.payPerFight;
-      if (m.result?.winnerId === b.id) fighterWinBonuses += b.contract.winBonus;
-    }
-    
-    if (m.result) {
-       totalAction += m.result.performanceRating;
-    }
+    const compensation = m.result?.compensation ?? buildFightCompensation(fighters, event?.scope, m, m.result ?? { winnerId: null });
+    fighterBasePay += compensation.reduce((sum, item) => sum + item.basePurse, 0);
+    fighterWinBonuses += compensation.reduce((sum, item) => sum + item.winBonus, 0);
+    if (m.result) totalAction += m.result.performanceRating;
   });
 
   const avgAction = fights.length > 0 ? totalAction / fights.length : 0;

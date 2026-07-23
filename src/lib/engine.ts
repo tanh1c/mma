@@ -1,13 +1,13 @@
 import { GameState, FightMatchup, FightResult, Event, WeightClass, YearlyAwardSet, FightArchiveItem, Fighter, TitleHistoryItem } from '../types/game';
 import { simulateFight } from './game/fightSimulator';
-import { calculateEventFinancials, getDeterministicEventFinancialRolls } from './game/economy';
+import { calculateEventFinancials, getDeterministicEventFinancialRolls, getFightCompensation } from './game/economy';
 import { coolRivalries, generateEventNewsAndStorylines, generateWeeklyNewsAndStorylines } from './game/news';
 import { applyTournamentProgression, scheduleTournamentRound } from './game/tournament';
 import { getContractStatus, syncChampionFlags } from './game/contracts';
 export { syncChampionFlags } from './game/contracts';
 import { processAnnualCareerLifecycle } from './game/career';
 import { generateAnnualRookieClass } from './game/careerEcosystem';
-import { buildPromotionRankings, buildWorldRankings, getFighterRankContext, updateRankings } from './game/rankings';
+import { buildPromotionRankings, buildWorldRankings, getFighterRankContext, recordRankingHistory, updateRankings } from './game/rankings';
 import { generatePostFightSocial, generateScheduledFightSocial, syncLegacyNewsToSocialFeed } from './game/social';
 import { generateScheduledDrama } from './game/drama';
 import { ensureSeasonObjectives, finalizeSeasonReview, refreshSeasonObjectives } from './game/seasonObjectives';
@@ -303,7 +303,7 @@ export function advanceTime(state: GameState, days: number = 7, language: Langua
     }
   }
   newState.titles = newTitles;
-  newState.rankings = buildPromotionRankings(newState).newRankings;
+  newState = recordRankingHistory(newState, syncPlayerPromotionSnapshot({ ...newState, rankings: buildPromotionRankings(newState).newRankings }));
 
   let objectiveState = ensureSeasonObjectives(newState, oldYear);
   objectiveState = refreshSeasonObjectives(objectiveState, oldYear, language);
@@ -430,6 +430,9 @@ export function applyFightResult(state: GameState, eventId: string, fightIndex: 
   const blue = newState.fighters[updatedMatchup.blueCornerId];
   
   if (!red || !blue) return state;
+  const compensation = getFightCompensation(state, event, matchup, result);
+  const capturedResult = { ...result, compensation };
+  result = capturedResult;
 
   const titleValidation = validateTitleFight(updatedMatchup, titles);
   if (!titleValidation.valid) {
@@ -707,11 +710,11 @@ export function applyFightResult(state: GameState, eventId: string, fightIndex: 
     finalState = applyTournamentProgression(finalState, updatedMatchup.tournamentId, updatedMatchup.tournamentFightSlotId, result.winnerId, loserId, language);
   }
 
-  if (isInternational) return { ...finalState, worldRankings: buildWorldRankings(finalState) };
+  if (isInternational) return recordRankingHistory(state, { ...finalState, worldRankings: buildWorldRankings(finalState) });
   const newRankings = buildPromotionRankings(finalState, promotionId).newRankings;
-  return syncPlayerPromotionSnapshot(promotionId === getPlayerPromotionId(finalState)
+  return recordRankingHistory(state, syncPlayerPromotionSnapshot(promotionId === getPlayerPromotionId(finalState)
     ? { ...finalState, rankings: newRankings }
-    : { ...finalState, rankingsByPromotion: { ...finalState.rankingsByPromotion, [promotionId]: newRankings } });
+    : { ...finalState, rankingsByPromotion: { ...finalState.rankingsByPromotion, [promotionId]: newRankings } }));
 }
 
 function applyTitleHistoryResult(titleHistory: TitleHistoryItem[], fight: FightMatchup, event: Event, promotionId: string, language: Language): TitleHistoryItem[] {
@@ -775,7 +778,8 @@ export function finalizeEventFinancials(state: GameState, eventId: string, langu
         isTitleFight: fight.isTitleFight, titleFightType: fight.titleFightType, tournamentId: fight.tournamentId,
         tournamentRound: fight.tournamentRound, performanceRating: fight.result.performanceRating || 50,
         scorecards: fight.result.scorecards, roundStats: fight.result.roundStats, commentary: fight.result.commentary,
-        injuries: fight.result.injuries, medicalSuspensions: fight.result.medicalSuspensions, titleChangeInfo: fight.result.titleChangeInfo
+        injuries: fight.result.injuries, medicalSuspensions: fight.result.medicalSuspensions, titleChangeInfo: fight.result.titleChangeInfo,
+        compensation: fight.result.compensation
       };
       if (fight.tournamentId && fight.tournamentFightSlotId && tournaments[fight.tournamentId]) {
         tournaments[fight.tournamentId] = {
@@ -833,7 +837,8 @@ export function finalizeEventFinancials(state: GameState, eventId: string, langu
     newState.storylines,
     scopedTitles,
     newState.tournaments,
-    promotionId === playerPromotionId ? undefined : getDeterministicEventFinancialRolls(eventId)
+    promotionId === playerPromotionId ? undefined : getDeterministicEventFinancialRolls(eventId),
+    newEvent
   );
 
   let gpFinalBonus = 0;
@@ -966,6 +971,7 @@ export function finalizeEventFinancials(state: GameState, eventId: string, langu
         injuries: f.result.injuries,
         medicalSuspensions: f.result.medicalSuspensions,
         titleChangeInfo: f.result.titleChangeInfo,
+        compensation: f.result.compensation,
         redRecordAfter: `${newState.fighters[f.redCornerId]?.record.wins || 0}-${newState.fighters[f.redCornerId]?.record.losses || 0}-${newState.fighters[f.redCornerId]?.record.draws || 0}`,
         blueRecordAfter: `${newState.fighters[f.blueCornerId]?.record.wins || 0}-${newState.fighters[f.blueCornerId]?.record.losses || 0}-${newState.fighters[f.blueCornerId]?.record.draws || 0}`,
         redRankAtFight: getFighterRankContext(state, f.redCornerId, promotionId)?.label,

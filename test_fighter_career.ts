@@ -28,8 +28,8 @@ for (const fighter of Object.values(legacy.fighters) as any[]) {
 const oldFighter = Object.values(legacy.fighters)[0] as any;
 oldFighter.age = 50;
 const migrated = validateAndMigrateState(legacy)!;
-assert.equal(CURRENT_SAVE_VERSION, 15);
-assert.equal(migrated.saveVersion, 15);
+assert.equal(CURRENT_SAVE_VERSION, 16);
+assert.equal(migrated.saveVersion, 16);
 assert.equal(migrated.fighters[oldFighter.id].lastLifecycleYear, 2025);
 assert.notEqual(migrated.fighters[oldFighter.id].careerPhase, 'retired');
 assert.ok(migrated.fighters[oldFighter.id].primeEndAge >= 30 && migrated.fighters[oldFighter.id].primeEndAge <= 34);

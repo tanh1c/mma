@@ -28,7 +28,7 @@ assert.match(css, /:focus-visible/);
 import { APP_NAV_GROUPS } from './src/components/AppShell';
 
 const labels = APP_NAV_GROUPS.flatMap(group => group.items.map(item => item.label));
-for (const label of ['Dashboard', 'Roster', 'Calendar', 'Book Event', 'Rankings', 'Tournaments', 'Leagues', 'Free Agents', 'Contract Market', 'Social Hub', 'History & Stats', 'Debug Sim', 'Settings']) {
+for (const label of ['Dashboard', 'Roster', 'Calendar', 'Book Event', 'Rankings', 'Tournaments', 'Leagues', 'Free Agents', 'Contract Market', 'Social Hub', 'History & Stats', 'Stats Board', 'Debug Sim', 'Settings']) {
   assert.ok(labels.includes(label), `Missing navigation item: ${label}`);
 }
 for (const label of ['Save', 'Load', 'Export', 'Import']) assert.ok(!labels.includes(label));
@@ -36,6 +36,12 @@ for (const label of ['Save', 'Load', 'Export', 'Import']) assert.ok(!labels.incl
 const select = readFileSync('src/components/Select.tsx', 'utf8');
 for (const token of ['aria-expanded', 'aria-haspopup="listbox"', 'role="listbox"', 'role="option"', 'min-h-11', 'focus-visible']) assert.ok(select.includes(token));
 assert.ok(!select.includes('role="combobox"'));
+const statisticsTable = readFileSync('src/components/StatisticsTable.tsx', 'utf8');
+for (const token of ['<table', '<caption', '<thead', '<tbody', 'scope="col"', 'aria-sort', 'type="button"', 'overflow-x-auto', 'whitespace-nowrap', 'initialLimit', 'showMoreLabel', 'emptyLabel', 'min-h-11']) assert.ok(statisticsTable.includes(token), `Statistics table missing ${token}`);
+assert.doesNotMatch(statisticsTable, /role="button"[^>]*<tr|<tr[^>]*role="button"/);
+const fighterStatistics = readFileSync('src/components/FighterStatistics.tsx', 'utf8');
+for (const token of ['getFighterStatistics', 'StatisticsTable', 'statisticsTrackingStartedAt', '$.fighterDetail.statistics.career', '$.fighterDetail.statistics.striking', '$.fighterDetail.statistics.grappling', '$.fighterDetail.statistics.perFight', '$.fighterDetail.statistics.rankingHistory', "setView('fight-detail'", 'formatCurrency', 'formatDate', 'formatFightMethod']) assert.ok(fighterStatistics.includes(token), `Fighter Statistics missing ${token}`);
+assert.doesNotMatch(fighterStatistics, /Infinity|NaN/);
 
 const app = readFileSync('src/App.tsx', 'utf8');
 for (const token of ['accept=".json"', 'reader.readAsText(file)', 'saveGame', 'loadGame', 'exportGame', 'importGame', "case 'inbox'", 'useTranslation', '$.common.save', '$.search.placeholder']) assert.ok(app.includes(token));
@@ -50,6 +56,7 @@ const roster = readFileSync('src/pages/Roster.tsx', 'utf8');
 const freeAgents = readFileSync('src/pages/FreeAgents.tsx', 'utf8');
 const socialHub = readFileSync('src/pages/News.tsx', 'utf8');
 const historyStats = readFileSync('src/pages/HistoryStats.tsx', 'utf8');
+const statsBoard = readFileSync('src/pages/StatsBoard.tsx', 'utf8');
 const calendarPage = readFileSync('src/pages/Calendar.tsx', 'utf8');
 const tournamentsPage = readFileSync('src/pages/Tournaments.tsx', 'utf8');
 const leagues = readFileSync('src/pages/Leagues.tsx', 'utf8');
@@ -66,7 +73,13 @@ for (const token of ['incidentId?: string', "state.mode === 'manager'", "inciden
 for (const token of ['selectedIncidentId', 'setSelectedIncidentId', 'getValidDramaResponses', 'resolveDramaIncident', 'lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]', 'min-w-0', '$.inbox.drama.backToList', '$.inbox.drama.risk.low', '$.inbox.drama.risk.medium', '$.inbox.drama.risk.high', 'min-h-11 w-full']) assert.ok(inboxPage.includes(token), `Drama Inbox UI missing ${token}`);
 for (const token of ['$.socialHub.title', '$.socialHub.filters.all', '$.socialHub.filters.news', '$.socialHub.filters.articles', '$.socialHub.filters.fighterPosts', '$.socialHub.filters.threads', 'socialFeed', 'applyPromotionSocialAction', '$.socialHub.trending', 'engagement', 'replies', "setView('fighter-detail'", "setView('event-builder'"]) assert.ok(socialHub.includes(token), `Social Hub missing ${token}`);
 for (const token of ['fighter.hallOfFame', 'hallOfFame.legacyScore', '$.historyStats.hallOfFameTitle', "setView('fighter-detail'"]) assert.ok(historyStats.includes(token), `Hall of Fame missing ${token}`);
+for (const token of ['getStatsBoard', 'StatisticsTable', "kind: 'world'", "kind: 'international'", "kind: 'promotion'", "kind: 'all-time'", "kind: 'current-season'", "kind: 'year'", "useState<WeightClass | 'all'>('all')", "'fighters'", "'fights'", "'events'", "'promotions'", "'titles'", "'tournaments'", 'role="tablist"', 'role="tab"', 'aria-selected', 'aria-controls', 'role="tabpanel"', 'onKeyDown', "event.key === 'ArrowRight'", '$.statsBoard.filters', '$.statsBoard.tabs', "setView('fighter-detail'", "setView('fight-detail'"]) assert.ok(statsBoard.includes(token), `Stats Board missing ${token}`);
+assert.ok(app.includes("case 'stats-board'"));
+assert.ok(shell.includes("view: 'stats-board'"));
+assert.ok(shell.includes('$.navigation.statsBoard'));
 for (const token of ['personalityTraits.slice(0, 2)', '<details', '$.personality.title', '$.personality.traits.professional', 'AchievementVisual', "achievement.visual === 'belt'", 'ChampionshipBelt', 'Trophy', 'Medal', 'Flame']) assert.ok(fighterDetail.includes(token), `Fighter profile presentation missing ${token}`);
+assert.ok(fighterDetail.includes("{ id: 'statistics' }"), 'Fighter profile must expose a Statistics tab.');
+assert.ok(fighterDetail.includes("activeTab === 'statistics'"), 'Fighter profile must render Statistics tab content.');
 assert.match(fighterDetail, /\$\.fighterDetail\.attributes[\s\S]{0,3000}\$\.personality\.title[\s\S]{0,3000}\$\.fighterDetail\.editor\.title/, 'Attributes must contain personality and precede the fighter editor.');
 for (const token of ['drama.objectives', 'lastAutopilotSummary.drama', 'grid gap-3 sm:grid-cols-2 xl:grid-cols-3', '$.objectives.title', "setView('history'", "item.incidentId ? setView('inbox')"]) assert.ok(dashboard.includes(token), `Season Dashboard missing ${token}`);
 for (const token of ['drama.seasonReviews', "status === 'resolved'", 'incidentSeverityFilter', 'incidentTypeFilter', 'incidentEventFilter', 'incidentFighterFilter', 'flex flex-wrap gap-2', '$.seasonReview.title', '$.dramaTimeline.title', '$.inbox.drama.incident.weightCut', '$.inbox.drama.response.acceptCatchweight', '$.dramaTimeline.rationaleFactors.identity', '$.dramaTimeline.consequences.socialHype']) assert.ok(historyStats.includes(token), `Drama history UI missing ${token}`);

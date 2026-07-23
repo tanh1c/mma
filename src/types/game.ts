@@ -481,6 +481,27 @@ export interface RoundStats {
   dominanceLevel?: 'close' | 'clear' | 'dominant' | 'near_finish';
 }
 
+export interface FighterFightCompensation {
+  fighterId: string;
+  promotionIdAtFight: string | null;
+  basePurse: number;
+  winBonus: number;
+  total: number;
+}
+
+export type FighterRankingScope = 'promotion' | 'world';
+
+export interface FighterRankingChange {
+  id: string;
+  date: string;
+  fighterId: string;
+  scope: FighterRankingScope;
+  promotionId?: string;
+  weightClass: WeightClass;
+  previousRank?: number;
+  rank?: number;
+}
+
 export interface FightResult {
   winnerId: string | null; // null if draw
   loserId: string | null;
@@ -500,6 +521,7 @@ export interface FightResult {
     type: 'new_champion' | 'title_defense' | 'vacant_title_won' | 'interim_won' | 'interim_defense' | 'unified' | 'no_change';
     previousChampionId?: string | null;
   };
+  compensation?: FighterFightCompensation[];
 }
 
 export interface FightArchiveItem {
@@ -534,6 +556,7 @@ export interface FightArchiveItem {
   blueRecordAfter?: string;
   redRankAtFight?: 'C' | 'IC' | 'UR' | `#${number}`;
   blueRankAtFight?: 'C' | 'IC' | 'UR' | `#${number}`;
+  compensation?: FighterFightCompensation[];
 }
 
 export interface EventArchiveItem {
@@ -792,6 +815,8 @@ export interface GameState {
   fightArchive: Record<string, FightArchiveItem>;
   eventArchive: Record<string, EventArchiveItem>;
   titleHistory: TitleHistoryItem[];
+  statisticsTrackingStartedAt: string;
+  fighterRankingHistory: FighterRankingChange[];
   yearlyAwards?: Record<number, YearlyAwardSet>;
   sponsorDeals?: SponsorDeal[];
   mediaDeals?: MediaDeal[];

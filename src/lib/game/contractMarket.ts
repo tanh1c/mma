@@ -1,6 +1,6 @@
 import { addDays, format } from 'date-fns';
 import { getContractEndDate, getContractExpectation, getContractStatus, isContractMarketOpen, syncChampionFlags } from './contracts';
-import { buildWorldRankings, getFighterRankContext, updateRankings } from './rankings';
+import { getFighterRankContext, updateRankings } from './rankings';
 import { WEIGHT_CLASSES } from './constants';
 import { repairFutureEventAvailability } from './autobooker';
 import {
@@ -914,7 +914,6 @@ export function applyPendingSettlement(
   candidate = updateRankings(candidate, undefined, buyer.id);
   candidate = {
     ...candidate,
-    worldRankings: buildWorldRankings(candidate),
     news: [{
       id: `market-news-${settlement.id}`,
       date: state.currentDate,

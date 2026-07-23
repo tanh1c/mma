@@ -431,6 +431,8 @@ export function generateInitialWorld(seed?: number): GameState {
     fightArchive: {},
     eventArchive: {},
     titleHistory,
+    statisticsTrackingStartedAt: currentDate,
+    fighterRankingHistory: [],
     sponsorDeals: [
       {
         id: uuidv4(),

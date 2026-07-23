@@ -19,6 +19,7 @@ const EventBuilder = React.lazy(() => import('./pages/EventBuilder'));
 const EventSimulation = React.lazy(() => import('./pages/EventSimulation'));
 const DebugSim = React.lazy(() => import('./pages/DebugSim'));
 const HistoryStats = React.lazy(() => import('./pages/HistoryStats'));
+const StatsBoard = React.lazy(() => import('./pages/StatsBoard'));
 const FightDetail = React.lazy(() => import('./pages/FightDetail').then(module => ({ default: module.FightDetail })));
 const Tournaments = React.lazy(() => import('./pages/Tournaments'));
 const Leagues = React.lazy(() => import('./pages/Leagues'));
@@ -73,6 +74,7 @@ function App() {
                case 'rankings': return <Rankings />;
                case 'news': return <News />;
                case 'history': return <HistoryStats />;
+               case 'stats-board': return <StatsBoard />;
                case 'fight-detail': return <FightDetail />;
                case 'tournaments': return <Tournaments />;
                case 'leagues': return <Leagues />;

@@ -4,7 +4,8 @@ import '../../i18n';
 import { fixedT, readLanguage, type Language } from '../localization';
 import { FIGHTER_STYLES, GAME_CONSTANTS, WEIGHT_CLASSES } from './constants';
 import { getFighterOverall, growthPriorities, normalizePhysicalProfile } from './fighterRatings';
-import { buildPromotionRankings } from './rankings';
+import { buildPromotionRankings, recordRankingHistory } from './rankings';
+import { syncPlayerPromotionSnapshot } from './leagues';
 import { cancelTournament, getPendingTitleShotDebts, isFighterBookedUpcoming, repairScheduledTournamentRound } from './tournament';
 
 export function stableCareerSeed(...parts: Array<string | number>): number {
@@ -154,7 +155,7 @@ export function applyFighterEdit(state: GameState, fighterId: string, input: Fig
   const edited = { ...draft, potential: phase === 'declining' || phase === 'retired' ? overall : Math.max(overall, input.potential) };
   const editedState = { ...state, fighters: { ...state.fighters, [fighterId]: edited } };
   const { newRankings } = buildPromotionRankings(editedState);
-  const nextState = { ...editedState, rankings: newRankings };
+  const nextState = recordRankingHistory(state, syncPlayerPromotionSnapshot({ ...editedState, rankings: newRankings }));
   return { ok: true, state: nextState, fighter: nextState.fighters[fighterId] };
 }
 

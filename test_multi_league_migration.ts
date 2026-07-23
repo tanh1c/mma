@@ -18,8 +18,8 @@ for (const event of Object.values(legacy.events) as any[]) {
 for (const belt of Object.values(legacy.belts) as any[]) delete belt.promotionId;
 
 const migrated = validateAndMigrateState(legacy)!;
-assert.equal(CURRENT_SAVE_VERSION, 15);
-assert.equal(migrated.saveVersion, 15);
+assert.equal(CURRENT_SAVE_VERSION, 16);
+assert.equal(migrated.saveVersion, 16);
 assert.equal(migrated.playerPromotionId, migrated.promotion.id);
 assert.equal(migrated.promotions[migrated.playerPromotionId].control, 'player');
 assert.deepEqual(migrated.rankingsByPromotion[migrated.playerPromotionId], migrated.rankings);

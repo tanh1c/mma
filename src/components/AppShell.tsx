@@ -9,6 +9,7 @@ import {
   ChevronRight,
   CircleDollarSign,
   FileClock,
+  ChartNoAxesColumnIncreasing,
   Globe2,
   Handshake,
   LayoutDashboard,
@@ -53,6 +54,7 @@ export const APP_NAV_GROUPS: Array<{ label: string; items: Array<{ label: string
     items: [
       { label: 'Social Hub', view: 'news', icon: Newspaper },
       { label: 'History & Stats', view: 'history', icon: FileClock },
+      { label: 'Stats Board', view: 'stats-board', icon: ChartNoAxesColumnIncreasing },
       { label: 'MMA Guide', view: 'mma-guide', icon: BookOpen },
       { label: 'Debug Sim', view: 'debug', icon: Bug },
       { label: 'Settings', view: 'settings', icon: Settings }
@@ -99,6 +101,7 @@ export function AppShell({ currentView, onNavigate, title, date, money, reputati
       case 'leagues': return t($ => $.navigation.leagues);
       case 'news': return t($ => $.navigation.socialHub);
       case 'history': return t($ => $.navigation.historyStats);
+      case 'stats-board': return t($ => $.navigation.statsBoard);
       case 'mma-guide': return t($ => $.navigation.mmaGuide);
       case 'debug': return t($ => $.navigation.debugSim);
       case 'settings': return t($ => $.navigation.settings);

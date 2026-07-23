@@ -20,8 +20,8 @@ const balances = Object.fromEntries(
 );
 
 const migrated = validateAndMigrateState(legacy)!;
-assert.equal(CURRENT_SAVE_VERSION, 15);
-assert.equal(migrated.saveVersion, 15);
+assert.equal(CURRENT_SAVE_VERSION, 16);
+assert.equal(migrated.saveVersion, 16);
 assert.deepEqual(
   Object.fromEntries(Object.entries(migrated.promotions).map(([id, promotion]) => [id, promotion.money])),
   balances
