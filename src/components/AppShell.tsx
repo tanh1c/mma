@@ -145,7 +145,7 @@ export function AppShell({ currentView, onNavigate, title, date, money, reputati
   );
 
   const brand = (
-    <div className="border-b border-[#2a2c31] px-5 py-5">
+    <div className="min-w-0 flex-1 border-b border-[#2a2c31] px-5 py-5">
       <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-neutral-500">{t($ => $.shell.promotionControl)}</p>
       <h1 className="mt-2 truncate text-xl font-normal tracking-[-0.04em] text-white">{title}</h1>
       <p className="mt-2 font-mono text-[11px] uppercase tracking-[0.12em] text-neutral-500">{t($ => $.shell.reputation, { value: reputation })}</p>
@@ -179,7 +179,7 @@ export function AppShell({ currentView, onNavigate, title, date, money, reputati
         <div className="hidden items-center gap-2 border-l border-[#2a2c31] pl-4 sm:flex"><CircleDollarSign size={15} className="text-neutral-500" /><span className="font-mono text-sm text-white">{formatCurrency(money, language)}</span></div>
         <button type="button" onClick={onAdvanceWeek} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-white px-3 text-sm text-black transition-colors hover:bg-neutral-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white sm:px-4"><Play size={14} fill="currentColor" /> <span className="hidden sm:inline">{t($ => $.shell.advanceWeek)}</span><span className="sm:hidden">{t($ => $.shell.advance)}</span></button>
       </header>
-      <main className="h-[calc(100svh-4rem)] overflow-y-auto [overflow-wrap:anywhere] custom-scrollbar"><div className="mx-auto w-full max-w-7xl p-4 sm:p-6 lg:p-8">{children}</div></main>
+      <main className="h-[calc(100svh-4rem)] overflow-y-auto custom-scrollbar"><div className="mx-auto w-full max-w-7xl p-4 sm:p-6 lg:p-8">{children}</div></main>
     </div>
     </div>
     {locked && <div className="fixed inset-0 z-[100] grid place-items-center bg-black/70 px-4" role="status" aria-live="polite">

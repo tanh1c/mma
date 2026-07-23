@@ -13,6 +13,7 @@ assert.match(buttonVariantClasses('secondary'), /border/);
 assert.doesNotMatch(buttonVariantClasses('secondary'), /shadow/);
 assert.match(buttonVariantClasses('danger'), /red/);
 assert.match(dataSurfaceClasses, /border/);
+assert.match(dataSurfaceClasses, /min-w-0/);
 assert.doesNotMatch(dataSurfaceClasses, /shadow/);
 for (const tone of ['neutral', 'success', 'warning', 'danger'] as const) {
   assert.ok(statusToneClasses(tone));
@@ -39,6 +40,7 @@ assert.ok(!select.includes('role="combobox"'));
 const app = readFileSync('src/App.tsx', 'utf8');
 for (const token of ['accept=".json"', 'reader.readAsText(file)', 'saveGame', 'loadGame', 'exportGame', 'importGame', "case 'inbox'", 'useTranslation', '$.common.save', '$.search.placeholder']) assert.ok(app.includes(token));
 const shell = readFileSync('src/components/AppShell.tsx', 'utf8');
+const sharedUi = readFileSync('src/components/ui.tsx', 'utf8');
 const dashboard = readFileSync('src/pages/Dashboard.tsx', 'utf8');
 const eventBuilder = readFileSync('src/pages/EventBuilder.tsx', 'utf8');
 const fighterDetail = readFileSync('src/pages/FighterDetail.tsx', 'utf8');
@@ -71,7 +73,11 @@ for (const token of ['drama.seasonReviews', "status === 'resolved'", 'incidentSe
 assert.ok(shell.includes("view: 'inbox'"));
 assert.ok(shell.includes("view: 'settings'"));
 for (const token of ['useEffect', "event.key === 'Escape'", '{isOpen && <aside', "closest('[data-navigation-action]')", 'useTranslation', '$.navigation.dashboard', '$.shell.openNavigation', 'formatCurrency', 'formatDate']) assert.ok(shell.includes(token), `Mobile shell missing ${token}`);
-assert.match(shell, /<main className="[^"]*\[overflow-wrap:anywhere\]/, 'Main content must wrap long values on mobile');
+assert.doesNotMatch(shell, /<main className="[^"]*\[overflow-wrap:anywhere\]/, 'Main content must not force titles and pill labels to break anywhere.');
+assert.match(shell, /const brand = \(\s*<div className="min-w-0 flex-1 border-b/, 'Mobile drawer brand must shrink before pushing its close button off-screen.');
+for (const token of ['min-w-0 rounded-lg border', 'leading-tight', 'leading-none']) assert.ok(sharedUi.includes(token), `Shared wrapped-card UI missing ${token}`);
+assert.match(sharedUi, /<span className="min-w-0 truncate">\{children\}<\/span>/, 'Status badges must truncate through a shrinkable text wrapper.');
+assert.doesNotMatch(sharedUi, /inline-flex max-w-full shrink-0/, 'Status badges must be allowed to shrink inside constrained rows.');
 assert.ok(socialHub.includes('flex flex-wrap gap-2'), 'Social Hub filters must wrap on mobile');
 assert.ok(fighterDetail.includes('flex flex-wrap border-b'), 'Fighter detail tabs must wrap on mobile');
 for (const token of ['md:hidden', 'hidden md:block', 'grid grid-cols-1 gap-2 sm:grid-cols-2', 'min-w-0 break-words', 'min-h-11 w-full sm:w-auto']) assert.ok(calendarPage.includes(token), `Calendar mobile cards missing ${token}`);
